@@ -1,8 +1,8 @@
-## Interface: 120100
+## Interface: 120105
 ## Title: |cFFC8A050Cowfee|r Raid Tools
 ## Notes: Save, edit and apply raid group layouts. Type /crt to open.
 ## Author: Alex
-## Version: 0.1.2
+## Version: 0.1.3
 ## SavedVariables: CRTDB
 ## Category: Dungeons & Raids
 
