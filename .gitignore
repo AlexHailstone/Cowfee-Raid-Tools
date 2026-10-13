@@ -9,3 +9,8 @@ node_modules/
 .vscode/
 Thumbs.db
 .DS_Store
+
+# Private Obsidian notes: they live in the vault, not in the repository
+Cowfee Raid Tools - Build and Patch Runbook.md
+Cowfee Raid Tools - Public README.md
+Cowfee Raid Tools - readme.md
