@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  World of Warcraft Retail &nbsp;·&nbsp; Interface 120100 &nbsp;·&nbsp; Version 0.1.1 &nbsp;·&nbsp; MIT License
+  <strong>Game version</strong> <code>12.1.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
