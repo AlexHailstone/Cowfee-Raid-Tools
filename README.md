@@ -13,7 +13,6 @@
 -->
 
 <img width="1079" height="936" alt="{E25B4934-0893-4D80-8215-5D491909EE3B}" src="https://github.com/user-attachments/assets/c858952a-aef5-4fa2-a6ab-eec86204b1eb" />
-<img width="1049" height="921" alt="{205BF2AF-6756-44AC-A621-8BF74F923280}" src="https://github.com/user-attachments/assets/4819d0ea-ffbe-4e57-bb5d-eb6a8fc1d0af" />
 
 
 Cowfee Raid Tools is a World of Warcraft addon for raid leaders and officers. It gives you a panel where you build a layout of 8 groups with 5 slots each, save it under a name, edit it whenever you like, and move your raid into it when you are ready.
