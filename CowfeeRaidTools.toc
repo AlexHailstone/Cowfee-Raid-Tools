@@ -1,0 +1,14 @@
+## Interface: 120100
+## Title: |cFFC8A050Cowfee|r Raid Tools
+## Notes: Save, edit and apply raid group layouts. Type /crt to open.
+## Author: Alex
+## Version: 0.1.1
+## SavedVariables: CRTDB
+## Category: Dungeons & Raids
+
+Core.lua
+Slash.lua
+UI\Panel.lua
+Groups\Data.lua
+Groups\Apply.lua
+Groups\Page.lua

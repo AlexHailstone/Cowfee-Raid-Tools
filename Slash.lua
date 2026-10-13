@@ -1,0 +1,22 @@
+local ADDON, CRT = ...
+
+local function printHelp()
+    CRT:Print("v" .. CRT.version .. " commands:")
+    print("  |cffffd100/crt|r - open or close the main panel")
+    print("  |cffffd100/crt groups|r - open the Raid Groups page")
+    print("  |cffffd100/crt help|r - show this list")
+end
+
+SLASH_COWFEERAIDTOOLS1 = "/crt"
+SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
+    msg = strtrim(msg or ""):lower()
+    if msg == "" then
+        CRT.UI:Toggle()
+    elseif msg == "groups" then
+        CRT.UI:Show("groups")
+    elseif msg == "help" or msg == "?" then
+        printHelp()
+    else
+        CRT:Print("Unknown command '" .. msg .. "'. Type /crt help for the list.")
+    end
+end
