@@ -29,24 +29,42 @@ The addon has been syntax-checked but never run in the game. Do this once before
 
 If something errors, the message names the file and line. Common first-load failures are a frame template name that no longer exists, and the role icon texture looking cropped.
 
-## Set up version control (recommended before the next feature)
+## Version control
 
-The addon only exists inside Program Files today. Proposed setup, not done yet, so ask before running it.
+This folder is the repository: `C:\Users\Alex\OneDrive\Documents\Mythic Lab\projects\WoW Addons\Cowfee Raid Tools`, on branch `main`. It was cloned from GitHub on 2026-10-13, and the addon source was added on top of the notes already in it. The game loads the addon from `...\Interface\AddOns\CowfeeRaidTools`, which is a junction pointing at this folder, so you edit and `/reload` as before.
 
-1. Create `C:\dev\CowfeeRaidTools` outside OneDrive and Program Files, as with the website project.
-2. Move the addon files there and run `git init` on a `main` branch.
-3. Make a junction so the game still sees the folder: `mklink /J "C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\CowfeeRaidTools" "C:\dev\CowfeeRaidTools"` from an elevated prompt.
-4. Commit after every working change, with the version in the `.toc` bumped for user-visible changes.
+| Item | Value |
+|---|---|
+| Repository | This folder, inside the vault |
+| Remote | `origin`, `https://github.com/AlexHailstone/Cowfee-Raid-Tools.git` |
+| Game path | A junction at `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\CowfeeRaidTools` pointing here |
+| Identity | The GitHub noreply email `76534423+AlexHailstone@users.noreply.github.com`, set locally on this repo |
+| First release | Tag `v0.1.1`, local so far. The packager expects tags named for versions |
+| Source of truth for the public README | `README.md` in this folder. Edit it here, not in a copy |
+| Older copies | `C:\dev\CowfeeRaidTools` (a separate repo with one commit) and `C:\dev\CowfeeRaidTools-pre-git-backup`. Safe to delete once this setup has worked for a while |
 
-> [!warning] Moving the folder
-> Close the game first, and check `/crt` still loads after the junction is made. Saved layouts live in the WTF folder and are not affected.
+Working rules:
+
+1. Commit after every working change, with a clear message, and bump the version in the `.toc` for anything players would notice.
+2. Tag each release, such as `git tag -a v0.1.2 -m "Cowfee Raid Tools 0.1.2"`.
+3. Ask before any push, and never use `--force`.
+4. Commit addon files and notes separately, so a release does not drag documentation edits with it.
+
+> [!warning] The repository is inside OneDrive
+> OneDrive syncing a live `.git` folder can corrupt the repository, usually as missing or half-synced objects. The safest fix is to keep the Git data outside OneDrive while the files stay here, with `git init --separate-git-dir=C:\dev\CowfeeRaidTools.git` run in this folder, which replaces `.git` with a small pointer file. Not done yet, so ask first.
+
+> [!warning] Private notes are in a public repository
+> The notes in this folder were committed and are on GitHub, along with the addon. They contain local paths and a pre-publish checklist. If the repository is public, either remove them with `git rm --cached` and a `.gitignore` entry, which stops them going forward but leaves them in history, or move the addon into its own folder. Decide before the next push. Early commits in this repo also carry a personal email address as the author, which cannot be removed without rewriting history.
+
+If the game shows the addon missing, recreate the junction from PowerShell with `New-Item -ItemType Junction -Path "<AddOns path>\CowfeeRaidTools" -Target "<this folder>"` after making sure the AddOns path does not already exist. Removing a junction does not delete the folder it points to.
 
 ## Development loop
 
-1. Edit the Lua files in the addon folder.
+1. Edit the Lua files in this folder, or through the AddOns junction, which is the same place.
 2. Run the syntax check below.
 3. `/reload` in the game and read any Lua error.
 4. Test the change in the first-load list, in a raid for anything that touches Apply.
+5. Commit it.
 
 Lua syntax check without the game: no Lua interpreter is installed on this machine, so use the `luaparse` package from a scratch folder.
 
@@ -178,5 +196,6 @@ If a patch fix goes wrong, restore the previous Git commit and `/reload`. Saved 
 
 | Date | Version | Change |
 |---|---|---|
+| 2026-10-13 | 0.1.1 (Git) | This folder became the repository (cloned from `AlexHailstone/Cowfee-Raid-Tools`), with a junction into AddOns, MIT license, GitHub README with screenshot, and tag `v0.1.1`. No code change |
 | 2026-10-13 | 0.1.1 | Rename a saved layout: the "Editing:" name is now an edit box, saved on Enter or when you click away. Added `Groups:Rename` |
 | 2026-10-12 | 0.1.0 | First build: panel with menu, Raid Groups page, save, edit, apply, export, import (including pasted name lists), role icons, lit and dim names, 1.2 font scale. Fixed `SetFont` third argument for 12.0.5 and later |

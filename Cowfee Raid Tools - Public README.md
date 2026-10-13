@@ -9,16 +9,17 @@ tags: [wow, addon, publishing, readme]
 
 # Cowfee Raid Tools: public README
 
-The text for GitHub (`README.md`) and the CurseForge project page. Copy only the part under "Publishable README" below. Everything above it is private notes for you. The GitHub repository README is a separate, longer file: [[Cowfee Raid Tools - GitHub README]]. Keep this note in step with the addon: the `wow-addon-patch-maintenance` skill updates it, and the facts come from [[Cowfee Raid Tools - readme]] and [[Cowfee Raid Tools - Architecture]].
+The text for GitHub (`README.md`) and the CurseForge project page. Copy only the part under "Publishable README" below. Everything above it is private notes for you. The GitHub repository README is a separate, longer file, `README.md` in this same folder, which is the repository root. Keep this note in step with the addon: the `wow-addon-patch-maintenance` skill updates it, and the facts come from [[Cowfee Raid Tools - readme]] and [[Cowfee Raid Tools - Architecture]].
 
 Related: [[Cowfee Raid Tools - Build and Patch Runbook]], [[2026-10-12 Cowfee Raid Tools clean-room rewrite]]
 
 ## Before you publish
 
 - [ ] Test Apply, drag and drop, and export and import in a real raid. The README is honest that it is a beta, but do not post it before the main features have worked once.
-- [x] License: MIT, chosen 2026-10-13. The `LICENSE` file is in the addon folder, with a copy in this folder as `Cowfee Raid Tools - LICENSE.txt`.
+- [x] License: MIT, chosen 2026-10-13. The `LICENSE` file is in this folder, which is the repository root. `Cowfee Raid Tools - LICENSE.txt` is an older copy of it.
 - [ ] Take new screenshots with dummy names. The one from 2026-10-13 shows real guild member names, so do not post it as is.
-- [ ] Put the addon under Git first, because the packager needs a repository. See the version control section of [[Cowfee Raid Tools - Build and Patch Runbook]].
+- [x] Git: this folder is the repository, with the GitHub remote `AlexHailstone/Cowfee-Raid-Tools` and tag `v0.1.1`. See the Version control section of [[Cowfee Raid Tools - Build and Patch Runbook]]. The addon source is committed locally and not pushed yet.
+- [ ] The repository also contains these private notes, because they sit in the same folder and were committed. Decide whether the public repo should hold them. See the Version control section of the runbook.
 - [ ] Choose where bug reports go and say so in the README. CurseForge strongly recommends a support channel, and a GitHub issue tracker is the easiest.
 - [ ] Preview the description on CurseForge before saving. The README is mostly headings and lists so it should render on both sites, but CurseForge's Markdown support was not confirmed.
 - [ ] Confirm the `## Interface:` number in the `.toc` against `/dump select(4, GetBuildInfo())`, and update the Compatibility line below.

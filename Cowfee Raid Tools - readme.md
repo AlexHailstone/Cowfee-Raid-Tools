@@ -11,7 +11,7 @@ tags: [wow, addon, lua, raids]
 
 A private World of Warcraft raid addon, written from scratch for Alex. Version 0.1.0 does one thing well: save, edit and apply raid group layouts, in a panel with a menu on the left so more pages can be added later.
 
-Related: [[Raids - readme]], [[Cowfee Raid Tools - Architecture]], [[Cowfee Raid Tools - Build and Patch Runbook]], [[Cowfee Raid Tools - GitHub README]] (the repository README), [[Cowfee Raid Tools - Public README]] (CurseForge text and publishing notes), [[2026-10-12 Cowfee Raid Tools clean-room rewrite]]
+Related: [[Raids - readme]], [[Cowfee Raid Tools - Architecture]], [[Cowfee Raid Tools - Build and Patch Runbook]], `README.md` in this folder (the GitHub README), [[Cowfee Raid Tools - Public README]] (CurseForge text and publishing notes), [[2026-10-12 Cowfee Raid Tools clean-room rewrite]]
 
 ## Status
 
@@ -24,12 +24,9 @@ Related: [[Raids - readme]], [[Cowfee Raid Tools - Architecture]], [[Cowfee Raid
 | Patch support | The `wow-addon-patch-maintenance` skill in `.claude/skills/`: ask Claude to check the addon for a new patch or expansion |
 | Next step | Run the first-load test list in [[Cowfee Raid Tools - Build and Patch Runbook]] |
 
-> [!warning] Not under version control
-> The only copy is the AddOns folder below, with no Git history and no backup. Set up the repository in the runbook before adding more features.
-
 ## Where it lives
 
-The addon folder is `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\CowfeeRaidTools`. Saved settings are written by the game to the `CRTDB` variable in `WTF\Account\<account>\SavedVariables\CowfeeRaidTools.lua`.
+This folder is the Git repository: `C:\Users\Alex\OneDrive\Documents\Mythic Lab\projects\WoW Addons\Cowfee Raid Tools`, on branch `main`, with the remote `AlexHailstone/Cowfee-Raid-Tools` on GitHub. The addon source (`Core.lua`, `Slash.lua`, the `.toc`, `Groups\`, `UI\`, `LICENSE`) and these notes live side by side in it. The game loads it through a junction, `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\CowfeeRaidTools`, which points at this folder, so editing either path edits the same files. The first release is tagged `v0.1.1`. An earlier copy made before this setup is kept at `C:\dev\CowfeeRaidTools` and `C:\dev\CowfeeRaidTools-pre-git-backup`, and both can be deleted once you are happy. Saved settings are written by the game to the `CRTDB` variable in `WTF\Account\<account>\SavedVariables\CowfeeRaidTools.lua`.
 
 ## Commands
 
