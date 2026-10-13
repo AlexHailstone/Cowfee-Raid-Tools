@@ -11,7 +11,7 @@ tags: [wow, addon, lua, raids]
 
 A private World of Warcraft raid addon, written from scratch for Alex. Version 0.1.0 does one thing well: save, edit and apply raid group layouts, in a panel with a menu on the left so more pages can be added later.
 
-Related: [[Raids - readme]], [[Cowfee Raid Tools - Architecture]], [[Cowfee Raid Tools - Build and Patch Runbook]], [[Cowfee Raid Tools - Public README]] (the text for GitHub and CurseForge), [[2026-10-12 Cowfee Raid Tools clean-room rewrite]]
+Related: [[Raids - readme]], [[Cowfee Raid Tools - Architecture]], [[Cowfee Raid Tools - Build and Patch Runbook]], [[Cowfee Raid Tools - GitHub README]] (the repository README), [[Cowfee Raid Tools - Public README]] (CurseForge text and publishing notes), [[2026-10-12 Cowfee Raid Tools clean-room rewrite]]
 
 ## Status
 
@@ -20,7 +20,7 @@ Related: [[Raids - readme]], [[Cowfee Raid Tools - Architecture]], [[Cowfee Raid
 | Version | 0.1.1. First written 2026-10-12, and confirmed loading in game on 2026-10-13 |
 | Tested | Loads and renders in the game client (screenshot 2026-10-13: grid, Quick Load, role icon, lit and dim names). Apply, drag and drop, and export and import are still to be tested in a raid |
 | Client target | Retail, `## Interface: 120100` (assumed from the other installed addons, confirm with `/dump select(4, GetBuildInfo())`) |
-| License | Private. All code is original, see [[2026-10-12 Cowfee Raid Tools clean-room rewrite]] |
+| License | MIT, copyright 2026 Alex. All code is original, see [[2026-10-12 Cowfee Raid Tools clean-room rewrite]]. The `LICENSE` file is in the addon folder |
 | Patch support | The `wow-addon-patch-maintenance` skill in `.claude/skills/`: ask Claude to check the addon for a new patch or expansion |
 | Next step | Run the first-load test list in [[Cowfee Raid Tools - Build and Patch Runbook]] |
 

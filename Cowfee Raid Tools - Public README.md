@@ -9,14 +9,14 @@ tags: [wow, addon, publishing, readme]
 
 # Cowfee Raid Tools: public README
 
-The text for GitHub (`README.md`) and the CurseForge project page. Copy only the part under "Publishable README" below. Everything above it is private notes for you. Keep this note in step with the addon: the `wow-addon-patch-maintenance` skill updates it, and the facts come from [[Cowfee Raid Tools - readme]] and [[Cowfee Raid Tools - Architecture]].
+The text for GitHub (`README.md`) and the CurseForge project page. Copy only the part under "Publishable README" below. Everything above it is private notes for you. The GitHub repository README is a separate, longer file: [[Cowfee Raid Tools - GitHub README]]. Keep this note in step with the addon: the `wow-addon-patch-maintenance` skill updates it, and the facts come from [[Cowfee Raid Tools - readme]] and [[Cowfee Raid Tools - Architecture]].
 
 Related: [[Cowfee Raid Tools - Build and Patch Runbook]], [[2026-10-12 Cowfee Raid Tools clean-room rewrite]]
 
 ## Before you publish
 
 - [ ] Test Apply, drag and drop, and export and import in a real raid. The README is honest that it is a beta, but do not post it before the main features have worked once.
-- [ ] Pick a license and add a `LICENSE` file to the addon folder. The code is all original, so the choice is yours. A permissive one such as MIT lets others reuse it, and "All Rights Reserved" keeps it closed. The README says "see the LICENSE file", so it must exist before you post.
+- [x] License: MIT, chosen 2026-10-13. The `LICENSE` file is in the addon folder, with a copy in this folder as `Cowfee Raid Tools - LICENSE.txt`.
 - [ ] Take new screenshots with dummy names. The one from 2026-10-13 shows real guild member names, so do not post it as is.
 - [ ] Put the addon under Git first, because the packager needs a repository. See the version control section of [[Cowfee Raid Tools - Build and Patch Runbook]].
 - [ ] Choose where bug reports go and say so in the README. CurseForge strongly recommends a support channel, and a GitHub issue tracker is the easiest.
