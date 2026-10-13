@@ -3,5 +3,4 @@ package-as: CowfeeRaidTools
 ignore:
   - README.md
   - docs
-  - LICENSE.txt
   - "Cowfee Raid Tools - Architecture.md"
