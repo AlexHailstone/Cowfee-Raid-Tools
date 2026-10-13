@@ -109,10 +109,23 @@ local function getDialog()
     end)
     d.scroll:SetScrollChild(d.multi)
 
+    -- Message for confirm mode.
+    d.msg = d:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    d.msg:SetPoint("TOPLEFT", d, "TOPLEFT", 22, -42)
+    d.msg:SetPoint("TOPRIGHT", d, "TOPRIGHT", -22, -42)
+    d.msg:SetJustifyH("LEFT")
+    d.msg:SetJustifyV("TOP")
+    d.msg:Hide()
+
     d.ok = styleButton(CreateFrame("Button", nil, d, "UIPanelButtonTemplate"))
     d.ok:SetSize(110, 26)
     d.ok:SetScript("OnClick", function()
-        local value = (d.mode == "name") and d.edit:GetText() or d.multi:GetText()
+        local value
+        if d.mode == "name" then
+            value = d.edit:GetText()
+        elseif d.mode ~= "confirm" then
+            value = d.multi:GetText()
+        end
         if d.onAccept and d.onAccept(value) == false then
             return
         end
@@ -131,7 +144,8 @@ local function getDialog()
     return d
 end
 
--- mode "name" shows one line, anything else shows a large multi-line box.
+-- mode "name" shows one line, "confirm" shows a message with OK and Cancel, anything else
+-- shows a large multi-line box. For "confirm", text is the message.
 -- onAccept(text) may return false to keep the dialog open. No onAccept means a read-only close button.
 local function openDialog(mode, title, text, okLabel, onAccept)
     local d = getDialog()
@@ -142,8 +156,16 @@ local function openDialog(mode, title, text, okLabel, onAccept)
     d.cancel:SetShown(onAccept ~= nil)
     d.ok:ClearAllPoints()
     d.ok:SetPoint("BOTTOM", d, "BOTTOM", onAccept and -60 or 0, 12)
+    d.msg:Hide()
 
-    if mode == "name" then
+    if mode == "confirm" then
+        d:SetSize(440, 170)
+        d.scroll:Hide()
+        d.edit:Hide()
+        d.msg:SetText(text or "")
+        d.msg:Show()
+        d:Show()
+    elseif mode == "name" then
         d:SetSize(360, 130)
         d.scroll:Hide()
         d.edit:Show()
@@ -651,7 +673,31 @@ local function buildPage(pf)
                 slots[(g - 1) * 5 + used[g]] = entry.key
             end
         end
-        Groups:ReplaceWorking(slots)
+
+        -- An empty grid has nothing to lose, so only ask when names would be replaced.
+        local hasNames = false
+        for _, key in ipairs(Groups:Working()) do
+            if key ~= "" then
+                hasNames = true
+                break
+            end
+        end
+        if not hasNames then
+            Groups:ReplaceWorking(slots)
+            return
+        end
+
+        local g = gdb()
+        local preset = g.selected and Groups:Find(g.selected)
+        local message = "This replaces everything in the grid with your current group."
+        if preset and g.keepChanges then
+            message = message .. format('\n\nKeep changes is on, so the saved layout "|cffffd100%s|r" will be overwritten too.', preset.name)
+        elseif preset then
+            message = message .. format('\n\nThe saved layout "|cffffd100%s|r" is not changed until you save it.', preset.name)
+        end
+        openDialog("confirm", "Replace the grid?", message, "Replace", function()
+            Groups:ReplaceWorking(slots)
+        end)
     end)
 
     local clear = makeButton(pf, "Clear grid", SLOT_W)
