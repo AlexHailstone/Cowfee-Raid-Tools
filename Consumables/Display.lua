@@ -1,10 +1,9 @@
 local ADDON, CRT = ...
 
--- The row of consumable icons shown above the ready check: one icon per category with the
--- time left, or the number in your bags when it is missing. A missing or expiring consumable
+-- The row of consumable icons shown above the ready check. A missing or expiring consumable
 -- gets marching ants around its icon. Food, flask and weapon icons are clickable and use the
--- first listed item in your bags. The list is in Consumables/Database.lua and the player only
--- chooses the order, on the Consumables page.
+-- first listed item in your bags. The icons are drawn by Consumables/Bar.lua, shared with the
+-- bar on the Consumables tab.
 --
 -- Every icon is a secure button, so the icon order can change without making new frames. That
 -- makes the buttons and their parent frame protected: in combat the row cannot be shown,
@@ -13,26 +12,12 @@ local ADDON, CRT = ...
 
 local Consumables = CRT.Consumables
 local Ants = CRT.Ants
+local Bar = CRT.ConsumablesBar
 local Display = {}
 CRT.ConsumablesDisplay = Display
 
-local ICON_SIZE = 44
-local GAP = 6
-local PAD = 6
 local REFRESH_SECONDS = 0.5
 local PREVIEW_SECONDS = 20
-
-local BORDER = { 0.35, 0.35, 0.35 }
-local ANT_COLORS = {
-    missing = { 1, 0.25, 0.25 },
-    low = { 1, 0.82, 0 },
-}
-
-local BACKDROP = {
-    bgFile = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 1,
-}
 
 local frame
 local slots = {}
@@ -40,14 +25,6 @@ local shownUntil -- time at which a ready check or preview row hides by itself
 local sawReadyCheckFrame -- true once Blizzard's ready check dialog has been seen on screen
 local elapsed = 0
 local pendingHide -- a hide that was blocked by combat
-
--- 36s under a minute, then whole minutes: 230m.
-local function formatTime(seconds)
-    if seconds < 60 then
-        return format("%ds", math.max(0, math.floor(seconds + 0.5)))
-    end
-    return format("%dm", math.floor(seconds / 60 + 0.5))
-end
 
 local function showTooltip(self)
     local def = Consumables:Def(self.key)
@@ -67,59 +44,26 @@ local function showTooltip(self)
     GameTooltip:Show()
 end
 
-local function createSlot(parent, index)
-    local slot = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate,BackdropTemplate")
-    slot:RegisterForClicks("AnyUp")
-    slot:SetAttribute("useOnKeyDown", false)
-    slot:SetSize(ICON_SIZE, ICON_SIZE)
-    slot:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD + (index - 1) * (ICON_SIZE + GAP), -PAD)
-    slot:SetBackdrop(BACKDROP)
-    slot:SetBackdropColor(0, 0, 0, 0.6)
-    slot:SetBackdropBorderColor(BORDER[1], BORDER[2], BORDER[3], 1)
-
-    slot.icon = slot:CreateTexture(nil, "ARTWORK")
-    slot.icon:SetPoint("TOPLEFT", 1, -1)
-    slot.icon:SetPoint("BOTTOMRIGHT", -1, 1)
-    slot.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-
-    slot.hl = slot:CreateTexture(nil, "HIGHLIGHT")
-    slot.hl:SetAllPoints()
-    slot.hl:SetColorTexture(1, 1, 1, 0.18)
-
-    slot.time = slot:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
-    slot.time:SetPoint("BOTTOM", 0, 3)
-
-    slot.count = slot:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    slot.count:SetPoint("TOPRIGHT", -3, -3)
-
-    slot.tag = slot:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    slot.tag:SetPoint("TOPLEFT", 3, -3)
-    slot.tag:SetTextColor(0.3, 0.9, 1)
-
-    Ants:Attach(slot)
-
-    slot:SetScript("OnEnter", showTooltip)
-    slot:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    return slot
-end
-
 local function build()
     if frame then
         return frame
     end
     local count = #Consumables.CATEGORIES
     frame = CreateFrame("Frame", "CowfeeRaidToolsReadyCheckRow", UIParent, "BackdropTemplate")
-    frame:SetSize(PAD * 2 + count * ICON_SIZE + (count - 1) * GAP, PAD * 2 + ICON_SIZE)
+    frame:SetSize(Bar.Size(count))
     frame:SetFrameStrata("HIGH")
-    frame:SetBackdrop(BACKDROP)
+    frame:SetBackdrop(Bar.BACKDROP)
     frame:SetBackdropColor(0, 0, 0, 0.45)
     frame:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
     frame:Hide()
 
     for index = 1, count do
-        slots[index] = createSlot(frame, index)
+        local slot = Bar.CreateSlot(frame, index, true)
+        slot:SetScript("OnEnter", showTooltip)
+        slot:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        slots[index] = slot
     end
 
     frame:SetScript("OnUpdate", function(_, dt)
@@ -219,48 +163,7 @@ function Display:Refresh()
         local slot = slots[index]
         local def = Consumables:Def(key)
         slot.key = key
-        local status = Consumables:Status(key)
-
-        slot.icon:SetTexture(status.icon or Consumables.QUESTION_MARK)
-        local dim = status.state == "missing" or status.state == "unset" or status.state == "unknown"
-        slot.icon:SetDesaturated(dim)
-        slot.icon:SetAlpha(dim and 0.6 or 1)
-
-        -- Ants for a missing or expiring consumable.
-        local color = ANT_COLORS[status.state]
-        if color then
-            Ants:Start(slot, color[1], color[2], color[3])
-        else
-            Ants:Stop(slot)
-        end
-
-        if status.state == "unknown" then
-            slot.time:SetText("?")
-        elseif status.state == "unset" then
-            slot.time:SetText("no data")
-        elseif status.left then
-            slot.time:SetText(formatTime(status.left))
-        else
-            slot.time:SetText("")
-        end
-        if status.state == "low" then
-            slot.time:SetTextColor(1, 0.82, 0)
-        else
-            slot.time:SetTextColor(1, 1, 1)
-        end
-
-        if status.count then
-            slot.count:SetText(status.count)
-            if status.count == 0 then
-                slot.count:SetTextColor(0.9, 0.2, 0.2)
-            else
-                slot.count:SetTextColor(1, 1, 1)
-            end
-        else
-            slot.count:SetText("")
-        end
-        slot.tag:SetText(status.tag or "")
-
+        Bar.Apply(slot, Consumables:Status(key))
         updateClickAction(slot, def and def.clickable)
     end
 end

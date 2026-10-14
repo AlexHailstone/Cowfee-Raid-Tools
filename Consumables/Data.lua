@@ -1,9 +1,15 @@
 local ADDON, CRT = ...
 
--- Consumables: the status of each ready check slot, computed from the shipped list in
--- Consumables/Database.lua. Players only choose the order, saved in CRTDB.consumables:
+-- Consumables: the status of each ready check slot. The list comes from two places:
+--   * the list that ships with the addon, Consumables/Database.lua, and
+--   * the player's own additions, saved in CRTDB.consumables.extra, added by dragging an item
+--     from the bags onto the bar on the Consumables tab. They are optional.
+-- The player also chooses the order, and the buff of an item is learned the first time it is used.
+-- Saved in CRTDB.consumables:
 --   categoryOrder = { "flask", "food", ... }       order of the icons
 --   itemOrder[category] = { itemId, itemId, ... }  which item is used first
+--   extra[category] = { { item, name }, ... }      the player's own additions
+--   learned[itemId] = spellId                      buffs worked out from use
 
 local Consumables = { listeners = {} }
 CRT.Consumables = Consumables
@@ -26,6 +32,10 @@ local byKey = {}
 for _, def in ipairs(Consumables.CATEGORIES) do
     byKey[def.key] = def
 end
+
+-- A buff has to last at least this long to be learned as an item's buff, which skips short procs.
+local LEARN_MIN_SECONDS = 300
+local LEARN_GIVE_UP_SECONDS = 90
 
 local function cdb()
     return CRT.db.consumables
@@ -120,28 +130,36 @@ function Consumables:MoveCategory(key, delta)
     self:Fire()
 end
 
--- The listed entries for a category, in the player's order, with new list entries after
--- the ones they have arranged. Each entry is { item, buff, name }.
+-- Entries for a category: the shipped ones, then the player's own, rearranged by the player's
+-- saved order. Each is a fresh table { item, buff, name, user, category }.
 function Consumables:Entries(key)
-    local list = (self:Database().categories or {})[key] or {}
-    local byItem = {}
-    for _, entry in ipairs(list) do
-        if entry.item then
-            byItem[entry.item] = entry
+    local byItem, base = {}, {}
+    local function add(entry, user)
+        if entry.item and not byItem[entry.item] then
+            local e = { item = entry.item, buff = entry.buff, name = entry.name, user = user, category = key }
+            byItem[entry.item] = e
+            base[#base + 1] = e
         end
     end
+    for _, entry in ipairs((self:Database().categories or {})[key] or {}) do
+        add(entry, false)
+    end
+    for _, entry in ipairs(cdb().extra[key] or {}) do
+        add(entry, true)
+    end
+
     local out, seen = {}, {}
     for _, id in ipairs(cdb().itemOrder[key] or {}) do
-        local entry = byItem[id]
-        if entry and not seen[id] then
-            out[#out + 1] = entry
+        local e = byItem[id]
+        if e and not seen[id] then
+            out[#out + 1] = e
             seen[id] = true
         end
     end
-    for _, entry in ipairs(list) do
-        if entry.item and not seen[entry.item] then
-            out[#out + 1] = entry
-            seen[entry.item] = true
+    for _, e in ipairs(base) do
+        if not seen[e.item] then
+            out[#out + 1] = e
+            seen[e.item] = true
         end
     end
     return out
@@ -158,12 +176,16 @@ end
 
 -- Item and bag helpers ----------------------------------------------------------
 
-local function itemIcon(itemId)
-    local ok, _, _, _, _, icon = pcall(C_Item.GetItemInfoInstant, itemId)
-    if ok and icon then
-        return icon
+local function itemInfo(itemId)
+    local ok, id, _, _, _, icon, classId = pcall(C_Item.GetItemInfoInstant, itemId)
+    if ok and id then
+        return icon, classId
     end
     return nil
+end
+
+local function itemIcon(itemId)
+    return (itemInfo(itemId))
 end
 
 local function itemCount(itemId)
@@ -174,14 +196,22 @@ local function itemCount(itemId)
     return 0
 end
 
--- The buff spell ID for an entry: the one listed, else the item's use spell.
+-- The buff spell ID for an entry: the one listed, else the one learned from use, else (for
+-- flasks and runes) the item's use spell. Food has no such fallback, because the use spell of
+-- food is the eating buff and not the long Well Fed buff.
 local function buffId(entry)
     if entry.buff then
         return entry.buff
     end
-    local ok, _, spellId = pcall(C_Item.GetItemSpell, entry.item)
-    if ok and type(spellId) == "number" then
-        return spellId
+    local learned = cdb().learned[entry.item]
+    if learned then
+        return learned
+    end
+    if entry.category ~= "food" then
+        local ok, _, spellId = pcall(C_Item.GetItemSpell, entry.item)
+        if ok and type(spellId) == "number" then
+            return spellId
+        end
     end
     return nil
 end
@@ -214,7 +244,7 @@ function Consumables:ItemCount(itemId)
     return itemCount(itemId)
 end
 
--- A readable name for an entry: from your bags, else the game cache, else the file's label.
+-- A readable name for an entry: from your bags, else the game cache, else the saved label.
 function Consumables:ItemName(entry)
     if bagNames[entry.item] then
         return bagNames[entry.item]
@@ -238,7 +268,205 @@ function Consumables:NextItem(key)
     return nil
 end
 
--- Total of every listed item in your bags.
+-- The player's own additions ---------------------------------------------------------
+
+-- Adds an item to a category's own list. Returns ok, message.
+function Consumables:AddExtra(key, itemId)
+    local def = byKey[key]
+    if not def then
+        return false, "Unknown category."
+    end
+    local icon, classId = itemInfo(itemId)
+    if not icon then
+        return false, "The game doesn't know that item."
+    end
+    if classId ~= 0 then
+        return false, "That isn't a consumable."
+    end
+    for _, entry in ipairs(self:Entries(key)) do
+        if entry.item == itemId then
+            return false, "That item is already in the " .. def.label:lower() .. " list."
+        end
+    end
+
+    self:RefreshBags()
+    local name = bagNames[itemId]
+    if not name then
+        local ok, cached = pcall(C_Item.GetItemNameByID, itemId)
+        name = ok and cached or nil
+    end
+    local list = cdb().extra[key]
+    if not list then
+        list = {}
+        cdb().extra[key] = list
+    end
+    list[#list + 1] = { item = itemId, name = name }
+    self:Fire()
+
+    local note = ""
+    if def.kind == "buff" and not buffId({ item = itemId, category = key }) then
+        note = " Use one and I'll learn its buff."
+    end
+    return true, "Added " .. (name or ("item " .. itemId)) .. " to " .. def.label:lower() .. "." .. note
+end
+
+-- Adds the item you are dragging from your bags. Returns ok, message.
+function Consumables:AddFromCursor(key)
+    local kind, itemId = GetCursorInfo()
+    if kind ~= "item" or type(itemId) ~= "number" then
+        return false, "Drag an item from your bags onto an icon."
+    end
+    ClearCursor() -- the item stays in your bags
+    return self:AddExtra(key, itemId)
+end
+
+function Consumables:RemoveExtra(key, itemId)
+    local list = cdb().extra[key]
+    if not list then
+        return
+    end
+    for i, entry in ipairs(list) do
+        if entry.item == itemId then
+            table.remove(list, i)
+            break
+        end
+    end
+    self:Fire()
+end
+
+-- Auras on you --------------------------------------------------------------------
+
+-- Readable helpful buffs on you: { { id, name, left (seconds or nil) }, ... }.
+local function helpfulAuras()
+    local out = {}
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+        return out
+    end
+    for index = 1, 80 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", index, "HELPFUL")
+        if not ok or not aura then
+            break
+        end
+        local id, name, expires = aura.spellId, aura.name, aura.expirationTime
+        if not (isSecret(id) or isSecret(name) or isSecret(expires)) and id then
+            local left = (type(expires) == "number" and expires > 0) and (expires - GetTime()) or nil
+            out[#out + 1] = { id = id, name = name, left = left }
+        end
+    end
+    return out
+end
+
+-- Learning which buff an item gives -------------------------------------------------
+-- When you use an item whose buff is not known, the buff that appears and lasts a while is
+-- recorded as that item's buff. Two new buffs at once is too ambiguous, so it waits or gives up.
+
+local learnTarget = {} -- itemId -> { baseline = { [spellId]=true }, started, newIds = {} }
+local lastCounts = {} -- itemId -> bag count at the last check
+local lastAuraIds = {} -- spellId -> true at the last check
+local learnElapsed = 0
+local learnNotice
+
+local function auraSet(list)
+    local set = {}
+    for _, aura in ipairs(list) do
+        set[aura.id] = aura
+    end
+    return set
+end
+
+local function unknownBuffEntries()
+    local out = {}
+    for _, def in ipairs(Consumables.CATEGORIES) do
+        if def.kind == "buff" then
+            for _, entry in ipairs(Consumables:Entries(def.key)) do
+                if not buffId(entry) then
+                    out[#out + 1] = entry
+                end
+            end
+        end
+    end
+    return out
+end
+
+local function learnPoll()
+    if InCombatLockdown() then
+        return
+    end
+    local current = auraSet(helpfulAuras())
+
+    -- Notice a used item: its bag count went down since the last check.
+    for _, entry in ipairs(unknownBuffEntries()) do
+        local count = itemCount(entry.item)
+        local before = lastCounts[entry.item]
+        if before and count < before and not learnTarget[entry.item] then
+            learnTarget[entry.item] = { baseline = lastAuraIds, started = GetTime() }
+        end
+        lastCounts[entry.item] = count
+    end
+
+    -- Look for the buff that appeared.
+    local now = GetTime()
+    for itemId, target in pairs(learnTarget) do
+        local fresh = {}
+        for id, aura in pairs(current) do
+            local long = aura.left and aura.left >= LEARN_MIN_SECONDS
+            if long and not target.baseline[id] then
+                fresh[#fresh + 1] = aura
+            end
+        end
+        local age = now - target.started
+        if #fresh == 1 then
+            cdb().learned[itemId] = fresh[1].id
+            learnTarget[itemId] = nil
+            learnNotice = nil
+            CRT:Print(format("Learned the buff for %s: %s.", Consumables:ItemName({ item = itemId }), tostring(fresh[1].name)))
+            Consumables:Fire()
+        elseif #fresh > 1 and age > 30 then
+            learnTarget[itemId] = nil
+            CRT:Print(format("Couldn't tell which buff %s gives, because several appeared at once. Use one again when nothing else is buffing you.", Consumables:ItemName({ item = itemId })))
+        elseif age > LEARN_GIVE_UP_SECONDS then
+            learnTarget[itemId] = nil
+        end
+    end
+
+    -- Remember what you have now, as the baseline for the next use.
+    local snapshot = {}
+    for id in pairs(current) do
+        snapshot[id] = true
+    end
+    lastAuraIds = snapshot
+end
+
+-- A short line for the page when something is being learned.
+function Consumables:LearningText()
+    local waiting = {}
+    for itemId in pairs(learnTarget) do
+        waiting[#waiting + 1] = Consumables:ItemName({ item = itemId })
+    end
+    if #waiting > 0 then
+        return "Learning the buff for " .. table.concat(waiting, ", ") .. "..."
+    end
+    local pending = unknownBuffEntries()
+    if #pending > 0 then
+        return #pending .. " item(s) will learn their buff the first time you use them."
+    end
+    return ""
+end
+
+local learnFrame = CreateFrame("Frame")
+learnFrame:SetScript("OnUpdate", function(_, dt)
+    learnElapsed = learnElapsed + dt
+    if learnElapsed < 1 then
+        return
+    end
+    learnElapsed = 0
+    if CRT.db then
+        learnPoll()
+    end
+end)
+
+-- Status ------------------------------------------------------------------
+
 local function totalCount(entries)
     local total = 0
     for _, entry in ipairs(entries) do
@@ -332,7 +560,7 @@ end
 -- Status of one slot for the row:
 -- { key, icon, left (seconds or nil), count (number or nil), tag ("MH"/"OH" or nil),
 --   state = "active" | "low" | "missing" | "unknown" | "unset" }
--- "unset" means the shipped list has nothing for this category yet.
+-- "unset" means nothing is listed for this category yet.
 function Consumables:Status(key)
     local def = byKey[key]
     local entries = self:Entries(key)
@@ -394,17 +622,10 @@ end
 function Consumables:ScanText()
     local lines = { "-- Helpful buffs on you right now. Use the ID as buff = <ID>." }
     local seen = {}
-    if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-        for index = 1, 80 do
-            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", index, "HELPFUL")
-            if not ok or not aura then
-                break
-            end
-            local id, name = aura.spellId, aura.name
-            if not (isSecret(id) or isSecret(name)) and id and not seen[id] then
-                seen[id] = true
-                lines[#lines + 1] = format("buff = %d, -- %s", id, tostring(name))
-            end
+    for _, aura in ipairs(helpfulAuras()) do
+        if not seen[aura.id] then
+            seen[aura.id] = true
+            lines[#lines + 1] = format("buff = %d, -- %s", aura.id, tostring(aura.name))
         end
     end
     if #lines == 1 then
@@ -435,31 +656,26 @@ function Consumables:ScanText()
     return table.concat(lines, "\n")
 end
 
--- Checks every entry in the shipped list against the game, so a wrong ID is caught.
+-- Checks every entry, shipped and your own, against the game, so a wrong ID is caught.
 function Consumables:CheckText()
     local db = self:Database()
     local lines = { format("Consumables list: %s, updated %s", tostring(db.expansion), tostring(db.updated)) }
     local problems, total = 0, 0
     for _, def in ipairs(self.CATEGORIES) do
-        local list = (db.categories or {})[def.key] or {}
+        local entries = self:Entries(def.key)
         lines[#lines + 1] = ""
-        lines[#lines + 1] = format("%s (%d listed)", def.label, #list)
-        for _, entry in ipairs(list) do
+        lines[#lines + 1] = format("%s (%d listed)", def.label, #entries)
+        for _, entry in ipairs(entries) do
             total = total + 1
-            local label = entry.name or ("item " .. tostring(entry.item))
-            local notes = {}
-            if not entry.item then
-                notes[#notes + 1] = "no item ID"
-            else
-                local ok, id = pcall(C_Item.GetItemInfoInstant, entry.item)
-                if not (ok and id) then
-                    notes[#notes + 1] = "ITEM ID NOT FOUND"
-                end
+            local label = (entry.name or ("item " .. tostring(entry.item))) .. (entry.user and " (yours)" or "")
+            local notes, info = {}, nil
+            if not itemIcon(entry.item) then
+                notes[#notes + 1] = "ITEM ID NOT FOUND"
             end
             if def.kind == "buff" then
-                local bid = entry.item and buffId(entry)
+                local bid = buffId(entry)
                 if not bid then
-                    notes[#notes + 1] = "no buff ID (add buff = <ID>)"
+                    info = "buff is learned the first time you use it"
                 else
                     local ok, icon = pcall(C_Spell.GetSpellTexture, bid)
                     if not (ok and icon) then
@@ -471,7 +687,7 @@ function Consumables:CheckText()
                 problems = problems + 1
                 lines[#lines + 1] = format("  PROBLEM  %s: %s", label, table.concat(notes, ", "))
             else
-                lines[#lines + 1] = format("  ok       %s", label)
+                lines[#lines + 1] = format("  ok       %s%s", label, info and (" (" .. info .. ")") or "")
             end
         end
     end

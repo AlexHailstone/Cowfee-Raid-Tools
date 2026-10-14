@@ -16,14 +16,17 @@ local defaults = {
         source = "raid",
         working = {},
     },
-    -- The consumables list ships in Consumables/Database.lua. Players only choose the order:
-    -- categoryOrder is the icon order, and itemOrder[category] is which item is used first.
-    -- An older "categories" key from version 0.2.0 may remain in saved data and is ignored.
+    -- The consumables list ships in Consumables/Database.lua. Players choose the order
+    -- (categoryOrder is the icon order, itemOrder[category] is which item is used first) and
+    -- may add their own items. An older "categories" key from version 0.2.0 may remain in
+    -- saved data and is ignored.
     consumables = {
         enabled = true,
         lowMinutes = 10,
         categoryOrder = {},
         itemOrder = {},
+        extra = {}, -- the player's own additions, { { item, name }, ... } per category
+        learned = {}, -- buffs worked out from use, itemId -> spellId
     },
 }
 

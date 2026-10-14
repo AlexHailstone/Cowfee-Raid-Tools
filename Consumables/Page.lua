@@ -1,16 +1,21 @@
 local ADDON, CRT = ...
 
--- The Consumables page: the list of consumables ships with the addon, so this page only chooses
--- the order. Move the icons left or right on the ready check row, and choose which item is used
--- first when you click an icon.
+-- The Consumables tab. The list of consumables ships with the addon, and here you can:
+--   * see the same bar that shows on the ready check, with live status,
+--   * drag an item from your bags onto an icon to add it to that category (optional),
+--   * set the icon order, and which item is used first when you click an icon.
+-- The buff of a food or flask is learned the first time you use it, see Consumables/Data.lua.
 
 local Consumables = CRT.Consumables
+local Ants = CRT.Ants
+local Bar = CRT.ConsumablesBar
 local UI = CRT.UI
 
 local CAT_ROW_H = 36
 local ITEM_ROW_H = 32
 local LEFT_W = 270
 local RIGHT_X = 300
+local REFRESH_SECONDS = 0.5
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local GOLD = { 1, 0.82, 0 }
@@ -37,15 +42,89 @@ local function makeButton(parent, label, width, height)
     return b
 end
 
-local page, enabledCheck, lowEdit, itemTitle, itemHint, itemEmpty, footer, itemChild
+local page, enabledCheck, lowEdit, itemTitle, itemHint, itemEmpty, footer, learning, itemChild, barFrame
 local selected = "food"
-local catRows, itemRows = {}, {}
+local catRows, itemRows, barSlots = {}, {}, {}
 local refresh
+local barElapsed = 0
 
--- Icon order: five rows, each with Up and Down. Clicking a row selects its category. -----
+-- Dropping an item from your bags on a category adds it to that category. ---------------------
+
+-- Returns true if an item was being dragged, so a plain click can fall through to selecting.
+local function drop(key)
+    local kind = GetCursorInfo()
+    if kind ~= "item" then
+        return false
+    end
+    local _, message = Consumables:AddFromCursor(key)
+    CRT:Print(message)
+    selected = key
+    refresh()
+    return true
+end
+
+-- The bar: the same icons as the ready check row, live, and a drop target for each. -----------
+
+local function barTooltip(self)
+    local def = Consumables:Def(self.key)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText(def and def.label or "", 1, 1, 1)
+    GameTooltip:AddLine("Click to see its items.", 0.7, 0.7, 0.7)
+    GameTooltip:AddLine("Drag an item from your bags here to add it.", 0.6, 0.9, 0.6)
+    GameTooltip:Show()
+end
+
+local function refreshBar()
+    Consumables:RefreshBags()
+    for index, key in ipairs(Consumables:Order()) do
+        local slot = barSlots[index]
+        slot.key = key
+        Bar.Apply(slot, Consumables:Status(key))
+        if key == selected then
+            slot:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 1)
+        end
+    end
+end
+
+local function buildBar(pf)
+    local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    label:SetPoint("TOPLEFT", 8, -100)
+    label:SetText("Your bar")
+    local help = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    help:SetPoint("LEFT", label, "RIGHT", 10, 0)
+    help:SetText("Drag an item from your bags onto an icon to add it. Click an icon to see its items.")
+
+    local count = #Consumables.CATEGORIES
+    barFrame = CreateFrame("Frame", nil, pf, "BackdropTemplate")
+    barFrame:SetSize(Bar.Size(count))
+    barFrame:SetPoint("TOPLEFT", pf, "TOPLEFT", 8, -124)
+    barFrame:SetBackdrop(Bar.BACKDROP)
+    barFrame:SetBackdropColor(0, 0, 0, 0.45)
+    barFrame:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
+
+    for index = 1, count do
+        local slot = Bar.CreateSlot(barFrame, index, false)
+        slot:SetScript("OnClick", function(self)
+            if not drop(self.key) then
+                selected = self.key
+                refresh()
+            end
+        end)
+        slot:SetScript("OnReceiveDrag", function(self)
+            drop(self.key)
+        end)
+        slot:SetScript("OnEnter", barTooltip)
+        slot:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        barSlots[index] = slot
+    end
+end
+
+-- Icon order: five rows, each with Up and Down. Clicking a row selects its category. -----------
 
 local function buildCategoryRows(pf)
-    local top = -138
+    local top = -216
     for i = 1, #Consumables.CATEGORIES do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(LEFT_W, CAT_ROW_H - 4)
@@ -68,14 +147,19 @@ local function buildCategoryRows(pf)
         end)
 
         row:SetScript("OnClick", function(self)
-            selected = self.key
-            refresh()
+            if not drop(self.key) then
+                selected = self.key
+                refresh()
+            end
+        end)
+        row:SetScript("OnReceiveDrag", function(self)
+            drop(self.key)
         end)
         catRows[i] = row
     end
 end
 
--- Item priority for the selected category, in a scrolling list. ---------------------------
+-- Items for the selected category, in a scrolling list. ---------------------------------------
 
 local function itemRow(index)
     local row = itemRows[index]
@@ -103,10 +187,13 @@ local function itemRow(index)
     row.up:SetScript("OnClick", function()
         Consumables:MoveItem(selected, row.itemId, -1)
     end)
+    row.remove = makeButton(row, "Remove", 68, 22)
+    row.remove:SetPoint("RIGHT", row.up, "LEFT", -4, 0)
+    row.remove:SetScript("OnClick", function()
+        Consumables:RemoveExtra(selected, row.itemId)
+    end)
 
     row.side = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.side:SetPoint("RIGHT", row.up, "LEFT", -8, 0)
-
     row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     row.text:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
     row.text:SetPoint("RIGHT", row.side, "LEFT", -8, 0)
@@ -117,29 +204,35 @@ local function itemRow(index)
 end
 
 local function refreshItems()
-    Consumables:RefreshBags()
     local entries = Consumables:Entries(selected)
     local def = Consumables:Def(selected)
     itemTitle:SetText("Items: " .. (def and def.label or selected))
     if def and def.kind == "count" then
-        itemHint:SetText("Only the total in your bags is shown for this icon.")
+        itemHint:SetText("Only the total in your bags is shown for this icon. Drag more items here to add them.")
     elseif def and def.clickable then
-        itemHint:SetText("Clicking the icon uses the first item you have in your bags.")
+        itemHint:SetText("Clicking the icon uses the first item you have in your bags. Drag more items here to add them.")
     else
-        itemHint:SetText("This icon is not clickable.")
+        itemHint:SetText("This icon is not clickable. Drag more items here to add them.")
     end
 
     for i, entry in ipairs(entries) do
         local row = itemRow(i)
         row.itemId = entry.item
         row.icon:SetTexture(Consumables:ItemIcon(entry.item))
-        row.text:SetText(Consumables:ItemName(entry))
+        local name = Consumables:ItemName(entry)
+        if entry.user then
+            name = name .. "  |cffffd100(yours)|r"
+        end
+        row.text:SetText(name)
         local count = Consumables:ItemCount(entry.item)
         if count > 0 then
             row.side:SetText("|cff55dd55x" .. count .. " in bags|r")
         else
             row.side:SetText("|cff888888none|r")
         end
+        row.remove:SetShown(entry.user and true or false)
+        row.side:ClearAllPoints()
+        row.side:SetPoint("RIGHT", entry.user and row.remove or row.up, "LEFT", -8, 0)
         row.up:SetEnabled(i > 1)
         row.down:SetEnabled(i < #entries)
         row:Show()
@@ -172,6 +265,8 @@ refresh = function()
         row:SetBackdropBorderColor(color[1], color[2], color[3], 1)
     end
 
+    Consumables:RefreshBags()
+    refreshBar()
     refreshItems()
 
     local db = Consumables:Database()
@@ -180,6 +275,7 @@ refresh = function()
         total = total + #list
     end
     footer:SetText(format("Built-in list: %s, updated %s, %d consumables.", tostring(db.expansion), tostring(db.updated), total))
+    learning:SetText(Consumables:LearningText())
 end
 
 local function build(pf)
@@ -193,11 +289,11 @@ local function build(pf)
     hint:SetPoint("TOPLEFT", 8, -34)
     hint:SetWidth(660)
     hint:SetJustifyH("LEFT")
-    hint:SetText("The ready check row uses a built-in list of consumables that is kept up to date with the addon. Here you only choose the order.")
+    hint:SetText("The ready check bar uses a built-in list of consumables that is kept up to date with the addon. You can add your own, and choose the order.")
 
     enabledCheck = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     enabledCheck:SetSize(26, 26)
-    enabledCheck:SetPoint("TOPLEFT", 4, -66)
+    enabledCheck:SetPoint("TOPLEFT", 4, -62)
     local enabledLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     enabledLabel:SetPoint("LEFT", enabledCheck, "RIGHT", 2, 0)
     enabledLabel:SetText("Show on ready check")
@@ -232,28 +328,34 @@ local function build(pf)
     minutes:SetPoint("LEFT", lowEdit, "RIGHT", 6, 0)
     minutes:SetText("minutes left")
 
-    local preview = makeButton(pf, "Preview row", 130)
-    preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -64)
+    local preview = makeButton(pf, "Preview on screen", 160)
+    preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -60)
     preview:SetScript("OnClick", function()
         CRT.ConsumablesDisplay:Preview()
     end)
 
+    buildBar(pf)
+
     -- Left: icon order.
     local orderTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    orderTitle:SetPoint("TOPLEFT", 8, -108)
+    orderTitle:SetPoint("TOPLEFT", 8, -190)
     orderTitle:SetText("Icon order, left to right")
     buildCategoryRows(pf)
 
-    -- Right: item priority for the selected category.
+    -- Right: items for the selected category.
     itemTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    itemTitle:SetPoint("TOPLEFT", RIGHT_X, -108)
+    itemTitle:SetPoint("TOPLEFT", RIGHT_X, -190)
     itemHint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    itemHint:SetPoint("TOPLEFT", RIGHT_X, -130)
+    itemHint:SetPoint("TOPLEFT", RIGHT_X, -212)
 
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", pf, "TOPLEFT", RIGHT_X, -152)
-    box:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 40)
+    box:SetPoint("TOPLEFT", pf, "TOPLEFT", RIGHT_X, -234)
+    box:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 56)
+    box:EnableMouse(true)
     skin(box, 0.3)
+    box:SetScript("OnReceiveDrag", function()
+        drop(selected)
+    end)
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsConsumableScroll", box, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 4, -4)
@@ -264,13 +366,28 @@ local function build(pf)
 
     itemEmpty = box:CreateFontString(nil, "OVERLAY", "CRTFontDisable")
     itemEmpty:SetPoint("TOP", box, "TOP", 0, -24)
-    itemEmpty:SetText("Nothing is listed for this category yet.")
+    itemEmpty:SetText("Nothing is listed for this category yet. Drag an item here to add it.")
     itemEmpty:Hide()
 
+    learning = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    learning:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 34)
+    learning:SetTextColor(0.6, 0.9, 0.6)
     footer = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     footer:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 12)
 
     pf:SetScript("OnShow", refresh)
+    pf:SetScript("OnUpdate", function(_, dt)
+        -- The ants move every frame, and the bar's status refreshes twice a second.
+        for _, slot in ipairs(barSlots) do
+            Ants:Update(slot, dt)
+        end
+        barElapsed = barElapsed + dt
+        if barElapsed >= REFRESH_SECONDS then
+            barElapsed = 0
+            refreshBar()
+            learning:SetText(Consumables:LearningText())
+        end
+    end)
     Consumables:OnChange(refresh)
 end
 
