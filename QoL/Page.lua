@@ -25,17 +25,11 @@ local TEXT = {
     resetPosition = "Reset position",
 }
 
-local GREY, WHITE, GOLD = { 0.5, 0.5, 0.5 }, { 1, 1, 1 }, { 1, 0.82, 0 }
-
 local page
 local controls = {}
 
 local function settings()
     return CRT.db.qol.lowHealth
-end
-
-local function color(fs, c)
-    fs:SetTextColor(c[1], c[2], c[3])
 end
 
 local function makeButton(parent, label, width, height)
@@ -57,34 +51,14 @@ local function refresh()
     end
 end
 
--- A horizontal slider with its value beside it, built from the plain Slider widget and color
--- textures. Returns the slider and the value text. The caller sets its scripts.
-local function makeSlider(pf, x, y, low, high, width, step)
-    local slider = CreateFrame("Slider", nil, pf, "BackdropTemplate")
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetSize(width, 14)
-    slider:SetPoint("TOPLEFT", x, y)
-    slider:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    slider:SetBackdropColor(0, 0, 0, 0.6)
-    slider:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
-    local thumb = slider:CreateTexture(nil, "OVERLAY")
-    thumb:SetColorTexture(1, 0.82, 0, 1)
-    thumb:SetSize(10, 18)
-    slider:SetThumbTexture(thumb)
-    slider:SetMinMaxValues(low, high)
-    slider:SetValueStep(step or 1)
-    slider:SetObeyStepOnDrag(true)
-    local value = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    value:SetPoint("LEFT", slider, "RIGHT", 12, 0)
-    return slider, value
+-- Both sliders line up: the labels share one width. The sliders are Edit Mode sliders (UI/Controls.lua).
+local SLIDER_LABEL_W = 230
+
+local function percent(v)
+    return v .. "%"
 end
 
 -- A small button in the game's small font, the size of the Previews button's text.
--- Rounds a slider value to its step of 5, however the value arrived.
-local function toFive(v)
-    return math.floor(v / 5 + 0.5) * 5
-end
-
 local function smallButton(pf, text)
     local b = makeButton(pf, text, 110, 20)
     b:SetNormalFontObject(GameFontNormalSmall)
@@ -100,32 +74,28 @@ local function buildPanelSize(pf, top)
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.panelSize)
     UI.Help(pf, TEXT.panelSize, TEXT.panelSizeNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
-    local sliderLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    sliderLabel:SetPoint("TOPLEFT", 10, top - 16)
-    sliderLabel:SetText(TEXT.panelSizeLabel)
-
-    local slider, value = makeSlider(pf, 10, top - 32, UI.MIN_SCALE, UI.MAX_SCALE, 100, 5)
     -- The slider sits inside the window it resizes, so the size is applied when the mouse lets go,
     -- not on every step, or the slider would move under the mouse while dragging.
-    local updating = false
-    slider:SetScript("OnValueChanged", function(_, v)
-        value:SetText(toFive(v) .. "%")
-    end)
-    slider:SetScript("OnMouseUp", function(self)
-        if not updating then
-            UI:SetScale(toFive(self:GetValue()))
-        end
-    end)
-    slider.refresh = function()
-        updating = true
-        slider:SetValue(UI:Scale())
-        updating = false
-        value:SetText(UI:Scale() .. "%")
-    end
+    local slider = UI.Slider(pf, TEXT.panelSizeLabel, {
+        min = UI.MIN_SCALE,
+        max = UI.MAX_SCALE,
+        step = 5,
+        labelWidth = SLIDER_LABEL_W,
+        width = 200,
+        format = percent,
+        onRelease = true,
+        get = function()
+            return UI:Scale()
+        end,
+        set = function(v)
+            UI:SetScale(v)
+        end,
+    })
+    slider:SetPoint("TOPLEFT", 10, top - 16)
     controls[#controls + 1] = slider
 
     local reset = smallButton(pf, TEXT.panelSizeReset)
-    reset:SetPoint("LEFT", value, "RIGHT", 16, 0)
+    reset:SetPoint("LEFT", slider, "RIGHT", 12, 0)
     reset:SetScript("OnClick", function()
         UI:SetScale(100)
     end)
@@ -155,36 +125,29 @@ local function buildLowHealth(pf, top)
     end
     controls[#controls + 1] = check
 
-    -- The slider, with the percent beside it. Built from the plain Slider widget and color textures.
-    local sliderLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    sliderLabel:SetPoint("TOPLEFT", 10, top - 42)
-    sliderLabel:SetText(TEXT.lowHealthThreshold)
-    local slider, value = makeSlider(pf, 10, top - 58, 5, 90, 100, 5)
-
-    local updating = false
-    slider:SetScript("OnValueChanged", function(_, v)
-        v = toFive(v)
-        value:SetText(v .. "%")
-        if not updating then
+    local slider = UI.Slider(pf, TEXT.lowHealthThreshold, {
+        min = 5,
+        max = 90,
+        step = 5,
+        labelWidth = SLIDER_LABEL_W,
+        width = 200,
+        format = percent,
+        get = function()
+            return settings().threshold or 35
+        end,
+        set = function(v)
             settings().threshold = v
             LowHealth:Apply()
-        end
-    end)
-    slider.refresh = function()
-        local on = settings().enabled and true or false
-        updating = true
-        slider:SetValue(settings().threshold or 35)
-        updating = false
-        value:SetText((settings().threshold or 35) .. "%")
-        slider:SetEnabled(on)
-        slider:SetAlpha(on and 1 or 0.5)
-        color(sliderLabel, on and WHITE or GREY)
-        color(value, on and GOLD or GREY)
-    end
+        end,
+        enabledIf = function()
+            return settings().enabled
+        end,
+    })
+    slider:SetPoint("TOPLEFT", 10, top - 42)
     controls[#controls + 1] = slider
 
     local reset = smallButton(pf, TEXT.resetPosition)
-    reset:SetPoint("LEFT", value, "RIGHT", 16, 0)
+    reset:SetPoint("LEFT", slider, "RIGHT", 12, 0)
     reset:SetScript("OnClick", function()
         LowHealth:ResetPosition()
     end)

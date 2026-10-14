@@ -24,7 +24,7 @@ local TEXT = {
     fontSize = "Font size (8 to 32)",
     windowAlpha = "Window alpha %",
     backgroundAlpha = "Background alpha %",
-    font = "Font: ",
+    font = "Font",
     resetPosition = "Reset position",
 
     -- Alerts.
@@ -155,57 +155,6 @@ local function makeNumber(parent, x, y, label, opts, getter, setter)
     controls[#controls + 1] = edit
 end
 
--- A horizontal slider from low to high, with its value shown to the right. Built from the plain
--- Slider widget and color textures, so it needs no Blizzard template or art file. opts: low, high,
--- width and enabledIf, with getter and setter last for the same reason as makeNumber.
-local function makeSlider(parent, x, y, label, opts, getter, setter)
-    local low, high, width, enabledIf = opts.low, opts.high, opts.width, opts.enabledIf
-    local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("TOPLEFT", x + 4, y - 4)
-    text:SetText(label)
-
-    local slider = CreateFrame("Slider", nil, parent, "BackdropTemplate")
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetSize(width, 14)
-    slider:SetPoint("TOPLEFT", x + 4, y - 24)
-    slider:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    slider:SetBackdropColor(0, 0, 0, 0.6)
-    slider:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
-    local thumb = slider:CreateTexture(nil, "OVERLAY")
-    thumb:SetColorTexture(1, 0.82, 0, 1)
-    thumb:SetSize(10, 18)
-    slider:SetThumbTexture(thumb)
-    slider:SetMinMaxValues(low, high)
-    slider:SetValueStep(1)
-    slider:SetObeyStepOnDrag(true)
-
-    local value = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    value:SetPoint("LEFT", slider, "RIGHT", 10, 0)
-
-    local updating = false
-    slider:SetScript("OnValueChanged", function(_, v)
-        v = math.floor(v + 0.5)
-        value:SetText(v)
-        if not updating then
-            setter(v)
-        end
-    end)
-    slider.refresh = function()
-        updating = true
-        slider:SetValue(getter() or low)
-        value:SetText(math.floor((getter() or low) + 0.5))
-        updating = false
-        if enabledIf then
-            local on = enabledIf()
-            slider:SetEnabled(on)
-            slider:SetAlpha(on and 1 or 0.5)
-            greyOut(text, on)
-            greyOut(value, on)
-        end
-    end
-    controls[#controls + 1] = slider
-end
-
 local function heading(parent, x, y, text)
     local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     fs:SetPoint("TOPLEFT", x, y)
@@ -236,23 +185,23 @@ local function buildColumn(pf, index, def, top)
     makeNumber(pf, x, y - 24, TEXT.windowAlpha, { low = 10, high = 100, enabledIf = shown }, setting(def.key, "alpha"))
     makeNumber(pf, x, y - 48, TEXT.backgroundAlpha, { low = 0, high = 100, enabledIf = shown }, setting(def.key, "bgAlpha"))
 
-    local font = makeButton(pf, TEXT.font, COLUMN_W - 16)
-    font:SetPoint("TOPLEFT", x, y - 76)
-    font:SetScript("OnClick", function()
-        local fonts = CRT.NoteWindow.FONTS
-        local current = Notes:WindowSettings(def.key).font
-        local nextIndex = 1
-        for i, f in ipairs(fonts) do
-            if f.name == current then
-                nextIndex = i % #fonts + 1
-            end
-        end
-        Notes:Set(def.key, "font", fonts[nextIndex].name)
-    end)
-    font.refresh = function()
-        font:SetText(TEXT.font .. (Notes:WindowSettings(def.key).font or "Friz Quadrata"))
-        font:SetEnabled(shown())
+    local fonts = {}
+    for _, f in ipairs(CRT.NoteWindow.FONTS) do
+        fonts[#fonts + 1] = { key = f.name, label = f.name }
     end
+    local font = UI.Dropdown(pf, TEXT.font, {
+        options = fonts,
+        labelWidth = 40,
+        width = COLUMN_W - 64,
+        get = function()
+            return Notes:WindowSettings(def.key).font or "Friz Quadrata"
+        end,
+        set = function(name)
+            Notes:Set(def.key, "font", name)
+        end,
+        enabledIf = shown,
+    })
+    font:SetPoint("TOPLEFT", x, y - 70)
     controls[#controls + 1] = font
 
     local reset = makeButton(pf, TEXT.resetPosition, COLUMN_W - 16)
@@ -297,7 +246,10 @@ local function build(pf)
     makeNumber(pf, 4, top - 44, TEXT.alertSeconds, { low = 1, high = 60, valueX = 200, enabledIf = alertsOn }, alert("seconds"))
     makeCheck(pf, 4, top - 68, TEXT.tts, nil, alert("tts"))
     makeNumber(pf, 4, top - 92, TEXT.ttsSeconds, { low = 0, high = 30, valueX = 200, enabledIf = speechOn }, alert("ttsSeconds"))
-    makeSlider(pf, 4, top - 116, TEXT.ttsVolume, { low = 0, high = 100, width = 196, enabledIf = speechOn }, alert("ttsVolume"))
+    local volumeGet, volumeSet = alert("ttsVolume")
+    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = 100, width = 150, get = volumeGet, set = volumeSet, enabledIf = speechOn })
+    volume:SetPoint("TOPLEFT", 8, top - 116)
+    controls[#controls + 1] = volume
     local speak = makeButton(pf, TEXT.testSpeech, 140)
     speak:SetPoint("TOPLEFT", 8, top - 164)
     speak:SetScript("OnClick", function()

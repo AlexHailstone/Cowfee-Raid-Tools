@@ -93,6 +93,8 @@ Food, flask and weapon icons are secure buttons that use the first assigned item
 
 `UI/Panel.lua` has a preview registry. A floating panel calls `UI:RegisterPreview(key, setFn)`, and the **Previews** button in the corner of the main window calls every registered function, then turns them off again when the window closes. Each panel shows a drag handle during a preview and saves its position in `CRTDB` when dropped, in `CRTDB.consumables.position` and `CRTDB.debuffs.position`. All of this is saved per player in their own saved variables, and new settings are added as defaults in `Core.lua`.
 
+`UI/Controls.lua` builds every dropdown and slider on the pages, in the style of the game's Edit Mode settings: `UI.Dropdown` uses `WowStyle1DropdownTemplate` with a radio menu (`SetupMenu`, `CreateRadio`, `GenerateMenu` on refresh), and `UI.Slider` uses `MinimalSliderWithSteppersTemplate` (`Init`, the `OnValueChanged`, `OnInteractStart` and `OnInteractEnd` callbacks, and a Right label formatter). Each returns a row frame with `refresh()`, so pages add it to their controls list. No page cycles through choices with a button.
+
 ## Ready Check
 
 `ReadyCheck/Page.lua` is the Ready Check settings page, with the tabs Window, Your bar and Settings (the automatic report, called On ready check before 0.13.1) (the Raid report tab was removed in 0.13.0, and checking the group now happens in the ready check window, where `Window:PostColumn` posts a shift-clicked column).

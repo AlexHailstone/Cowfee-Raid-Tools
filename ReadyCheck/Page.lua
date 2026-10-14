@@ -93,35 +93,26 @@ local function makeCheck(parent, x, y, text, field, sub, enabledIf)
     return check
 end
 
--- A button that steps through a list of choices for one setting.
+-- A dropdown for one setting, in the Edit Mode style (UI/Controls.lua).
 -- holder optionally returns the table that holds field, by default CRTDB.readycheck.
-local function makeCycle(parent, x, y, width, prefix, field, choices, holder)
+local function makeDropdown(parent, x, y, text, field, choices, holder, labelWidth, width)
     holder = holder or settings
-    local b = makeButton(parent, prefix, width)
-    b:SetPoint("TOPLEFT", x, y)
-    b:SetScript("OnClick", function()
-        local current = holder()[field]
-        local index = 1
-        for i, c in ipairs(choices) do
-            if c.key == current then
-                index = i % #choices + 1
-            end
-        end
-        holder()[field] = choices[index].key
-        CRT.ReadyCheckWindow:Apply()
-        refresh()
-    end)
-    b.refresh = function()
-        local text = choices[1].label
-        for _, c in ipairs(choices) do
-            if c.key == holder()[field] then
-                text = c.label
-            end
-        end
-        b:SetText(prefix .. ": " .. text)
-    end
-    controls[#controls + 1] = b
-    return b
+    local row = UI.Dropdown(parent, text, {
+        options = choices,
+        labelWidth = labelWidth,
+        width = width,
+        get = function()
+            return holder()[field]
+        end,
+        set = function(key)
+            holder()[field] = key
+            CRT.ReadyCheckWindow:Apply()
+            refresh()
+        end,
+    })
+    row:SetPoint("TOPLEFT", x, y)
+    controls[#controls + 1] = row
+    return row
 end
 
 -- Settings tab (the automatic report) ------------------------------------------------------------
@@ -135,7 +126,7 @@ local function buildAuto(f)
     makeCheck(f, 28, -32, "Also on a pull timer", "onPull", nil, autoOn)
     makeCheck(f, 28, -56, "Only in raids", "raidsOnly", nil, autoOn)
     makeCheck(f, 28, -80, "Not in Raid Finder", "notLFR", nil, autoOn)
-    local postTo = makeCycle(f, 32, -108, 240, "Post to", "output", OUTPUTS)
+    local postTo = makeDropdown(f, 32, -100, "Post to", "output", OUTPUTS, nil, 70, 170)
     UI.Help(f, "Who posts the report", "The automatic report goes to chat only from whoever started the ready check or pull timer, so it is posted once. Everyone else sees it only in their own chat.\n\nShift-clicked headings in the ready check window also post to this channel, or to raid chat when it is Only me."):SetPoint("LEFT", postTo, "RIGHT", 6, 0)
 
     local include = label(f, "Include in the report")
@@ -148,9 +139,9 @@ local function buildAuto(f)
     local counts = label(f, "What counts")
     counts:SetPoint("TOPLEFT", 8, -224)
     UI.Help(f, "What counts", "Best food only and lower quality flasks need those marked in the built-in consumables list. Until they are, all food counts and no flask is flagged.\n\nNot available: potions and healthstones used in the last fight (the combat log is closed to addons during boss fights in Midnight), and other players' weapon oils and armor kits (they aren't buffs, so the game doesn't show them to addons)."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
-    makeCycle(f, 8, -246, 240, "Food", "food", FOODS)
-    makeCycle(f, 8, -274, 240, "Flask expiring warning", "flaskWarn", WARNS)
-    makeCheck(f, 4, -302, "Count a lower quality flask as a problem", "lowFlask")
+    makeDropdown(f, 8, -240, "Food", "food", FOODS, nil, 170, 170)
+    makeDropdown(f, 8, -270, "Flask expiring warning", "flaskWarn", WARNS, nil, 170, 170)
+    makeCheck(f, 4, -304, "Count a lower quality flask as a problem", "lowFlask")
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.
     local Consumables = CRT.Consumables
@@ -247,7 +238,7 @@ local function buildWindow(f)
         return windowSettings().enabled
     end)
     makeCheck(f, 28, -64, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
-    makeCycle(f, 400, -16, 260, "Sort players by", "sort", CRT.ReadyCheckWindow.SORTS, windowSettings)
+    makeDropdown(f, 400, -8, "Sort players by", "sort", CRT.ReadyCheckWindow.SORTS, windowSettings, 100, 150)
     makeCheck(f, 396, -44, "Class color bar behind each row", "classBars", windowSettings)
     makeNumber(f, 32, -90, "Seconds open (5 to 120)", "seconds", 5, 120)
     makeNumber(f, 32, -114, "Size % (50 to 150)", "scale", 50, 150)

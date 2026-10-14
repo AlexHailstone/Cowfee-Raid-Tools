@@ -188,6 +188,7 @@ CowfeeRaidTools/
   Core.lua               namespace, saved data defaults, scaled fonts
   Slash.lua              the /crt command
   UI/Panel.lua           main window, left menu, page registry, previews
+  UI/Controls.lua        Edit Mode style dropdowns and sliders shared by the pages
   Groups/                Raid Groups: data, Apply, page
   Consumables/           your ready check bar and the consumables list
   ReadyCheck/            the Ready Check page, raid report and ready check window

@@ -412,22 +412,20 @@ local function label(pf, text, font)
     return fs
 end
 
--- Steps the expected roster through the saved layouts, forward on a left click, back on a right click.
-local function stepLayout(dir)
-    local presets = Groups:Presets()
-    if #presets == 0 then
-        CRT:Print("Save a layout on the Raid Groups page first, then pick it here.")
-        return
+-- The choices for the expected roster: None, then every saved Raid Groups layout.
+local NONE = "none"
+local function rosterOptions()
+    local out = { { key = NONE, label = "None picked" } }
+    for _, p in ipairs(Groups:Presets()) do
+        out[#out + 1] = { key = p.id, label = p.name }
     end
-    local current = Late:Settings().layoutId
-    local index = 0
-    for i, p in ipairs(presets) do
-        if p.id == current then
-            index = i
-        end
-    end
-    index = ((index - 1 + dir) % #presets) + 1
-    Late:Set("layoutId", presets[index].id)
+    return out
+end
+
+-- The picked layout's id, or NONE when nothing is picked or the layout was deleted.
+local function rosterKey()
+    local id = Late:Settings().layoutId
+    return (id and Groups:Find(id)) and id or NONE
 end
 
 -- History list -----------------------------------------------------------
@@ -519,8 +517,6 @@ refresh = function()
     for _, control in ipairs(controls) do
         control.refresh()
     end
-    local preset = Late:Settings().layoutId and Groups:Find(Late:Settings().layoutId)
-    layoutButton:SetText("Expected roster: " .. (preset and preset.name or "|cffff6060none picked|r"))
     refreshTonight()
     refreshList()
     if selected == TOTALS then
@@ -704,14 +700,18 @@ local function buildSettings(f)
     end, 0, 60)
 
     -- Expected roster.
-    layoutButton = makeButton(f, "Expected roster", 250)
-    standardFont(layoutButton)
-    layoutButton:SetPoint("TOPLEFT", 8, -66)
-    layoutButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    layoutButton:SetScript("OnClick", function(_, button)
-        stepLayout(button == "RightButton" and -1 or 1)
-    end)
-    tooltip(layoutButton, "Expected roster", "Click for the next saved Raid Groups layout, right-click for the previous one. Everyone in it is expected. A night already running keeps the roster it started with.")
+    layoutButton = UI.Dropdown(f, "Expected roster", {
+        options = rosterOptions,
+        labelWidth = 100,
+        width = 200,
+        get = rosterKey,
+        set = function(key)
+            Late:Set("layoutId", key ~= NONE and key or nil)
+        end,
+    })
+    layoutButton:SetPoint("TOPLEFT", 8, -62)
+    controls[#controls + 1] = layoutButton
+    UI.Help(f, "Expected roster", "The saved Raid Groups layout of who should be there. Everyone in it is expected. A night already running keeps the roster it started with. Save a layout on the Raid Groups page to add it here."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
 end
 
 local function build(pf)

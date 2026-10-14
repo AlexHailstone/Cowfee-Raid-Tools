@@ -71,34 +71,25 @@ local function numberBox(pf, label, yOffset, getter, setter, maxLetters)
     return edit
 end
 
--- A button that steps through choices for one look setting: click for the next, right-click for the
--- previous.
-local function lookCycle(pf, yOffset, width, prefix, field, choices)
-    local b = makeButton(pf, prefix, width, 24)
-    b:SetPoint("TOPLEFT", 8, yOffset)
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    b:SetScript("OnClick", function(_, button)
-        local current, index = Debuffs:Get(field), 1
-        for i, c in ipairs(choices) do
-            if c.key == current then
-                index = i
-            end
-        end
-        local step = button == "RightButton" and -1 or 1
-        Debuffs:Set(field, choices[(index - 1 + step) % #choices + 1].key)
-    end)
-    b.refresh = function(on)
-        local text = choices[1].label
-        for _, c in ipairs(choices) do
-            if c.key == Debuffs:Get(field) then
-                text = c.label
-            end
-        end
-        b:SetText(prefix .. ": " .. text)
-        b:SetEnabled(on)
-    end
-    look[#look + 1] = b
-    return b
+-- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua).
+local function lookDropdown(pf, yOffset, text, field, choices)
+    local row = UI.Dropdown(pf, text, {
+        options = choices,
+        labelWidth = 80,
+        width = 150,
+        get = function()
+            return Debuffs:Get(field)
+        end,
+        set = function(key)
+            Debuffs:Set(field, key)
+        end,
+        enabledIf = function()
+            return Debuffs:Enabled()
+        end,
+    })
+    row:SetPoint("TOPLEFT", 8, yOffset)
+    look[#look + 1] = row
+    return row
 end
 
 -- A small box for a nudge in pixels, which can be negative.
@@ -215,15 +206,15 @@ local function build(pf)
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", 8, -236)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. Their font, text size and colors can't be changed by any addon.\n\nThe border is the game's colored debuff border. Turn on Previews to see your changes as you make them. Click a button for the next choice, right-click for the previous one."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. Their font, text size and colors can't be changed by any addon.\n\nThe border is the game's colored debuff border. Turn on Previews to see your changes as you make them."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
-    local timer = lookCycle(pf, -258, 200, "Timer text", "timerPosition", Debuffs.TIMER_POSITIONS)
+    local timer = lookDropdown(pf, -254, "Timer text", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
     nudgeBox(pf, nudgeX, "Y", "timerY")
     lookCheck(pf, "Swipe animation as the debuff runs out", -288, "swipe")
     lookCheck(pf, "Bright edge on the swipe", -312, "swipeEdge", 28, "swipe")
     lookCheck(pf, "Countdown numbers on the swipe", -336, "countdownNumbers")
-    lookCycle(pf, -366, 200, "Border", "borderScale", Debuffs.BORDERS)
+    lookDropdown(pf, -362, "Border", "borderScale", Debuffs.BORDERS)
 
 
     pf:SetScript("OnShow", refresh)
