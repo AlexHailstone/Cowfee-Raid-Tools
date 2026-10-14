@@ -580,6 +580,25 @@ local function build(pf)
     end, 0, 59)
     local clockNote = label(pf, "24-hour, this computer's clock", "CRTFontDisableSmall")
     clockNote:SetPoint("LEFT", minute, "RIGHT", 8, 0)
+    -- The start time is only used by the schedule, so it greys out while no raid day is ticked.
+    -- Start raid now does not need it.
+    controls[#controls + 1] = {
+        refresh = function()
+            local on = next(Late:Settings().days) ~= nil
+            local c = on and 1 or 0.5
+            for _, edit in ipairs({ hour, minute }) do
+                edit:SetEnabled(on)
+                edit:SetTextColor(c, c, c)
+            end
+            if on then
+                timeLabel:SetTextColor(1, 0.82, 0)
+                colon:SetTextColor(1, 0.82, 0)
+            else
+                timeLabel:SetTextColor(0.5, 0.5, 0.5)
+                colon:SetTextColor(0.5, 0.5, 0.5)
+            end
+        end,
+    }
     local graceLabel = label(pf, "Grace minutes")
     graceLabel:SetPoint("TOPLEFT", 440, -118)
     makeNumber(pf, graceLabel, 12, 2, function()

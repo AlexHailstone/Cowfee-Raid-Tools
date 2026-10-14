@@ -88,7 +88,9 @@ end
 
 -- enabledIf, when given, returns whether a control can be used. When it returns false the control is
 -- greyed out and can't be changed, such as the alert seconds while alerts are off.
-local function makeCheck(parent, x, y, label, getter, setter, enabledIf)
+-- enabledIf comes before getter and setter, which must be last (see makeNumber). Pass nil when the
+-- box never greys out.
+local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetSize(24, 24)
     check:SetPoint("TOPLEFT", x, y)
@@ -214,17 +216,21 @@ local function buildColumn(pf, index, def, top)
     local x = 8 + (index - 1) * COLUMN_W
     heading(pf, x, top, def.title)
 
-    makeCheck(pf, x - 4, top - 22, TEXT.show, setting(def.key, "shown"))
-    makeCheck(pf, x - 4, top - 48, TEXT.locked, setting(def.key, "locked"))
+    -- Everything below Show this window greys out while the window is hidden.
+    local function shown()
+        return Notes:WindowSettings(def.key).shown and true or false
+    end
+    makeCheck(pf, x - 4, top - 22, TEXT.show, nil, setting(def.key, "shown"))
+    makeCheck(pf, x - 4, top - 48, TEXT.locked, shown, setting(def.key, "locked"))
     local y = top - 76
     if def.key == "window" then
-        makeCheck(pf, x - 4, y, TEXT.hidePassed, setting(def.key, "hidePassed"))
-        makeCheck(pf, x - 4, y - 26, TEXT.onlyMe, setting(def.key, "onlyMe"))
+        makeCheck(pf, x - 4, y, TEXT.hidePassed, shown, setting(def.key, "hidePassed"))
+        makeCheck(pf, x - 4, y - 26, TEXT.onlyMe, shown, setting(def.key, "onlyMe"))
         y = y - 52
     end
-    makeNumber(pf, x, y, TEXT.fontSize, { low = 8, high = 32 }, setting(def.key, "fontSize"))
-    makeNumber(pf, x, y - 26, TEXT.windowAlpha, { low = 10, high = 100 }, setting(def.key, "alpha"))
-    makeNumber(pf, x, y - 52, TEXT.backgroundAlpha, { low = 0, high = 100 }, setting(def.key, "bgAlpha"))
+    makeNumber(pf, x, y, TEXT.fontSize, { low = 8, high = 32, enabledIf = shown }, setting(def.key, "fontSize"))
+    makeNumber(pf, x, y - 26, TEXT.windowAlpha, { low = 10, high = 100, enabledIf = shown }, setting(def.key, "alpha"))
+    makeNumber(pf, x, y - 52, TEXT.backgroundAlpha, { low = 0, high = 100, enabledIf = shown }, setting(def.key, "bgAlpha"))
 
     local font = makeButton(pf, TEXT.font, COLUMN_W - 16)
     font:SetPoint("TOPLEFT", x, y - 84)
@@ -241,6 +247,7 @@ local function buildColumn(pf, index, def, top)
     end)
     font.refresh = function()
         font:SetText(TEXT.font .. (Notes:WindowSettings(def.key).font or "Friz Quadrata"))
+        font:SetEnabled(shown())
     end
     controls[#controls + 1] = font
 
@@ -249,6 +256,10 @@ local function buildColumn(pf, index, def, top)
     reset:SetScript("OnClick", function()
         CRT.NoteWindow:ResetPosition(def.key)
     end)
+    reset.refresh = function()
+        reset:SetEnabled(shown())
+    end
+    controls[#controls + 1] = reset
 end
 
 local function refresh()
@@ -284,9 +295,9 @@ local function build(pf)
     end
     local top = -340
     heading(pf, 8, top, TEXT.alerts)
-    makeCheck(pf, 4, top - 22, TEXT.alertShow, alert("enabled"))
+    makeCheck(pf, 4, top - 22, TEXT.alertShow, nil, alert("enabled"))
     makeNumber(pf, 4, top - 48, TEXT.alertSeconds, { low = 1, high = 60, valueX = 200, enabledIf = alertsOn }, alert("seconds"))
-    makeCheck(pf, 4, top - 76, TEXT.tts, alert("tts"))
+    makeCheck(pf, 4, top - 76, TEXT.tts, nil, alert("tts"))
     makeNumber(pf, 4, top - 102, TEXT.ttsSeconds, { low = 0, high = 30, valueX = 200, enabledIf = speechOn }, alert("ttsSeconds"))
     makeSlider(pf, 4, top - 130, TEXT.ttsVolume, { low = 0, high = 100, width = 196, enabledIf = speechOn }, alert("ttsVolume"))
     local speak = makeButton(pf, TEXT.testSpeech, 140)
@@ -296,7 +307,7 @@ local function build(pf)
     end)
 
     heading(pf, 360, top, TEXT.sharing)
-    makeCheck(pf, 356, top - 22, TEXT.trustedOnly, function()
+    makeCheck(pf, 356, top - 22, TEXT.trustedOnly, nil, function()
         return Notes:TrustedOnly()
     end, function(value)
         Notes:Set(nil, "trustedOnly", value)

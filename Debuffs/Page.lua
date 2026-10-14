@@ -29,7 +29,18 @@ local function makeCheck(pf, label, yOffset, onClick)
     check:SetScript("OnClick", function(self)
         onClick(self:GetChecked())
     end)
+    check.label = text
     return check
+end
+
+-- Greys a box or a number out, with its label, while the setting it depends on is off.
+local function usable(control, on)
+    control:SetEnabled(on)
+    local c = on and 1 or 0.5
+    control.label:SetTextColor(c, c, c)
+    if control.SetTextColor then
+        control:SetTextColor(c, c, c)
+    end
 end
 
 local function numberBox(pf, label, yOffset, getter, setter, maxLetters)
@@ -55,6 +66,7 @@ local function numberBox(pf, label, yOffset, getter, setter, maxLetters)
         setter(self:GetText())
         self:SetText(tostring(getter()))
     end)
+    edit.label = text
     return edit
 end
 
@@ -72,6 +84,12 @@ refresh = function()
     if not countEdit:HasFocus() then
         countEdit:SetText(tostring(Debuffs:MaxCount()))
     end
+    local on = Debuffs:Enabled() and true or false
+    usable(sizeEdit, on)
+    usable(countEdit, on)
+    usable(dispelCheck, on)
+    usable(regularCheck, on)
+    usable(reverseCheck, on and Debuffs:IncludeRegular() and true or false)
 end
 
 local function build(pf)

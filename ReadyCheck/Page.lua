@@ -59,7 +59,9 @@ local function label(parent, text, font)
     return fs
 end
 
-local function makeCheck(parent, x, y, text, field, sub)
+-- enabledIf, when given, returns whether the box can be used. When it returns false the box is
+-- greyed out and can't be clicked, because the setting it depends on is off.
+local function makeCheck(parent, x, y, text, field, sub, enabledIf)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetSize(24, 24)
     check:SetPoint("TOPLEFT", x, y)
@@ -75,9 +77,16 @@ local function makeCheck(parent, x, y, text, field, sub)
     check:SetScript("OnClick", function(self)
         holder()[field] = self:GetChecked() and true or false
         CRT.ReadyCheckWindow:Apply()
+        refresh()
     end)
     check.refresh = function()
         check:SetChecked(holder()[field] and true or false)
+        if enabledIf then
+            local on = enabledIf() and true or false
+            check:SetEnabled(on)
+            local c = on and 1 or 0.5
+            fs:SetTextColor(c, c, c)
+        end
     end
     controls[#controls + 1] = check
     return check
@@ -192,9 +201,13 @@ end
 
 local function buildAuto(f)
     makeCheck(f, 4, -8, "Report automatically on a ready check", "auto")
-    makeCheck(f, 28, -36, "Also on a pull timer", "onPull")
-    makeCheck(f, 28, -64, "Only in raids", "raidsOnly")
-    makeCheck(f, 28, -92, "Not in Raid Finder", "notLFR")
+    -- These three only matter for the automatic report.
+    local function autoOn()
+        return settings().auto
+    end
+    makeCheck(f, 28, -36, "Also on a pull timer", "onPull", nil, autoOn)
+    makeCheck(f, 28, -64, "Only in raids", "raidsOnly", nil, autoOn)
+    makeCheck(f, 28, -92, "Not in Raid Finder", "notLFR", nil, autoOn)
     makeCycle(f, 32, -122, 240, "Post to", "output", OUTPUTS)
     local who = label(f, "The automatic report goes to chat only from whoever started the ready check or pull timer, so it is posted once. Everyone else sees it only in their own chat.", "CRTFontDisableSmall")
     who:SetPoint("TOPLEFT", 32, -152)
@@ -262,7 +275,10 @@ local function buildWindow(f)
     hint:SetWidth(670)
 
     makeCheck(f, 4, -52, "Open the window on a ready check", "enabled", windowSettings)
-    makeCheck(f, 28, -80, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings)
+    -- Only the automatic opening checks who you are, so this depends on the box above.
+    makeCheck(f, 28, -80, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings, function()
+        return windowSettings().enabled
+    end)
     makeCheck(f, 28, -108, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
     makeCycle(f, 400, -52, 260, "Sort players by", "sort", CRT.ReadyCheckWindow.SORTS, windowSettings)
     makeCheck(f, 396, -82, "Class color bar behind each row", "classBars", windowSettings)
