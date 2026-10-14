@@ -73,11 +73,13 @@ local defaults = {
         -- The look: only what the game lets an addon pass to its own debuff icons.
         swipe = true, -- the dark swipe that sweeps over the icon as the debuff runs out
         swipeEdge = true, -- the bright line on the swipe's edge
-        countdownNumbers = true, -- the game's numbers on the swipe
-        timerPosition = "below", -- where the timer text goes: below, above, center, left, right or hidden
+        -- The timer: below, above, left, right or center (the game's timer text there), numbers (the
+        -- game's countdown numbers on the swipe instead) or hidden. A countdownNumbers key saved
+        -- before 0.13.1 may remain and is ignored.
+        timerPosition = "below",
         timerX = 0, -- nudges the timer text, in pixels
         timerY = 0,
-        borderScale = 1, -- the game's debuff border: 0.5 thin, 1 normal, 1.5 thick
+        borderScale = 1, -- the game's debuff border is the icon plus 5 x this many pixels, 0 to 6
     },
     -- Raid notes. list[id] holds each imported or received note. window and alert hold the
     -- note window and personal alert settings, with position added when they are moved.

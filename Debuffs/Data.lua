@@ -2,7 +2,7 @@ local ADDON, CRT = ...
 
 -- Settings for the in-combat debuff panel, saved per player in CRTDB.debuffs:
 --   enabled, size (icon size), maxCount (how many at once), and the dispel icon and regular row options.
---   The look: swipe, swipeEdge, countdownNumbers, timerPosition, timerX, timerY and borderScale.
+--   The look: swipe, swipeEdge, timerPosition, timerX, timerY and borderScale.
 --   A reverse option existed until 0.13.0. Its saved value may remain and is ignored.
 --   position = { point, relativePoint, x, y } once the panel has been moved.
 -- Each player has their own copy in their own saved variables, so nothing is shared between players.
@@ -82,20 +82,24 @@ end
 -- The look ----------------------------------------------------------------------------------
 -- Boss mechanic debuffs are drawn by the game, which takes only these options from an addon: the
 -- swipe, its edge, the countdown numbers, the dispel icon, the border scale and where the timer
--- text is anchored. Their font, text size and colors can't be changed by any addon.
+-- text is anchored. Blizzard_PrivateAurasUI (in the game's own UI source) sets the timer text to the
+-- shared GameFontNormalSmall font, inside a protected environment, so its font can't be changed
+-- without changing that font across the whole game. The border it draws is the icon's width plus
+-- 5 x borderScale pixels, with the dispel type's colored border art.
+--
+-- The game draws two different timers: its timer text, placed by the anchor we give it, and the
+-- countdown numbers on the swipe. Showing both would show the time twice, so they are one setting.
+-- The timer text can't be switched off, so for "numbers" and "hidden" it is anchored far off the
+-- top of the screen.
 
 Debuffs.TIMER_POSITIONS = {
-    { key = "below", label = "Below" },
-    { key = "above", label = "Above" },
+    { key = "below", label = "Below the icon" },
+    { key = "above", label = "Above the icon" },
+    { key = "left", label = "Left of the icon" },
+    { key = "right", label = "Right of the icon" },
     { key = "center", label = "On the icon" },
-    { key = "left", label = "Left" },
-    { key = "right", label = "Right" },
+    { key = "numbers", label = "Swipe numbers" },
     { key = "hidden", label = "Hidden" },
-}
-Debuffs.BORDERS = {
-    { key = 1, label = "Normal" },
-    { key = 1.5, label = "Thick" },
-    { key = 0.5, label = "Thin" },
 }
 
 -- Each timer position as the text's point, the icon's point, and a small gap.
@@ -125,13 +129,20 @@ function Debuffs:SetNudge(field, value)
     self:Fire()
 end
 
--- Where the timer text goes: point, relativePoint, x, y, or nil when it is hidden.
+-- Where the timer text goes beside the icon: point, relativePoint, x, y, or nil when the timer is
+-- the swipe numbers or hidden.
 function Debuffs:TimerAnchor()
-    local anchor = TIMER_ANCHORS[ddb().timerPosition] or (ddb().timerPosition ~= "hidden" and TIMER_ANCHORS.below)
-    if not anchor then
+    local position = ddb().timerPosition
+    if position == "numbers" or position == "hidden" then
         return nil
     end
+    local anchor = TIMER_ANCHORS[position] or TIMER_ANCHORS.below
     return anchor[1], anchor[2], anchor[3] + (ddb().timerX or 0), anchor[4] + (ddb().timerY or 0)
+end
+
+-- True when the timer is the game's countdown numbers on the swipe.
+function Debuffs:SwipeNumbers()
+    return ddb().timerPosition == "numbers"
 end
 
 -- The saved position, or the default one in the upper middle of the screen.

@@ -44,33 +44,6 @@ local function usable(control, on)
     end
 end
 
-local function numberBox(pf, label, yOffset, getter, setter, maxLetters)
-    local text = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("TOPLEFT", 8, yOffset)
-    text:SetText(label)
-
-    local edit = CreateFrame("EditBox", nil, pf, "InputBoxTemplate")
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(CRTFontHighlight)
-    edit:SetNumeric(true)
-    edit:SetMaxLetters(maxLetters or 3)
-    edit:SetSize(50, 22)
-    edit:SetPoint("LEFT", text, "LEFT", 220, 0)
-    edit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    edit:SetScript("OnEscapePressed", function(self)
-        self:SetText(tostring(getter()))
-        self:ClearFocus()
-    end)
-    edit:SetScript("OnEditFocusLost", function(self)
-        setter(self:GetText())
-        self:SetText(tostring(getter()))
-    end)
-    edit.label = text
-    return edit
-end
-
 -- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua).
 local function lookDropdown(pf, yOffset, text, field, choices)
     local row = UI.Dropdown(pf, text, {
@@ -119,7 +92,7 @@ local function nudgeBox(pf, anchor, label, field)
         if not edit:HasFocus() then
             edit:SetText(tostring(Debuffs:Get(field)))
         end
-        usable(edit, on)
+        usable(edit, on and Debuffs:TimerAnchor() ~= nil)
     end
     look[#look + 1] = edit
     return edit
@@ -144,15 +117,9 @@ refresh = function()
     enabledCheck:SetChecked(Debuffs:Enabled())
     dispelCheck:SetChecked(Debuffs:DispelIcon())
     regularCheck:SetChecked(Debuffs:IncludeRegular())
-    if not sizeEdit:HasFocus() then
-        sizeEdit:SetText(tostring(Debuffs:Size()))
-    end
-    if not countEdit:HasFocus() then
-        countEdit:SetText(tostring(Debuffs:MaxCount()))
-    end
     local on = Debuffs:Enabled() and true or false
-    usable(sizeEdit, on)
-    usable(countEdit, on)
+    sizeEdit.refresh()
+    countEdit.refresh()
     usable(dispelCheck, on)
     usable(regularCheck, on)
     for _, control in ipairs(look) do
@@ -173,16 +140,21 @@ local function build(pf)
         Debuffs:SetEnabled(checked)
     end)
 
-    sizeEdit = numberBox(pf, "Icon size (24 to 96)", -78, function()
+    local function panelOn()
+        return Debuffs:Enabled()
+    end
+    sizeEdit = UI.Slider(pf, "Icon size", { min = 24, max = 96, step = 2, labelWidth = 130, width = 200, enabledIf = panelOn, get = function()
         return Debuffs:Size()
-    end, function(value)
+    end, set = function(value)
         Debuffs:SetSize(value)
-    end)
-    countEdit = numberBox(pf, "How many to show (1 to 8)", -104, function()
+    end })
+    sizeEdit:SetPoint("TOPLEFT", 8, -70)
+    countEdit = UI.Slider(pf, "How many to show", { min = 1, max = 8, labelWidth = 130, width = 200, enabledIf = panelOn, get = function()
         return Debuffs:MaxCount()
-    end, function(value)
+    end, set = function(value)
         Debuffs:SetMaxCount(value)
-    end, 1)
+    end })
+    countEdit:SetPoint("TOPLEFT", 8, -98)
 
     dispelCheck = makeCheck(pf, "Show the dispel type icon on each debuff", -130, function(checked)
         Debuffs:SetDispelIcon(checked)
@@ -206,15 +178,26 @@ local function build(pf)
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", 8, -236)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. Their font, text size and colors can't be changed by any addon.\n\nThe border is the game's colored debuff border. Turn on Previews to see your changes as you make them."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. It writes their timer in its own shared small font, so their font and text size can't be changed without changing text all over the game. The font setting on the Addon Settings page changes everything else.\n\nTimer: the game's timer text beside or on the icon, or its countdown numbers on the swipe, never both.\n\nBorder size: the game's colored debuff border, the icon plus 5 pixels for each step.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
-    local timer = lookDropdown(pf, -254, "Timer text", "timerPosition", Debuffs.TIMER_POSITIONS)
+    local timer = lookDropdown(pf, -254, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
     nudgeBox(pf, nudgeX, "Y", "timerY")
     lookCheck(pf, "Swipe animation as the debuff runs out", -288, "swipe")
     lookCheck(pf, "Bright edge on the swipe", -312, "swipeEdge", 28, "swipe")
-    lookCheck(pf, "Countdown numbers on the swipe", -336, "countdownNumbers")
-    lookDropdown(pf, -362, "Border", "borderScale", Debuffs.BORDERS)
+    local border = UI.Slider(pf, "Border size", { min = 0, max = 6, step = 0.5, labelWidth = 80, width = 200, enabledIf = panelOn,
+        format = function(v)
+            return format("%g", v)
+        end,
+        get = function()
+            return Debuffs:Get("borderScale") or 1
+        end,
+        set = function(v)
+            Debuffs:Set("borderScale", v)
+        end,
+    })
+    border:SetPoint("TOPLEFT", 8, -340)
+    look[#look + 1] = border
 
 
     pf:SetScript("OnShow", refresh)
