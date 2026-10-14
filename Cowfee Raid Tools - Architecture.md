@@ -93,6 +93,10 @@ Food, flask and weapon icons are secure buttons that use the first assigned item
 
 `UI/Panel.lua` has a preview registry. A floating panel calls `UI:RegisterPreview(key, setFn)`, and the **Toggle previews** button in the corner of the main window calls every registered function, then turns them off again when the window closes. Each panel shows a drag handle during a preview and saves its position in `CRTDB` when dropped, in `CRTDB.consumables.position` and `CRTDB.debuffs.position`. All of this is saved per player in their own saved variables, and new settings are added as defaults in `Core.lua`.
 
+## Ready Check
+
+`ReadyCheck/Page.lua` is the Ready Check page, with the tabs Raid report, On ready check and Your bar. Your bar is built by `Consumables/Page.lua` through `CRT.ConsumablesPage.Build`, so the consumables code is unchanged apart from `Consumables:BuffIds`, which hands the report the buff IDs listed or learned for a category. `ReadyCheck/Report.lua` reads every group member's buffs with `C_UnitAuras.GetAuraDataByIndex`, runs the food, flask, rune, Vantus rune and raid buff checks, and posts or prints the result. It also runs on `READY_CHECK` and `START_PLAYER_COUNTDOWN`, and posts to chat only for whoever started them. Players whose buffs come back secret are reported as couldn't check. See the maintenance skill's `references/readycheck.md`.
+
 ## Debuffs
 
 `Debuffs/Data.lua` holds the settings, `Debuffs/Panel.lua` builds a plain movable frame whose slots are private aura anchors (`C_UnitAuras.AddPrivateAuraAnchor`), which is how the game lets an addon place its boss mechanic debuffs, plus an optional second row using a Blizzard `AuraContainer` for regular debuffs, and `Debuffs/Page.lua` is the settings page. The panel is faded with alpha, not shown or hidden, so combat cannot block it. The container formats are largely undocumented, so each setup call is guarded and `/crt debuffs info` reports what worked. See the maintenance skill's `references/debuffs.md`.
