@@ -10,8 +10,10 @@ local ADDON, CRT = ...
 -- only passes the result on. When the curve route is missing or fails, out of combat it falls back
 -- to plain UnitHealth and UnitHealthMax, which are readable then.
 --
--- The scale of UnitHealthPercent (0 to 1, or 0 to 100) is not on its wiki page, so it is measured out
--- of combat, when the value is readable, and the curve is built to match.
+-- A curve's input is health from 0 to 1: the CurveObject wiki page's own example builds its curves on
+-- points 0.0 and 1.0, and uses a ScaleTo100 curve to get 0 to 100 out. So the curve is built on 0 to
+-- 1 and never needs your health to be readable. The first in-game test (2026-10-14) showed your
+-- health is secret even out of combat, so the plain fallback below rarely applies.
 --
 -- If it misbehaves, untick it on the Quality of Life page or type /crt lowhp off.
 
@@ -19,7 +21,7 @@ local LowHealth = {}
 CRT.LowHealth = LowHealth
 
 local frame, curve
-local scale -- 1 or 100, measured from UnitHealthPercent out of combat
+local SCALE = 1 -- the curve's input range, 0 to 1
 local previewOn = false
 local warned = false
 
@@ -33,27 +35,13 @@ end
 
 -- The curve ------------------------------------------------------------------------------------
 
-local function measureScale()
-    if not UnitHealthPercent then
-        return
-    end
-    local ok, value = pcall(UnitHealthPercent, "player", false)
-    if ok and type(value) == "number" and not isSecret(value) and value > 0 then
-        scale = value > 1.5 and 100 or 1
-    end
-end
-
 -- 1 from 0 up to the threshold, then 0 from just above it to full health.
 local function buildCurve()
     curve = nil
     if not (C_CurveUtil and C_CurveUtil.CreateCurve and UnitHealthPercent) then
         return
     end
-    measureScale()
-    if not scale then
-        return
-    end
-    local threshold = math.max(1, math.min(99, settings().threshold or 35)) / 100 * scale
+    local threshold = math.max(1, math.min(99, settings().threshold or 35)) / 100 * SCALE
     local ok, c = pcall(C_CurveUtil.CreateCurve)
     if not ok or not c then
         return
@@ -64,8 +52,8 @@ local function buildCurve()
         end
         c:AddPoint(0, 1)
         c:AddPoint(threshold, 1)
-        c:AddPoint(threshold + 0.001 * scale, 0)
-        c:AddPoint(scale, 0)
+        c:AddPoint(threshold + 0.001 * SCALE, 0)
+        c:AddPoint(SCALE, 0)
     end)
     if built then
         curve = c
@@ -211,7 +199,7 @@ function LowHealth:Info()
         end
         add("curve types: " .. table.concat(names, ", "))
     end
-    add(format("measured scale %s, curve built %s", tostring(scale), tostring(curve ~= nil)))
+    add(format("curve on 0 to %d, built %s", SCALE, tostring(curve ~= nil)))
     if UnitHealthPercent then
         local ok, raw = pcall(UnitHealthPercent, "player", false)
         add("UnitHealthPercent(player): " .. (ok and show(raw) or ("error " .. tostring(raw))))
@@ -260,7 +248,6 @@ events:SetScript("OnEvent", function(_, event)
         return
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_ENABLED" then
-        -- Out of combat the value is readable, so measure the scale and rebuild the curve.
         LowHealth:Apply()
     elseif frame then
         LowHealth:Update()
