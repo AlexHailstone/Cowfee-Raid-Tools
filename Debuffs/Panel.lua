@@ -25,6 +25,10 @@ local previewOn = false
 local elapsed = 0
 local report = { created = false, error = nil, notes = {} }
 
+local function isSecret(value)
+    return issecretvalue and issecretvalue(value) or false
+end
+
 local function note(text)
     if #report.notes < 40 then
         report.notes[#report.notes + 1] = text
@@ -82,52 +86,53 @@ local function sortOptions()
     return method, direction
 end
 
--- Notes about layout problems are recorded once each, since layout runs twice a second.
-local layoutNotes = {}
-
-local function layoutNote(key, text)
-    if not layoutNotes[key] then
-        layoutNotes[key] = true
-        note(text)
-    end
+-- The container lays its aura frames out itself. The option names and defaults below come from the
+-- tables the game defines (CustomAuraContainerLayoutDefaults and CustomAuraContainerGroupLayoutDefaultOptions),
+-- which `/crt debuffs info` prints: a row growing right, with elementSpacing between icons.
+local function panelWidth()
+    local size, count = Debuffs:Size(), Debuffs:MaxCount()
+    return count * size + (count - 1) * GAP, size
 end
 
--- Lays the icons out in a row. Done by hand because the container's own layout options are not
--- documented. Out of combat only, since the frames may be restricted in combat.
+local appliedLayout -- the settings the container's layout was last set up for
+
+local function applyContainerLayout()
+    if not container or InCombatLockdown() then
+        return
+    end
+    local width = panelWidth()
+    local signature = width .. ":" .. Debuffs:Size()
+    if signature == appliedLayout then
+        return
+    end
+    appliedLayout = signature
+    try("container", container, "SetFlowLayoutAnchorPoint", "TOPLEFT")
+    try("container", container, "SetFlowLayoutAxis", 0)
+    try("container", container, "SetFlowLayoutGrowthDirection", 1, -1)
+    try("container", container, "SetFlowLayoutPadding", 0, 0, 0, 0)
+    try("container", container, "SetFlowLayoutMaximumLineSize", width)
+    try("container", container, "SetAuraGroupLayout", GROUP, { elementSpacing = GAP })
+end
+
+-- Sizes the panel and its aura frames. Out of combat only, since the frames may be restricted in combat.
 local function layout()
     if not container or InCombatLockdown() then
         return
     end
-    local size = Debuffs:Size()
-    local count = Debuffs:MaxCount()
-    local total = 0
+    local width, size = panelWidth()
+    frame:SetSize(width, size)
+    container:SetSize(width, size)
+    applyContainerLayout()
+
     local ok, n = pcall(container.GetAuraGroupFrameCount, container, GROUP)
-    if ok and type(n) == "number" then
-        total = n
-    end
-    for index = 1, total do
-        local ok2, button = pcall(container.GetAuraGroupFrame, container, GROUP, index)
-        if ok2 and button then
-            -- The container's aura frames can report their anchoring as secret. When they do, they
-            -- are left to the container's own layout, and that is recorded once for the diagnostics.
-            local okA, anchorSecret = pcall(button.IsAnchoringSecret, button)
-            if okA and anchorSecret then
-                layoutNote("secret", "aura frames report secret anchoring, so they are left to the container's own layout")
-            else
-                if not pcall(button.SetSize, button, size, size) then
-                    layoutNote("size", "SetSize on an aura frame failed")
-                end
-                if not pcall(button.ClearAllPoints, button) then
-                    layoutNote("clear", "ClearAllPoints on an aura frame failed")
-                end
-                if not pcall(button.SetPoint, button, "TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), 0) then
-                    layoutNote("point", "SetPoint on an aura frame failed")
-                end
+    if ok and type(n) == "number" and not isSecret(n) then
+        for index = 1, n do
+            local ok2, button = pcall(container.GetAuraGroupFrame, container, GROUP, index)
+            if ok2 and button and not pcall(button.SetSize, button, size, size) then
+                note("SetSize on an aura frame failed")
             end
         end
     end
-    frame:SetSize(count * size + (count - 1) * GAP, size)
-    container:SetSize(frame:GetWidth(), frame:GetHeight())
 end
 
 -- Sets up one aura button: an icon, a cooldown spiral with the time, and the stack count.
@@ -181,9 +186,12 @@ local function createContainer()
         initializeFrame = initializeButton,
         sortMethod = method,
         sortDirection = direction,
+        layout = { elementSpacing = GAP },
     }
     local okGroup = try("container", container, "AddAuraGroup", GROUP, "HARMFUL", options)
     try("container", container, "SetEnabled", true)
+    appliedLayout = nil
+    applyContainerLayout()
     try("container", container, "UpdateAllAuras")
     report.created = okGroup
     return okGroup
@@ -255,13 +263,16 @@ local function build()
     frame:SetFrameStrata("HIGH")
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
+    -- The container's preview shows more sample icons than the count, so anything outside the panel is clipped.
+    frame:SetClipsChildren(true)
     local size, count = Debuffs:Size(), Debuffs:MaxCount()
     frame:SetSize(count * size + (count - 1) * GAP, size)
     applyPosition()
     frame:SetAlpha(0)
 
     -- A drag handle above the panel, shown during a preview.
-    handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    handle = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    handle:SetFrameStrata("HIGH")
     handle:SetHeight(20)
     handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
     handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
@@ -303,10 +314,6 @@ local function build()
 end
 
 -- Diagnostics: what was built, what failed, and what the game offers. --------------------
-
-local function isSecret(value)
-    return issecretvalue and issecretvalue(value) or false
-end
 
 -- Text for any value. A secret value is printed as "(secret)", because joining one into text is an
 -- error, and the size and position of the container's aura frames are secret.
