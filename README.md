@@ -42,7 +42,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Ready Check** | Your own consumables bar on every ready check. A raid report of everyone's food, flask, augment rune, Vantus rune and the raid buffs your group can give, shown to you or posted to chat. A ready check window for leaders with every player's answer, consumables, buffs and durability |
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
 | **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
-| **Quality of Life** | Small conveniences. First: an experimental LOW HEALTH banner at or under a health percent you set with a slider. Off by default |
+| **Quality of Life** | Small conveniences: the panel's size, 50% to 200% with the text scaled too (also Ctrl + mouse wheel over the panel), and an experimental LOW HEALTH banner at or under a health percent you set with a slider. Off by default |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 
 **Toggle previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.

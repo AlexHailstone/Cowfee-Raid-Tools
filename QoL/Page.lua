@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
 -- The Quality of Life page: a home for small conveniences and their settings, in CRTDB.qol with
--- defaults in Core.lua. First option: the low-health alert (QoL/LowHealth.lua), experimental.
+-- defaults in Core.lua. The panel's size (CRTDB.window.scale, applied by UI/Panel.lua), and the
+-- experimental low-health alert (QoL/LowHealth.lua).
 
 local UI = CRT.UI
 local LowHealth = CRT.LowHealth
@@ -10,6 +11,11 @@ local LowHealth = CRT.LowHealth
 local TEXT = {
     title = "Quality of Life",
     hint = "Small conveniences for raid nights.",
+
+    panelSize = "Panel size",
+    panelSizeLabel = "Size of this window, text included (50% to 200%):",
+    panelSizeNote = "The new size applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.",
+    panelSizeReset = "Reset to 100%",
 
     lowHealth = "Low-health alert",
     lowHealthTag = "(experimental)",
@@ -51,6 +57,71 @@ local function refresh()
     end
 end
 
+-- A horizontal slider with its value beside it, built from the plain Slider widget and color
+-- textures. Returns the slider and the value text. The caller sets its scripts.
+local function makeSlider(pf, x, y, low, high, width)
+    local slider = CreateFrame("Slider", nil, pf, "BackdropTemplate")
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetSize(width, 14)
+    slider:SetPoint("TOPLEFT", x, y)
+    slider:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    slider:SetBackdropColor(0, 0, 0, 0.6)
+    slider:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+    local thumb = slider:CreateTexture(nil, "OVERLAY")
+    thumb:SetColorTexture(1, 0.82, 0, 1)
+    thumb:SetSize(10, 18)
+    slider:SetThumbTexture(thumb)
+    slider:SetMinMaxValues(low, high)
+    slider:SetValueStep(1)
+    slider:SetObeyStepOnDrag(true)
+    local value = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    value:SetPoint("LEFT", slider, "RIGHT", 12, 0)
+    return slider, value
+end
+
+-- Panel size ----------------------------------------------------------------------------------
+
+local function buildPanelSize(pf, top)
+    local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    heading:SetPoint("TOPLEFT", 8, top)
+    heading:SetText(TEXT.panelSize)
+    local sliderLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    sliderLabel:SetPoint("TOPLEFT", 12, top - 22)
+    sliderLabel:SetText(TEXT.panelSizeLabel)
+
+    local slider, value = makeSlider(pf, 16, top - 44, UI.MIN_SCALE, UI.MAX_SCALE, 240)
+    -- The slider sits inside the window it resizes, so the size is applied when the mouse lets go,
+    -- not on every step, or the slider would move under the mouse while dragging.
+    local updating = false
+    slider:SetScript("OnValueChanged", function(_, v)
+        value:SetText(math.floor(v + 0.5) .. "%")
+    end)
+    slider:SetScript("OnMouseUp", function(self)
+        if not updating then
+            UI:SetScale(self:GetValue())
+        end
+    end)
+    slider.refresh = function()
+        updating = true
+        slider:SetValue(UI:Scale())
+        updating = false
+        value:SetText(UI:Scale() .. "%")
+    end
+    controls[#controls + 1] = slider
+
+    local reset = makeButton(pf, TEXT.panelSizeReset, 140, 22)
+    reset:SetPoint("LEFT", value, "RIGHT", 16, 0)
+    reset:SetScript("OnClick", function()
+        UI:SetScale(100)
+    end)
+
+    local note = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    note:SetPoint("TOPLEFT", 16, top - 66)
+    note:SetWidth(650)
+    note:SetJustifyH("LEFT")
+    note:SetText(TEXT.panelSizeNote)
+end
+
 -- Low-health alert ----------------------------------------------------------------------------
 
 local function buildLowHealth(pf, top)
@@ -60,7 +131,7 @@ local function buildLowHealth(pf, top)
 
     local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     check:SetSize(24, 24)
-    check:SetPoint("TOPLEFT", 4, top - 22)
+    check:SetPoint("TOPLEFT", 4, top - 20)
     local checkText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     checkText:SetPoint("LEFT", check, "RIGHT", 2, 0)
     checkText:SetText(TEXT.lowHealthEnable)
@@ -75,24 +146,9 @@ local function buildLowHealth(pf, top)
 
     -- The slider, with the percent beside it. Built from the plain Slider widget and color textures.
     local sliderLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    sliderLabel:SetPoint("TOPLEFT", 32, top - 54)
+    sliderLabel:SetPoint("TOPLEFT", 32, top - 46)
     sliderLabel:SetText(TEXT.lowHealthThreshold)
-    local slider = CreateFrame("Slider", nil, pf, "BackdropTemplate")
-    slider:SetOrientation("HORIZONTAL")
-    slider:SetSize(240, 14)
-    slider:SetPoint("TOPLEFT", 36, top - 76)
-    slider:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    slider:SetBackdropColor(0, 0, 0, 0.6)
-    slider:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
-    local thumb = slider:CreateTexture(nil, "OVERLAY")
-    thumb:SetColorTexture(1, 0.82, 0, 1)
-    thumb:SetSize(10, 18)
-    slider:SetThumbTexture(thumb)
-    slider:SetMinMaxValues(5, 90)
-    slider:SetValueStep(1)
-    slider:SetObeyStepOnDrag(true)
-    local value = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    value:SetPoint("LEFT", slider, "RIGHT", 12, 0)
+    local slider, value = makeSlider(pf, 36, top - 66, 5, 90, 240)
 
     local updating = false
     slider:SetScript("OnValueChanged", function(_, v)
@@ -117,13 +173,13 @@ local function buildLowHealth(pf, top)
     controls[#controls + 1] = slider
 
     local reset = makeButton(pf, TEXT.resetPosition, 160)
-    reset:SetPoint("TOPLEFT", 36, top - 104)
+    reset:SetPoint("TOPLEFT", 36, top - 90)
     reset:SetScript("OnClick", function()
         LowHealth:ResetPosition()
     end)
 
     local note = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    note:SetPoint("TOPLEFT", 36, top - 138)
+    note:SetPoint("TOPLEFT", 36, top - 120)
     note:SetWidth(630)
     note:SetJustifyH("LEFT")
     note:SetText(TEXT.lowHealthNote)
@@ -142,9 +198,12 @@ local function build(pf)
     hint:SetJustifyH("LEFT")
     hint:SetText(TEXT.hint)
 
-    buildLowHealth(pf, -64)
+    buildPanelSize(pf, -62)
+    buildLowHealth(pf, -168)
 
     pf:SetScript("OnShow", refresh)
+    -- Ctrl + mouse wheel changes the size too, so the slider follows it.
+    UI.onScale = refresh
 end
 
 UI:RegisterPage("qol", TEXT.title, build)

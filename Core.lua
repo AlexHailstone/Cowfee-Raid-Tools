@@ -5,7 +5,7 @@ CRT.name = ADDON
 CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "dev"
 
 local defaults = {
-    window = { point = "CENTER", x = 0, y = 0 },
+    window = { point = "CENTER", x = 0, y = 0, scale = 100 }, -- the main panel; scale is a percent, 50 to 200
     lastPage = "groups",
     classCache = {},
     roleCache = {},

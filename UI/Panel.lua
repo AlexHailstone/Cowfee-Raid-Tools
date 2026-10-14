@@ -44,6 +44,24 @@ function UI:TogglePreviews()
     self:SetPreviews(not self.previewing)
 end
 
+-- The panel's size as a percent, 50 to 200. SetScale scales everything in it, text included.
+UI.MIN_SCALE, UI.MAX_SCALE = 50, 200
+
+function UI:Scale()
+    return math.max(self.MIN_SCALE, math.min(self.MAX_SCALE, math.floor((CRT.db.window.scale or 100) + 0.5)))
+end
+
+-- Sets the panel's size. onScale, when set, is told so a page can show the new value.
+function UI:SetScale(percent)
+    CRT.db.window.scale = math.max(self.MIN_SCALE, math.min(self.MAX_SCALE, math.floor(percent + 0.5)))
+    if self.frame then
+        self.frame:SetScale(self:Scale() / 100)
+    end
+    if self.onScale then
+        self.onScale()
+    end
+end
+
 function UI.SetFrameTitle(frame, text)
     if frame.SetTitle then
         frame:SetTitle(text)
@@ -129,8 +147,17 @@ function UI:Create()
     UI.previewButton = pb
 
     local w = CRT.db.window
+    f:SetScale(UI:Scale() / 100)
     f:ClearAllPoints()
     f:SetPoint(w.point, UIParent, w.point, w.x, w.y)
+
+    -- Ctrl + mouse wheel over the panel changes its size in steps of 5 percent.
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(_, delta)
+        if IsControlKeyDown() then
+            UI:SetScale(UI:Scale() + delta * 5)
+        end
+    end)
 
     local menu = CreateFrame("Frame", nil, f)
     menu:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -32)

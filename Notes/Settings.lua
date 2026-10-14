@@ -220,20 +220,20 @@ local function buildColumn(pf, index, def, top)
     local function shown()
         return Notes:WindowSettings(def.key).shown and true or false
     end
-    makeCheck(pf, x - 4, top - 22, TEXT.show, nil, setting(def.key, "shown"))
-    makeCheck(pf, x - 4, top - 48, TEXT.locked, shown, setting(def.key, "locked"))
-    local y = top - 76
+    makeCheck(pf, x - 4, top - 20, TEXT.show, nil, setting(def.key, "shown"))
+    makeCheck(pf, x - 4, top - 44, TEXT.locked, shown, setting(def.key, "locked"))
+    local y = top - 68
     if def.key == "window" then
         makeCheck(pf, x - 4, y, TEXT.hidePassed, shown, setting(def.key, "hidePassed"))
-        makeCheck(pf, x - 4, y - 26, TEXT.onlyMe, shown, setting(def.key, "onlyMe"))
-        y = y - 52
+        makeCheck(pf, x - 4, y - 24, TEXT.onlyMe, shown, setting(def.key, "onlyMe"))
+        y = y - 48
     end
     makeNumber(pf, x, y, TEXT.fontSize, { low = 8, high = 32, enabledIf = shown }, setting(def.key, "fontSize"))
-    makeNumber(pf, x, y - 26, TEXT.windowAlpha, { low = 10, high = 100, enabledIf = shown }, setting(def.key, "alpha"))
-    makeNumber(pf, x, y - 52, TEXT.backgroundAlpha, { low = 0, high = 100, enabledIf = shown }, setting(def.key, "bgAlpha"))
+    makeNumber(pf, x, y - 24, TEXT.windowAlpha, { low = 10, high = 100, enabledIf = shown }, setting(def.key, "alpha"))
+    makeNumber(pf, x, y - 48, TEXT.backgroundAlpha, { low = 0, high = 100, enabledIf = shown }, setting(def.key, "bgAlpha"))
 
     local font = makeButton(pf, TEXT.font, COLUMN_W - 16)
-    font:SetPoint("TOPLEFT", x, y - 84)
+    font:SetPoint("TOPLEFT", x, y - 76)
     font:SetScript("OnClick", function()
         local fonts = CRT.NoteWindow.FONTS
         local current = Notes:WindowSettings(def.key).font
@@ -252,7 +252,7 @@ local function buildColumn(pf, index, def, top)
     controls[#controls + 1] = font
 
     local reset = makeButton(pf, TEXT.resetPosition, COLUMN_W - 16)
-    reset:SetPoint("TOPLEFT", x, y - 114)
+    reset:SetPoint("TOPLEFT", x, y - 104)
     reset:SetScript("OnClick", function()
         CRT.NoteWindow:ResetPosition(def.key)
     end)
@@ -293,21 +293,21 @@ local function build(pf)
     local function speechOn()
         return Notes:Alert().tts and true or false
     end
-    local top = -340
+    local top = -312
     heading(pf, 8, top, TEXT.alerts)
-    makeCheck(pf, 4, top - 22, TEXT.alertShow, nil, alert("enabled"))
-    makeNumber(pf, 4, top - 48, TEXT.alertSeconds, { low = 1, high = 60, valueX = 200, enabledIf = alertsOn }, alert("seconds"))
-    makeCheck(pf, 4, top - 76, TEXT.tts, nil, alert("tts"))
-    makeNumber(pf, 4, top - 102, TEXT.ttsSeconds, { low = 0, high = 30, valueX = 200, enabledIf = speechOn }, alert("ttsSeconds"))
-    makeSlider(pf, 4, top - 130, TEXT.ttsVolume, { low = 0, high = 100, width = 196, enabledIf = speechOn }, alert("ttsVolume"))
+    makeCheck(pf, 4, top - 20, TEXT.alertShow, nil, alert("enabled"))
+    makeNumber(pf, 4, top - 44, TEXT.alertSeconds, { low = 1, high = 60, valueX = 200, enabledIf = alertsOn }, alert("seconds"))
+    makeCheck(pf, 4, top - 68, TEXT.tts, nil, alert("tts"))
+    makeNumber(pf, 4, top - 92, TEXT.ttsSeconds, { low = 0, high = 30, valueX = 200, enabledIf = speechOn }, alert("ttsSeconds"))
+    makeSlider(pf, 4, top - 116, TEXT.ttsVolume, { low = 0, high = 100, width = 196, enabledIf = speechOn }, alert("ttsVolume"))
     local speak = makeButton(pf, TEXT.testSpeech, 140)
-    speak:SetPoint("TOPLEFT", 8, top - 180)
+    speak:SetPoint("TOPLEFT", 8, top - 164)
     speak:SetScript("OnClick", function()
         CRT.NoteAlert:Speak(TEXT.testPhrase)
     end)
 
     heading(pf, 360, top, TEXT.sharing)
-    makeCheck(pf, 356, top - 22, TEXT.trustedOnly, nil, function()
+    makeCheck(pf, 356, top - 20, TEXT.trustedOnly, nil, function()
         return Notes:TrustedOnly()
     end, function(value)
         Notes:Set(nil, "trustedOnly", value)

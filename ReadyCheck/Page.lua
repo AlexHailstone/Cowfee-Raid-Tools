@@ -205,32 +205,32 @@ local function buildAuto(f)
     local function autoOn()
         return settings().auto
     end
-    makeCheck(f, 28, -36, "Also on a pull timer", "onPull", nil, autoOn)
-    makeCheck(f, 28, -64, "Only in raids", "raidsOnly", nil, autoOn)
-    makeCheck(f, 28, -92, "Not in Raid Finder", "notLFR", nil, autoOn)
-    makeCycle(f, 32, -122, 240, "Post to", "output", OUTPUTS)
+    makeCheck(f, 28, -32, "Also on a pull timer", "onPull", nil, autoOn)
+    makeCheck(f, 28, -56, "Only in raids", "raidsOnly", nil, autoOn)
+    makeCheck(f, 28, -80, "Not in Raid Finder", "notLFR", nil, autoOn)
+    makeCycle(f, 32, -108, 240, "Post to", "output", OUTPUTS)
     local who = label(f, "The automatic report goes to chat only from whoever started the ready check or pull timer, so it is posted once. Everyone else sees it only in their own chat.", "CRTFontDisableSmall")
-    who:SetPoint("TOPLEFT", 32, -152)
+    who:SetPoint("TOPLEFT", 32, -136)
     who:SetWidth(640)
 
     local include = label(f, "Include in the report")
-    include:SetPoint("TOPLEFT", 8, -196)
+    include:SetPoint("TOPLEFT", 8, -176)
     for i, check in ipairs(Report.CHECKS) do
         local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
-        makeCheck(f, 4 + col * 200, -218 - row * 28, check.label, check.key, "include")
+        makeCheck(f, 4 + col * 200, -198 - row * 24, check.label, check.key, "include")
     end
 
     local counts = label(f, "What counts")
-    counts:SetPoint("TOPLEFT", 8, -290)
-    makeCycle(f, 8, -312, 240, "Food", "food", FOODS)
-    makeCycle(f, 8, -342, 240, "Flask expiring warning", "flaskWarn", WARNS)
-    makeCheck(f, 4, -372, "Count a lower quality flask as a problem", "lowFlask")
+    counts:SetPoint("TOPLEFT", 8, -256)
+    makeCycle(f, 8, -278, 240, "Food", "food", FOODS)
+    makeCycle(f, 8, -306, 240, "Flask expiring warning", "flaskWarn", WARNS)
+    makeCheck(f, 4, -334, "Count a lower quality flask as a problem", "lowFlask")
     local note = label(f, "Best food only and lower quality flasks need those marked in the built-in consumables list. Until they are, all food counts and no flask is flagged.", "CRTFontDisableSmall")
-    note:SetPoint("TOPLEFT", 8, -402)
+    note:SetPoint("TOPLEFT", 8, -362)
     note:SetWidth(640)
 
     local notHere = label(f, "Not available: potions and healthstones used in the last fight (the combat log is closed to addons during boss fights in Midnight), and other players' weapon oils and armor kits (they aren't buffs, so the game doesn't show them to addons).", "CRTFontDisableSmall")
-    notHere:SetPoint("TOPLEFT", 8, -450)
+    notHere:SetPoint("TOPLEFT", 8, -402)
     notHere:SetWidth(640)
 end
 
@@ -276,18 +276,18 @@ local function buildWindow(f)
 
     makeCheck(f, 4, -52, "Open the window on a ready check", "enabled", windowSettings)
     -- Only the automatic opening checks who you are, so this depends on the box above.
-    makeCheck(f, 28, -80, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings, function()
+    makeCheck(f, 28, -76, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings, function()
         return windowSettings().enabled
     end)
-    makeCheck(f, 28, -108, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
+    makeCheck(f, 28, -100, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
     makeCycle(f, 400, -52, 260, "Sort players by", "sort", CRT.ReadyCheckWindow.SORTS, windowSettings)
-    makeCheck(f, 396, -82, "Class color bar behind each row", "classBars", windowSettings)
-    makeNumber(f, 32, -138, "Seconds open (5 to 120)", "seconds", 5, 120)
-    makeNumber(f, 32, -166, "Size % (50 to 150)", "scale", 50, 150)
+    makeCheck(f, 396, -80, "Class color bar behind each row", "classBars", windowSettings)
+    makeNumber(f, 32, -126, "Seconds open (5 to 120)", "seconds", 5, 120)
+    makeNumber(f, 32, -150, "Size % (50 to 150)", "scale", 50, 150)
 
     local Window = CRT.ReadyCheckWindow
     local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
-    cols:SetPoint("TOPLEFT", 8, -200)
+    cols:SetPoint("TOPLEFT", 8, -184)
     cols:SetWidth(670)
     cols:SetWordWrap(false)
 
@@ -303,13 +303,13 @@ local function buildWindow(f)
         local scale = math.min(1, available / box:GetWidth())
         box:SetScale(scale)
         box:ClearAllPoints()
-        box:SetPoint("TOPLEFT", f, "TOPLEFT", 8 / scale, -224 / scale)
+        box:SetPoint("TOPLEFT", f, "TOPLEFT", 8 / scale, -206 / scale)
     end
     editor = Window.NewTable(box, true, drawCopy)
     box.refresh = drawCopy
     controls[#controls + 1] = box
 
-    local y = -226 - 150
+    local y = -208 - 150
     local resetOrder = makeButton(f, "Default order", 150)
     resetOrder:SetPoint("TOPLEFT", 8, y)
     resetOrder:SetScript("OnClick", function()
