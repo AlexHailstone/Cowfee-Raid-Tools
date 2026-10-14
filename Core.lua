@@ -16,6 +16,19 @@ local defaults = {
         source = "raid",
         working = {},
     },
+    -- Consumables shown on the ready check. buffs[spellId] and items[itemId] are
+    -- { name = "...", icon = fileID } entries the player assigns on the Consumables page.
+    consumables = {
+        enabled = true,
+        lowMinutes = 10,
+        categories = {
+            food = { buffs = {}, items = {} },
+            flask = { buffs = {}, items = {} },
+            potion = { buffs = {}, items = {} },
+            weapon = { buffs = {}, items = {} },
+            rune = { buffs = {}, items = {} },
+        },
+    },
 }
 
 local function copyDefaults(src, dst)

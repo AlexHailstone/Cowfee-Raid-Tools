@@ -4,6 +4,8 @@ local function printHelp()
     CRT:Print("v" .. CRT.version .. " commands:")
     print("  |cffffd100/crt|r - open or close the main panel")
     print("  |cffffd100/crt groups|r - open the Raid Groups page")
+    print("  |cffffd100/crt consumables|r - open the Consumables page")
+    print("  |cffffd100/crt readycheck|r - preview the ready check consumables row")
     print("  |cffffd100/crt help|r - show this list")
 end
 
@@ -14,6 +16,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.UI:Toggle()
     elseif msg == "groups" then
         CRT.UI:Show("groups")
+    elseif msg == "consumables" then
+        CRT.UI:Show("consumables")
+    elseif msg == "readycheck" or msg == "rc" then
+        CRT.ConsumablesDisplay:Preview()
     elseif msg == "help" or msg == "?" then
         printHelp()
     else
