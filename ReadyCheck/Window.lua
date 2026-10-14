@@ -183,12 +183,13 @@ end
 -- Sample players for the previews: { name, class, ready, dur, cells[key] = { state, icon, left } }.
 function Window.SampleMembers()
     local list = {
-        { name = "Solex", class = "PALADIN", ready = "ready", dur = 90, states = { food = "ok", flask = "low", rune = "ok", vantus = "ok", intellect = "ok", stamina = "ok", attack = "ok", versatility = "ok", mastery = "ok", movement = "ok" } },
-        { name = "Rixxy", class = "MAGE", ready = "waiting", dur = 100, states = { food = "ok", flask = "ok", intellect = "ok", stamina = "missing", attack = "ok", versatility = "ok", mastery = "ok", movement = "missing" } },
-        { name = "Gadios", class = "ROGUE", ready = "notready", dur = 42, states = { food = "missing", flask = "ok", rune = "missing", intellect = "ok", stamina = "ok", attack = "ok", versatility = "missing", mastery = "ok", movement = "ok" } },
-        { name = "Abu", class = "DRUID", ready = "ready", states = { food = "unknown", flask = "unknown", rune = "unknown", vantus = "unknown", intellect = "unknown", stamina = "unknown", attack = "unknown", versatility = "unknown", mastery = "unknown", movement = "unknown" } },
+        { name = "Solex", class = "PALADIN", role = "HEALER", subgroup = 2, ready = "ready", dur = 90, states = { food = "ok", flask = "low", rune = "ok", vantus = "ok", intellect = "ok", stamina = "ok", attack = "ok", versatility = "ok", mastery = "ok", movement = "ok" } },
+        { name = "Rixxy", class = "MAGE", role = "DAMAGER", subgroup = 1, ready = "waiting", dur = 100, states = { food = "ok", flask = "ok", intellect = "ok", stamina = "missing", attack = "ok", versatility = "ok", mastery = "ok", movement = "missing" } },
+        { name = "Gadios", class = "ROGUE", role = "DAMAGER", subgroup = 2, ready = "notready", dur = 42, states = { food = "missing", flask = "ok", rune = "missing", intellect = "ok", stamina = "ok", attack = "ok", versatility = "missing", mastery = "ok", movement = "ok" } },
+        { name = "Abu", class = "DRUID", role = "TANK", subgroup = 1, ready = "ready", states = { food = "unknown", flask = "unknown", rune = "unknown", vantus = "unknown", intellect = "unknown", stamina = "unknown", attack = "unknown", versatility = "unknown", mastery = "unknown", movement = "unknown" } },
     }
-    for _, m in ipairs(list) do
+    for i, m in ipairs(list) do
+        m.order = i
         m.cells = {}
         for _, col in ipairs(Window.COLUMNS) do
             m.cells[col.key] = { state = m.states[col.key] or "missing", icon = sampleIcon(col.key), left = 240 }
@@ -207,6 +208,38 @@ function Window.Dress(f)
     f.title:SetPoint("TOPLEFT", 8, -6)
     f.timer = f:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     f.timer:SetPoint("TOPRIGHT", -8, -8)
+end
+
+-- Sorting -------------------------------------------------------------------------------------
+
+Window.SORTS = {
+    { key = "group", label = "Group" },
+    { key = "role", label = "Role" },
+    { key = "name", label = "Name" },
+}
+
+local ROLE_ORDER = { TANK = 1, HEALER = 2, DAMAGER = 3 }
+
+-- Sorts players in place by the window's "sort" setting: group (raid group, then raid order), role
+-- (tanks, healers, damage, then no role, each by name) or name. Ties fall back to raid order.
+function Window.Sort(members)
+    local mode = settings().sort or "group"
+    table.sort(members, function(a, b)
+        if mode == "group" and (a.subgroup or 9) ~= (b.subgroup or 9) then
+            return (a.subgroup or 9) < (b.subgroup or 9)
+        end
+        if mode == "role" then
+            local ra, rb = ROLE_ORDER[a.role] or 4, ROLE_ORDER[b.role] or 4
+            if ra ~= rb then
+                return ra < rb
+            end
+        end
+        if (mode == "role" or mode == "name") and a.name ~= b.name then
+            return a.name:lower() < b.name:lower()
+        end
+        return (a.order or 0) < (b.order or 0)
+    end)
+    return members
 end
 
 local Table = {}
@@ -410,7 +443,14 @@ function Table:Draw(members, columns, dim)
         local row = self:Row(i)
         row:Show()
         row.name:SetText(m.name)
-        row.name:SetTextColor(classColor(m.class))
+        local r, g, b = classColor(m.class)
+        row.name:SetTextColor(r, g, b)
+        -- A bar in the class color behind the row, or plain stripes when that is off.
+        if settings().classBars then
+            row.bg:SetColorTexture(r, g, b, 0.22)
+        else
+            row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.04 or 0)
+        end
         if m.ready == "ready" then
             readyCount = readyCount + 1
         end
@@ -484,6 +524,7 @@ function Window:Refresh()
         columns = visibleColumns(Report.Classes(members))
         liveMembers(members, columns)
     end
+    Window.Sort(members)
     local readyCount = windowTable:Draw(members, columns)
     local left = math.max(0, math.ceil(shownUntil - GetTime()))
     if stayOpen and not checkActive and not previewOn then
@@ -507,7 +548,7 @@ function Window:DrawEditor(t)
     for _, col in ipairs(columns) do
         dim[col.key] = not settings().columns[col.key]
     end
-    local members = Window.SampleMembers()
+    local members = Window.Sort(Window.SampleMembers())
     local readyCount = t:Draw(members, columns, dim)
     t.parent.title:SetText(format("Ready check  %d/%d ready", readyCount, #members))
     t.parent.timer:SetText((settings().seconds or 30) .. "s, right-click to close")

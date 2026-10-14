@@ -84,24 +84,27 @@ local function makeCheck(parent, x, y, text, field, sub)
 end
 
 -- A button that steps through a list of choices for one setting.
-local function makeCycle(parent, x, y, width, prefix, field, choices)
+-- holder optionally returns the table that holds field, by default CRTDB.readycheck.
+local function makeCycle(parent, x, y, width, prefix, field, choices, holder)
+    holder = holder or settings
     local b = makeButton(parent, prefix, width)
     b:SetPoint("TOPLEFT", x, y)
     b:SetScript("OnClick", function()
-        local current = settings()[field]
+        local current = holder()[field]
         local index = 1
         for i, c in ipairs(choices) do
             if c.key == current then
                 index = i % #choices + 1
             end
         end
-        settings()[field] = choices[index].key
+        holder()[field] = choices[index].key
+        CRT.ReadyCheckWindow:Apply()
         refresh()
     end)
     b.refresh = function()
         local text = choices[1].label
         for _, c in ipairs(choices) do
-            if c.key == settings()[field] then
+            if c.key == holder()[field] then
                 text = c.label
             end
         end
@@ -261,6 +264,8 @@ local function buildWindow(f)
     makeCheck(f, 4, -52, "Open the window on a ready check", "enabled", windowSettings)
     makeCheck(f, 28, -80, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings)
     makeCheck(f, 28, -108, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
+    makeCycle(f, 400, -52, 260, "Sort players by", "sort", CRT.ReadyCheckWindow.SORTS, windowSettings)
+    makeCheck(f, 396, -82, "Class color bar behind each row", "classBars", windowSettings)
     makeNumber(f, 32, -138, "Seconds open (5 to 120)", "seconds", 5, 120)
     makeNumber(f, 32, -166, "Size % (50 to 150)", "scale", 50, 150)
 

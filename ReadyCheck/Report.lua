@@ -110,7 +110,29 @@ local function unitAuras(unit)
     return out
 end
 
--- Everyone in the group with their class and buffs. Players whose buffs can't be read have auras = nil.
+-- A unit's raid group: from the raid roster in a raid, 1 in a party or solo.
+local function subgroupOf(unit)
+    local index = unit:match("^raid(%d+)$")
+    if index then
+        local _, _, subgroup = GetRaidRosterInfo(tonumber(index))
+        if subgroup and not isSecret(subgroup) then
+            return subgroup
+        end
+    end
+    return 1
+end
+
+-- TANK, HEALER or DAMAGER, or nil when no role is assigned or it can't be read.
+local function roleOf(unit)
+    local role = UnitGroupRolesAssigned(unit)
+    if isSecret(role) or role == "NONE" then
+        return nil
+    end
+    return role
+end
+
+-- Everyone in the group with their class, raid group, role and buffs, in raid order (order).
+-- Players whose buffs can't be read have auras = nil.
 local function readGroup()
     local members = {}
     for _, unit in ipairs(units()) do
@@ -118,7 +140,16 @@ local function readGroup()
         if name and not isSecret(name) then
             local _, class = UnitClass(unit)
             local auras, why = unitAuras(unit)
-            members[#members + 1] = { unit = unit, name = Ambiguate(name, "short"), class = (not isSecret(class)) and class or nil, auras = auras, why = why }
+            members[#members + 1] = {
+                unit = unit,
+                name = Ambiguate(name, "short"),
+                class = (not isSecret(class)) and class or nil,
+                subgroup = subgroupOf(unit),
+                role = roleOf(unit),
+                order = #members + 1,
+                auras = auras,
+                why = why,
+            }
         end
     end
     return members
