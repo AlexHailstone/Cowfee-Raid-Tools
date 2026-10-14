@@ -12,9 +12,9 @@ local Bar = CRT.ConsumablesBar
 local UI = CRT.UI
 
 local CAT_ROW_H = 36
-local ITEM_ROW_H = 32
-local LEFT_W = 270
-local RIGHT_X = 300
+local ITEM_ROW_H = 40
+local LEFT_W = 290
+local RIGHT_X = 316
 local REFRESH_SECONDS = 0.5
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -173,31 +173,34 @@ local function itemRow(index)
     skin(row, 0.4)
 
     row.icon = row:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(22, 22)
+    row.icon:SetSize(26, 26)
     row.icon:SetPoint("LEFT", 6, 0)
     row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-    row.down = makeButton(row, "Down", 54, 22)
+    row.down = makeButton(row, "Down", 50, 22)
     row.down:SetPoint("RIGHT", -4, 0)
     row.down:SetScript("OnClick", function()
         Consumables:MoveItem(selected, row.itemId, 1)
     end)
-    row.up = makeButton(row, "Up", 44, 22)
-    row.up:SetPoint("RIGHT", row.down, "LEFT", -4, 0)
+    row.up = makeButton(row, "Up", 38, 22)
+    row.up:SetPoint("RIGHT", row.down, "LEFT", -3, 0)
     row.up:SetScript("OnClick", function()
         Consumables:MoveItem(selected, row.itemId, -1)
     end)
-    row.remove = makeButton(row, "Remove", 68, 22)
-    row.remove:SetPoint("RIGHT", row.up, "LEFT", -4, 0)
+    row.remove = makeButton(row, "Remove", 62, 22)
+    row.remove:SetPoint("RIGHT", row.up, "LEFT", -3, 0)
     row.remove:SetScript("OnClick", function()
         Consumables:RemoveExtra(selected, row.itemId)
     end)
 
-    row.side = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    -- The name on the top line, and how many are in your bags under it, so a long name has room.
     row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.text:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
-    row.text:SetPoint("RIGHT", row.side, "LEFT", -8, 0)
+    row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, 1)
+    row.text:SetPoint("RIGHT", row, "RIGHT", -170, 0)
     row.text:SetJustifyH("LEFT")
+    row.text:SetWordWrap(false)
+    row.side = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.side:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, -1)
 
     itemRows[index] = row
     return row
@@ -231,8 +234,6 @@ local function refreshItems()
             row.side:SetText("|cff888888none|r")
         end
         row.remove:SetShown(entry.user and true or false)
-        row.side:ClearAllPoints()
-        row.side:SetPoint("RIGHT", entry.user and row.remove or row.up, "LEFT", -8, 0)
         row.up:SetEnabled(i > 1)
         row.down:SetEnabled(i < #entries)
         row:Show()
@@ -361,11 +362,14 @@ local function build(pf)
     scroll:SetPoint("TOPLEFT", 4, -4)
     scroll:SetPoint("BOTTOMRIGHT", -26, 4)
     itemChild = CreateFrame("Frame", nil, scroll)
-    itemChild:SetSize(340, 1)
+    itemChild:SetSize(316, 1)
     scroll:SetScrollChild(itemChild)
 
     itemEmpty = box:CreateFontString(nil, "OVERLAY", "CRTFontDisable")
-    itemEmpty:SetPoint("TOP", box, "TOP", 0, -24)
+    itemEmpty:SetPoint("TOPLEFT", box, "TOPLEFT", 20, -24)
+    itemEmpty:SetPoint("TOPRIGHT", box, "TOPRIGHT", -40, -24)
+    itemEmpty:SetJustifyH("CENTER")
+    itemEmpty:SetWordWrap(true)
     itemEmpty:SetText("Nothing is listed for this category yet. Drag an item here to add it.")
     itemEmpty:Hide()
 

@@ -82,6 +82,9 @@ end
 
 -- Shows a status (from Consumables:Status) on an icon: the picture, the ants, and the text.
 function Bar.Apply(slot, status)
+    -- Reset the border every time, so a highlight set by a caller (the selected icon on the
+    -- Consumables tab) goes away as soon as it stops being applied.
+    slot:SetBackdropBorderColor(BORDER[1], BORDER[2], BORDER[3], 1)
     slot.icon:SetTexture(status.icon or Consumables.QUESTION_MARK)
     local dim = status.state == "missing" or status.state == "unset" or status.state == "unknown"
     slot.icon:SetDesaturated(dim)
@@ -95,10 +98,12 @@ function Bar.Apply(slot, status)
         Ants:Stop(slot)
     end
 
+    -- "no data" is too wide for one line under a 44 pixel icon, so it is two small lines.
+    slot.time:SetFontObject(status.state == "unset" and CRTFontSmall or CRTFontHighlight)
     if status.state == "unknown" then
         slot.time:SetText("?")
     elseif status.state == "unset" then
-        slot.time:SetText("no data")
+        slot.time:SetText("no\ndata")
     elseif status.left then
         slot.time:SetText(Bar.FormatTime(status.left))
     else

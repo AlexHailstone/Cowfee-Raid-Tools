@@ -24,7 +24,7 @@ Consumables.CATEGORIES = {
     { key = "food", label = "Food", kind = "buff", clickable = true },
     { key = "flask", label = "Flask", kind = "buff", clickable = true },
     { key = "potion", label = "Potion", kind = "count" },
-    { key = "weapon", label = "Weapon oil or stone", kind = "weapon", clickable = true },
+    { key = "weapon", label = "Weapon oil/stone", kind = "weapon", clickable = true },
     { key = "rune", label = "Augment rune", kind = "buff" },
 }
 
