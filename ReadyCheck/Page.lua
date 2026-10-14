@@ -30,6 +30,18 @@ local function settings()
     return CRT.db.readycheck
 end
 
+local function tooltip(frame, title, body)
+    frame:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(title, 1, 1, 1)
+        GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    frame:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
 local function makeButton(parent, label, width, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
@@ -212,10 +224,6 @@ local function windowSettings()
     return settings().window
 end
 
-local function windowColumns()
-    return settings().window.columns
-end
-
 local function makeNumber(parent, x, y, text, field, low, high)
     local fs = label(parent, text, "CRTFontSmall")
     fs:SetPoint("TOPLEFT", x, y - 4)
@@ -256,69 +264,53 @@ local function buildWindow(f)
     makeNumber(f, 32, -138, "Seconds open (5 to 120)", "seconds", 5, 120)
     makeNumber(f, 32, -166, "Size % (50 to 150)", "scale", 50, 150)
 
-    local cols = label(f, "Columns, top is leftmost. Tick to show, Up and Down to move.")
-    cols:SetPoint("TOPLEFT", 8, -206)
-    -- One row per column. The rows stay put and take the column at their place in the order.
     local Window = CRT.ReadyCheckWindow
-    for i = 1, #Window.COLUMNS do
-        local y = -228 - (i - 1) * 26
-        local check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        check:SetSize(24, 24)
-        check:SetPoint("TOPLEFT", 4, y)
-        local name = label(f, "", "CRTFontSmall")
-        name:SetPoint("LEFT", check, "RIGHT", 2, 0)
-        name:SetWidth(200)
-        local up = makeButton(f, "Up", 60, 22)
-        up:SetPoint("TOPLEFT", 240, y - 1)
-        local down = makeButton(f, "Down", 70, 22)
-        down:SetPoint("LEFT", up, "RIGHT", 4, 0)
-        local function column()
-            return Window:OrderedColumns()[i]
-        end
-        check:SetScript("OnClick", function(self)
-            windowColumns()[column().key] = self:GetChecked() and true or false
-            Window:Apply()
-        end)
-        up:SetScript("OnClick", function()
-            Window:MoveColumn(column().key, -1)
-            refresh()
-        end)
-        down:SetScript("OnClick", function()
-            Window:MoveColumn(column().key, 1)
-            refresh()
-        end)
-        check.refresh = function()
-            local col = column()
-            name:SetText(col.label)
-            check:SetChecked(windowColumns()[col.key] and true or false)
-            up:SetEnabled(i > 1)
-            down:SetEnabled(i < #Window.COLUMNS)
-        end
-        controls[#controls + 1] = check
+    local cols = label(f, "Columns: drag a heading left or right to move it, click it to show or hide it. Faded columns are hidden.")
+    cols:SetPoint("TOPLEFT", 8, -200)
+    cols:SetWidth(670)
+
+    -- The same table the window draws, with sample players, in edit mode.
+    local box = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    box:SetPoint("TOPLEFT", 8, -226)
+    Window.Dress(box)
+    local editor
+    editor = Window.NewTable(box, true, function()
+        Window:DrawEditor(editor)
+    end)
+    box.refresh = function()
+        Window:DrawEditor(editor)
     end
-    local resetOrder = makeButton(f, "Default order", 140, 22)
-    resetOrder:SetPoint("TOPLEFT", 400, -228)
+    controls[#controls + 1] = box
+
+    local y = -226 - 150
+    local resetOrder = makeButton(f, "Default order", 150)
+    resetOrder:SetPoint("TOPLEFT", 8, y)
     resetOrder:SetScript("OnClick", function()
         windowSettings().order = {}
         Window:Apply()
         refresh()
     end)
-
-    local y = -228 - #Window.COLUMNS * 26 - 12
-    local key = label(f, "In the table: an icon means they have it, a gold number is minutes left on an expiring flask, x is missing, ? means the game hid their buffs. Durability only shows for players who run Cowfee Raid Tools, since each one sends their own.", "CRTFontDisableSmall")
-    key:SetPoint("TOPLEFT", 8, y)
-    key:SetWidth(670)
-
-    local test = makeButton(f, "Show it now", 160)
-    test:SetPoint("TOPLEFT", 8, y - 44)
+    local test = makeButton(f, "Show it now", 150)
+    test:SetPoint("LEFT", resetOrder, "RIGHT", 8, 0)
     test:SetScript("OnClick", function()
-        CRT.ReadyCheckWindow:Show()
+        Window:Show(nil, true)
     end)
-    local reset = makeButton(f, "Reset position", 160)
-    reset:SetPoint("LEFT", test, "RIGHT", 8, 0)
+    tooltip(test, "Show it now", "Opens the window with these sample players, exactly as arranged here. Right-click it to close it.")
+    local live = makeButton(f, "Show with my group", 180)
+    live:SetPoint("LEFT", test, "RIGHT", 8, 0)
+    live:SetScript("OnClick", function()
+        Window:Show()
+    end)
+    tooltip(live, "Show with my group", "Opens the window with your current group, as a ready check would. Raid buff columns follow Only raid buff columns my group can give.")
+    local reset = makeButton(f, "Reset position", 150)
+    reset:SetPoint("LEFT", live, "RIGHT", 8, 0)
     reset:SetScript("OnClick", function()
-        CRT.ReadyCheckWindow:ResetPosition()
+        Window:ResetPosition()
     end)
+
+    local key = label(f, "In the table: an icon means they have it, a gold number is minutes left on an expiring flask, x is missing, ? means the game hid their buffs. Durability only shows for players who run Cowfee Raid Tools, since each one sends their own.", "CRTFontDisableSmall")
+    key:SetPoint("TOPLEFT", 8, y - 36)
+    key:SetWidth(670)
 end
 
 -- Tabs ----------------------------------------------------------------------------------------

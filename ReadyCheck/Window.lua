@@ -39,8 +39,9 @@ for _, buff in ipairs(Report.BUFFS) do
 end
 Window.COLUMNS[#Window.COLUMNS + 1] = { key = "durability", short = "Dur", label = "Durability" }
 
-local frame, rows, headers = nil, {}, {}
+local frame
 local shownUntil, previewOn = 0, false
+local sampleOn = false -- opened by Show it now: sample players, closes like the real one
 local readyState = {} -- short name -> "ready" | "notready" | "waiting"
 local durability = {} -- short name -> percent
 
@@ -117,21 +118,15 @@ function Window:OrderedColumns()
     return out
 end
 
--- Moves a column one place left (delta -1) or right (delta 1).
-function Window:MoveColumn(key, delta)
+-- Moves a column to a place in the order, 1 being leftmost.
+function Window:MoveColumnTo(key, index)
     local keys = {}
-    for i, col in ipairs(self:OrderedColumns()) do
-        keys[i] = col.key
-    end
-    for i, k in ipairs(keys) do
-        if k == key then
-            local j = i + delta
-            if j >= 1 and j <= #keys then
-                keys[i], keys[j] = keys[j], keys[i]
-            end
-            break
+    for _, col in ipairs(self:OrderedColumns()) do
+        if col.key ~= key then
+            keys[#keys + 1] = col.key
         end
     end
+    table.insert(keys, math.max(1, math.min(#keys + 1, index)), key)
     settings().order = keys
     self:Apply()
 end
@@ -147,16 +142,11 @@ local function visibleColumns(classes)
     return out
 end
 
-local function sampleMembers()
-    return {
-        { name = "Solex", class = "PALADIN", ready = "ready", dur = 90, cells = { food = "ok", flask = "low", rune = "ok", intellect = "ok", stamina = "ok", versatility = "ok" } },
-        { name = "Rixxy", class = "MAGE", ready = "waiting", dur = 100, cells = { food = "ok", flask = "ok", intellect = "ok", stamina = "missing", versatility = "ok" } },
-        { name = "Gadios", class = "ROGUE", ready = "notready", dur = 42, cells = { food = "missing", flask = "ok", rune = "missing", intellect = "ok", stamina = "ok", versatility = "missing" } },
-        { name = "Abu", class = "DRUID", ready = "ready", cells = {} },
-    }
-end
-
 -- Drawing -----------------------------------------------------------------------------------
+-- A table is the column headings and one row per player, drawn inside a frame dressed by
+-- Window.Dress. The ready check window draws one. The Window tab of the Ready Check page draws
+-- another with sample players in edit mode, where a heading is dragged to move its column and
+-- clicked to show or hide it, so what you arrange there is exactly what the window shows.
 
 local function classColor(class)
     local c = class and RAID_CLASS_COLORS[class]
@@ -166,15 +156,151 @@ local function classColor(class)
     return 1, 1, 1
 end
 
-local function getRow(i)
-    local row = rows[i]
+local function sampleIcon(key)
+    local buff = Report.BuffByKey[key]
+    if buff then
+        return C_Spell.GetSpellTexture(buff.spell)
+    end
+    return CRT.Consumables.QUESTION_MARK
+end
+
+-- Sample players for the previews: { name, class, ready, dur, cells[key] = { state, icon, left } }.
+function Window.SampleMembers()
+    local list = {
+        { name = "Solex", class = "PALADIN", ready = "ready", dur = 90, states = { food = "ok", flask = "low", rune = "ok", vantus = "ok", intellect = "ok", stamina = "ok", attack = "ok", versatility = "ok", mastery = "ok", movement = "ok" } },
+        { name = "Rixxy", class = "MAGE", ready = "waiting", dur = 100, states = { food = "ok", flask = "ok", intellect = "ok", stamina = "missing", attack = "ok", versatility = "ok", mastery = "ok", movement = "missing" } },
+        { name = "Gadios", class = "ROGUE", ready = "notready", dur = 42, states = { food = "missing", flask = "ok", rune = "missing", intellect = "ok", stamina = "ok", attack = "ok", versatility = "missing", mastery = "ok", movement = "ok" } },
+        { name = "Abu", class = "DRUID", ready = "ready", states = { food = "unknown", flask = "unknown", rune = "unknown", vantus = "unknown", intellect = "unknown", stamina = "unknown", attack = "unknown", versatility = "unknown", mastery = "unknown", movement = "unknown" } },
+    }
+    for _, m in ipairs(list) do
+        m.cells = {}
+        for _, col in ipairs(Window.COLUMNS) do
+            m.cells[col.key] = { state = m.states[col.key] or "missing", icon = sampleIcon(col.key), left = 240 }
+        end
+    end
+    return list
+end
+
+-- Gives a frame the window's look: backdrop, title and the time line in the corner. The frame must
+-- be made with BackdropTemplate.
+function Window.Dress(f)
+    f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    f:SetBackdropColor(0.05, 0.05, 0.07, 0.88)
+    f:SetBackdropBorderColor(0.78, 0.63, 0.31, 1)
+    f.title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    f.title:SetPoint("TOPLEFT", 8, -6)
+    f.timer = f:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    f.timer:SetPoint("TOPRIGHT", -8, -8)
+end
+
+local Table = {}
+Table.__index = Table
+
+-- parent is a frame dressed by Window.Dress. edit turns on dragging and clicking the headings, and
+-- onEdit is called after a column is moved, shown or hidden.
+function Window.NewTable(parent, edit, onEdit)
+    local t = setmetatable({ parent = parent, edit = edit, onEdit = onEdit, rows = {}, headers = {}, count = 0, rowCount = 0 }, Table)
+    if edit then
+        t.marker = parent:CreateTexture(nil, "OVERLAY")
+        t.marker:SetColorTexture(1, 0.82, 0, 1)
+        t.marker:SetWidth(2)
+        t.marker:Hide()
+    end
+    return t
+end
+
+local function columnX(j)
+    return 6 + READY_W + NAME_W + (j - 1) * COL_W
+end
+
+-- The column index under the cursor, 1 to count.
+function Table:IndexAtCursor()
+    local scale = self.parent:GetEffectiveScale()
+    local x = GetCursorPosition() / scale - self.parent:GetLeft()
+    return math.max(1, math.min(self.count, math.floor((x - columnX(1)) / COL_W) + 1))
+end
+
+local function headerClick(self)
+    local columns = settings().columns
+    columns[self.key] = not columns[self.key]
+    Window:Apply()
+    self.owner.onEdit()
+end
+
+local function headerDragStart(self)
+    self.owner.dragKey = self.key
+    self.text:SetTextColor(1, 0.82, 0)
+end
+
+local function headerDragStop(self)
+    local t = self.owner
+    t.dragKey = nil
+    t.marker:Hide()
+    Window:MoveColumnTo(self.key, t:IndexAtCursor())
+    t.onEdit()
+end
+
+-- While a heading is dragged, a gold line marks where the column will land.
+local function headerUpdate(self)
+    local t = self.owner
+    if t.dragKey ~= self.key then
+        return
+    end
+    local index = t:IndexAtCursor()
+    local x = columnX(index) + (index > self.index and COL_W or 0)
+    t.marker:ClearAllPoints()
+    t.marker:SetPoint("TOP", t.parent, "TOPLEFT", x, -TOP_H + 22)
+    t.marker:SetHeight(t.rowCount * ROW_H + 24)
+    t.marker:Show()
+end
+
+local function headerEnter(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText(self.label, 1, 1, 1)
+    GameTooltip:AddLine("Click to show or hide this column. Drag it left or right to move it.", 0.8, 0.8, 0.8, true)
+    GameTooltip:Show()
+end
+
+function Table:Header(j)
+    local h = self.headers[j]
+    if h then
+        return h
+    end
+    h = CreateFrame("Button", nil, self.parent)
+    h:SetSize(COL_W, 20)
+    h.owner = self
+    h.text = h:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    h.text:SetPoint("CENTER")
+    if self.edit then
+        local hl = h:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.12)
+        h:RegisterForClicks("LeftButtonUp")
+        h:RegisterForDrag("LeftButton")
+        h:SetScript("OnClick", headerClick)
+        h:SetScript("OnDragStart", headerDragStart)
+        h:SetScript("OnDragStop", headerDragStop)
+        h:SetScript("OnUpdate", headerUpdate)
+        h:SetScript("OnEnter", headerEnter)
+        h:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    else
+        h:EnableMouse(false)
+    end
+    self.headers[j] = h
+    return h
+end
+
+function Table:Row(i)
+    local row = self.rows[i]
     if row then
         return row
     end
-    row = CreateFrame("Frame", nil, frame)
+    row = CreateFrame("Frame", nil, self.parent)
     row:SetHeight(ROW_H)
     row:SetPoint("TOPLEFT", 6, -TOP_H - (i - 1) * ROW_H)
-    row:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
+    row:SetPoint("RIGHT", self.parent, "RIGHT", -6, 0)
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetAllPoints()
     row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.04 or 0)
@@ -187,7 +313,7 @@ local function getRow(i)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     row.cells = {}
-    rows[i] = row
+    self.rows[i] = row
     return row
 end
 
@@ -208,22 +334,22 @@ local function getCell(row, j)
     return cell
 end
 
--- state: "ok", "low", "missing", "unknown" or nil (column empty for this player).
-local function drawCell(cell, state, icon, left)
+-- c.state: "ok", "low", "missing" or "unknown".
+local function drawCell(cell, c)
     cell.icon:Hide()
     cell.text:SetText("")
-    if state == "ok" or state == "low" then
-        cell.icon:SetTexture(icon or CRT.Consumables.QUESTION_MARK)
+    if c.state == "ok" or c.state == "low" then
+        cell.icon:SetTexture(c.icon or CRT.Consumables.QUESTION_MARK)
         cell.icon:Show()
-        if state == "low" then
+        if c.state == "low" then
             cell.icon:SetVertexColor(1, 0.6, 0.6)
-            cell.text:SetText(left and ("|cffffd100" .. math.max(1, math.floor(left / 60 + 0.5)) .. "|r") or "|cffffd100!|r")
+            cell.text:SetText(c.left and ("|cffffd100" .. math.max(1, math.floor(c.left / 60 + 0.5)) .. "|r") or "|cffffd100!|r")
         else
             cell.icon:SetVertexColor(1, 1, 1)
         end
-    elseif state == "missing" then
+    elseif c.state == "missing" then
         cell.text:SetText("|cffff4040x|r")
-    elseif state == "unknown" then
+    elseif c.state == "unknown" then
         cell.text:SetText("|cff888888?|r")
     end
 end
@@ -238,94 +364,116 @@ local function drawDurability(cell, percent)
     cell.text:SetText("|cff" .. color .. percent .. "%|r")
 end
 
-local function layout(columns, count)
+-- members: { name, class, ready, dur, cells[key] }. columns: the columns in order. dim[key] fades a
+-- column (hidden columns on the Window tab). Sizes the parent and returns how many are ready.
+function Table:Draw(members, columns, dim)
+    dim = dim or {}
+    self.count, self.rowCount = #columns, #members
     for j, col in ipairs(columns) do
-        local h = headers[j]
-        if not h then
-            h = frame:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-            headers[j] = h
-        end
+        local h = self:Header(j)
+        h.key, h.label, h.index = col.key, col.label, j
         h:ClearAllPoints()
-        h:SetPoint("BOTTOM", frame, "TOPLEFT", 6 + READY_W + NAME_W + (j - 0.5) * COL_W, -TOP_H + 4)
-        h:SetText(col.short)
+        h:SetPoint("BOTTOMLEFT", self.parent, "TOPLEFT", columnX(j), -TOP_H)
+        h.text:SetText(col.short)
+        if self.dragKey ~= col.key then
+            if dim[col.key] then
+                h.text:SetTextColor(0.45, 0.45, 0.45)
+            else
+                h.text:SetTextColor(0.85, 0.85, 0.85)
+            end
+        end
         h:Show()
     end
-    for j = #columns + 1, #headers do
-        headers[j]:Hide()
+    for j = #columns + 1, #self.headers do
+        self.headers[j]:Hide()
     end
-    frame:SetSize(12 + READY_W + NAME_W + math.max(#columns, 3) * COL_W, TOP_H + math.max(count, 1) * ROW_H + 8)
-end
-
-local function sampleIcon(key)
-    local buff = Report.BuffByKey[key]
-    if buff then
-        return C_Spell.GetSpellTexture(buff.spell)
-    end
-    return CRT.Consumables.QUESTION_MARK
-end
-
-function Window:Refresh()
-    if not frame or not frame:IsShown() then
-        return
-    end
-    local members, classes
-    if previewOn then
-        members = sampleMembers()
-    else
-        members = Report:ReadGroup()
-        classes = Report.Classes(members)
-    end
-    local columns = visibleColumns(classes)
-    layout(columns, #members)
+    self.parent:SetSize(12 + READY_W + NAME_W + math.max(#columns, 3) * COL_W, TOP_H + math.max(#members, 1) * ROW_H + 8)
 
     local readyCount = 0
     for i, m in ipairs(members) do
-        local row = getRow(i)
+        local row = self:Row(i)
         row:Show()
-        local r, g, b = classColor(m.class)
         row.name:SetText(m.name)
-        row.name:SetTextColor(r, g, b)
-
-        local ready = m.ready
-        if not previewOn then
-            -- Answers come from READY_CHECK and READY_CHECK_CONFIRM. GetReadyCheckStatus has no Warcraft
-            -- Wiki page, so it is only used if the game has it.
-            if GetReadyCheckStatus then
-                local ok, status = pcall(GetReadyCheckStatus, m.unit)
-                if ok and status and not isSecret(status) then
-                    readyState[m.name] = status
-                end
-            end
-            ready = readyState[m.name] or "waiting"
-        end
-        if ready == "ready" then
+        row.name:SetTextColor(classColor(m.class))
+        if m.ready == "ready" then
             readyCount = readyCount + 1
         end
-        row.ready:SetTexture(ready and READY_ICONS[ready] or nil)
-
+        row.ready:SetTexture(m.ready and READY_ICONS[m.ready] or nil)
         for j, col in ipairs(columns) do
             local cell = getCell(row, j)
             cell:Show()
+            cell:SetAlpha(dim[col.key] and 0.25 or 1)
             if col.key == "durability" then
-                drawDurability(cell, previewOn and m.dur or durability[m.name])
-            elseif previewOn then
-                drawCell(cell, m.cells[col.key] or "missing", sampleIcon(col.key), 240)
+                drawDurability(cell, m.dur)
             else
-                local c = Report.Cell(m, col.key)
-                drawCell(cell, c.state, c.icon, c.left)
+                drawCell(cell, m.cells[col.key] or { state = "missing" })
             end
         end
         for j = #columns + 1, #row.cells do
             row.cells[j]:Hide()
         end
     end
-    for i = #members + 1, #rows do
-        rows[i]:Hide()
+    for i = #members + 1, #self.rows do
+        self.rows[i]:Hide()
     end
+    return readyCount
+end
 
+-- The group as the window shows it, with ready answers, cells and durability filled in.
+local function liveMembers(members, columns)
+    for _, m in ipairs(members) do
+        -- Answers come from READY_CHECK and READY_CHECK_CONFIRM. GetReadyCheckStatus has no Warcraft
+        -- Wiki page, so it is only used if the game has it.
+        if GetReadyCheckStatus then
+            local ok, status = pcall(GetReadyCheckStatus, m.unit)
+            if ok and status and not isSecret(status) then
+                readyState[m.name] = status
+            end
+        end
+        m.ready = readyState[m.name] or "waiting"
+        m.dur = durability[m.name]
+        m.cells = {}
+        for _, col in ipairs(columns) do
+            if col.key ~= "durability" then
+                m.cells[col.key] = Report.Cell(m, col.key)
+            end
+        end
+    end
+    return members
+end
+
+local windowTable
+
+function Window:Refresh()
+    if not frame or not frame:IsShown() then
+        return
+    end
+    local members, columns
+    if previewOn or sampleOn then
+        members = Window.SampleMembers()
+        columns = visibleColumns(nil)
+    else
+        members = Report:ReadGroup()
+        columns = visibleColumns(Report.Classes(members))
+        liveMembers(members, columns)
+    end
+    local readyCount = windowTable:Draw(members, columns)
     local left = math.max(0, math.ceil(shownUntil - GetTime()))
     frame.title:SetText(format("Ready check  %d/%d ready", readyCount, #members))
     frame.timer:SetText(previewOn and "preview" or (left .. "s, right-click to close"))
+end
+
+-- What the Window tab draws: every column in order, the hidden ones faded, with sample players.
+function Window:DrawEditor(t)
+    local columns = self:OrderedColumns()
+    local dim = {}
+    for _, col in ipairs(columns) do
+        dim[col.key] = not settings().columns[col.key]
+    end
+    local members = Window.SampleMembers()
+    local readyCount = t:Draw(members, columns, dim)
+    t.parent.title:SetText(format("Ready check  %d/%d ready", readyCount, #members))
+    t.parent.timer:SetText((settings().seconds or 30) .. "s, right-click to close")
 end
 
 -- The frame ---------------------------------------------------------------------------------
@@ -354,9 +502,8 @@ local function build()
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
-    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    frame:SetBackdropColor(0.05, 0.05, 0.07, 0.88)
-    frame:SetBackdropBorderColor(0.78, 0.63, 0.31, 1)
+    Window.Dress(frame)
+    windowTable = Window.NewTable(frame, false)
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
@@ -368,10 +515,6 @@ local function build()
         end
     end)
 
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    frame.title:SetPoint("TOPLEFT", 8, -6)
-    frame.timer = frame:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    frame.timer:SetPoint("TOPRIGHT", -8, -8)
 
     local elapsed = 0
     frame:SetScript("OnUpdate", function(_, dt)
@@ -390,10 +533,12 @@ local function build()
     frame:Hide()
 end
 
-function Window:Show(seconds)
+-- sample shows the sample players from the Window tab instead of your group.
+function Window:Show(seconds, sample)
     if not frame then
         build()
     end
+    sampleOn = sample and true or false
     applyPosition()
     shownUntil = GetTime() + (seconds or settings().seconds or 30)
     frame:Show()
