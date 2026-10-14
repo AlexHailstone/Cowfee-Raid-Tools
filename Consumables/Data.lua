@@ -51,7 +51,12 @@ function Consumables:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
 end
 
+-- Each category's list, built once and kept until something that changes it calls Fire. The bar and
+-- the ready check read the lists twice a second, so rebuilding them every time made a lot of garbage.
+local entriesCache = {}
+
 function Consumables:Fire()
+    wipe(entriesCache)
     for _, fn in ipairs(self.listeners) do
         fn()
     end
@@ -150,8 +155,13 @@ function Consumables:MoveCategoryTo(key, index)
 end
 
 -- Entries for a category: the shipped ones, then the player's own, rearranged by the player's
--- saved order. Each is a fresh table { item, buff, name, best, low, user, category }.
+-- saved order. Each is { item, buff, name, best, low, user, category }. The list is shared until the
+-- next change, so callers must not change it.
 function Consumables:Entries(key)
+    local cached = entriesCache[key]
+    if cached then
+        return cached
+    end
     local byItem, base = {}, {}
     local function add(entry, user)
         if entry.item and not byItem[entry.item] then
@@ -195,6 +205,12 @@ function Consumables:MoveItemTo(key, itemId, index)
 end
 
 -- Item and bag helpers ----------------------------------------------------------
+-- Your bags are read again only after the game reports a change (BAG_UPDATE_DELAYED), and item counts
+-- are kept until then too. Reading every bag slot twice a second made thousands of tables a minute.
+
+local bagNames = {} -- names of items in your bags, keyed by item ID; the game's own name is what /use needs
+local countCache = {} -- item ID -> count in your bags, until the bags change
+local bagsDirty = true
 
 local function itemInfo(itemId)
     local ok, id, _, _, _, icon, classId = pcall(C_Item.GetItemInfoInstant, itemId)
@@ -209,8 +225,13 @@ local function itemIcon(itemId)
 end
 
 local function itemCount(itemId)
+    local cached = countCache[itemId]
+    if cached then
+        return cached
+    end
     local ok, count = pcall(C_Item.GetItemCount, itemId)
     if ok and type(count) == "number" then
+        countCache[itemId] = count
         return count
     end
     return 0
@@ -248,10 +269,12 @@ function Consumables:BuffIds(key)
     return out
 end
 
--- Names of items in your bags, keyed by item ID. The game's own name is what /use needs.
-local bagNames = {}
-
-function Consumables:RefreshBags()
+-- Reads your bags if they changed since the last read, or always with force.
+function Consumables:RefreshBags(force)
+    if not bagsDirty and not force then
+        return
+    end
+    bagsDirty = false
     wipe(bagNames)
     if not (C_Container and C_Container.GetContainerItemInfo and C_Container.GetContainerNumSlots) then
         return
@@ -321,7 +344,7 @@ function Consumables:AddExtra(key, itemId)
         end
     end
 
-    self:RefreshBags()
+    self:RefreshBags(true)
     local name = bagNames[itemId]
     if not name then
         local ok, cached = pcall(C_Item.GetItemNameByID, itemId)
@@ -501,6 +524,8 @@ learnFrame:RegisterUnitEvent("UNIT_AURA", "player")
 learnFrame:SetScript("OnEvent", function(_, event)
     if event == "BAG_UPDATE_DELAYED" then
         bagsChanged = true
+        bagsDirty = true
+        wipe(countCache)
     else
         aurasChanged = true
     end

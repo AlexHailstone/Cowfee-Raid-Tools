@@ -95,7 +95,15 @@ local function layout()
     end
 end
 
+-- What the alert last drew, so a refresh that changes nothing skips the work.
+local drawn
+
 local function show(iconTexture, text, time, color)
+    local key = tostring(iconTexture) .. "|" .. text .. "|" .. time .. "|" .. (color and table.concat(color, ",") or "") .. "|" .. tostring(settings().iconPosition) .. "|" .. tostring((select(2, label:GetFont())))
+    if key == drawn and frame:IsShown() then
+        return
+    end
+    drawn = key
     icon:SetShown(iconTexture ~= nil)
     if iconTexture then
         icon:SetTexture(iconTexture)

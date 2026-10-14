@@ -70,12 +70,14 @@ function Ants:Update(frame, dt)
         else
             x, y, horizontal = 0, h - (s - 2 * w - h), false -- left edge, upward
         end
-        dash:ClearAllPoints()
         dash:SetPoint("CENTER", frame, "TOPLEFT", x, -y)
-        if horizontal then
-            dash:SetSize(LONG, SHORT)
-        else
-            dash:SetSize(SHORT, LONG)
+        if dash.horizontal ~= horizontal then
+            dash.horizontal = horizontal
+            if horizontal then
+                dash:SetSize(LONG, SHORT)
+            else
+                dash:SetSize(SHORT, LONG)
+            end
         end
     end
 end
