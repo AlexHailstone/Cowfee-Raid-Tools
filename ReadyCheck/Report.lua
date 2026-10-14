@@ -17,13 +17,14 @@ local CHAT_MAX = 250 -- a chat line can hold 255 characters
 -- Raid buffs, each given by one class. A buff is found by its spell ID or by that spell's name, since
 -- Blessing of the Bronze gives a differently numbered buff to each class. IDs are the retail spell IDs
 -- linked from each Warcraft Wiki page, read 2026-10-14.
+-- short is the ready check window's column heading.
 Report.BUFFS = {
-    { spell = 1459, class = "MAGE", label = "Arcane Intellect" },
-    { spell = 21562, class = "PRIEST", label = "Power Word: Fortitude" },
-    { spell = 6673, class = "WARRIOR", label = "Battle Shout" },
-    { spell = 1126, class = "DRUID", label = "Mark of the Wild" },
-    { spell = 462854, class = "SHAMAN", label = "Skyfury" },
-    { spell = 364342, class = "EVOKER", label = "Blessing of the Bronze" },
+    { key = "intellect", spell = 1459, class = "MAGE", label = "Arcane Intellect", short = "Int" },
+    { key = "stamina", spell = 21562, class = "PRIEST", label = "Power Word: Fortitude", short = "Stam" },
+    { key = "attack", spell = 6673, class = "WARRIOR", label = "Battle Shout", short = "AP" },
+    { key = "versatility", spell = 1126, class = "DRUID", label = "Mark of the Wild", short = "Vers" },
+    { key = "mastery", spell = 462854, class = "SHAMAN", label = "Skyfury", short = "Mast" },
+    { key = "movement", spell = 364342, class = "EVOKER", label = "Blessing of the Bronze", short = "Move" },
 }
 
 -- The checks, in the order they show and post.
@@ -87,12 +88,12 @@ local function unitAuras(unit)
     end
     local out = {}
     for index = 1, 80 do
-        local ok, id, name, expires = pcall(function()
+        local ok, id, name, expires, icon = pcall(function()
             local aura = C_UnitAuras.GetAuraDataByIndex(unit, index, "HELPFUL")
             if not aura then
                 return nil
             end
-            return aura.spellId, aura.name, aura.expirationTime
+            return aura.spellId, aura.name, aura.expirationTime, aura.icon
         end)
         if not ok then
             return nil, "unreadable"
@@ -104,7 +105,7 @@ local function unitAuras(unit)
             return nil, "hidden by the game"
         end
         local left = (type(expires) == "number" and expires > 0) and (expires - GetTime()) or nil
-        out[#out + 1] = { id = id, name = name or "", left = left }
+        out[#out + 1] = { id = id, name = name or "", left = left, icon = (not isSecret(icon)) and icon or nil }
     end
     return out
 end
@@ -117,7 +118,7 @@ local function readGroup()
         if name and not isSecret(name) then
             local _, class = UnitClass(unit)
             local auras, why = unitAuras(unit)
-            members[#members + 1] = { name = Ambiguate(name, "short"), class = (not isSecret(class)) and class or nil, auras = auras, why = why }
+            members[#members + 1] = { unit = unit, name = Ambiguate(name, "short"), class = (not isSecret(class)) and class or nil, auras = auras, why = why }
         end
     end
     return members
@@ -229,6 +230,67 @@ local function checkBuffs(members)
         end
     end
     return result
+end
+
+-- The ready check window -----------------------------------------------------------------
+
+function Report:ReadGroup()
+    return readGroup()
+end
+
+-- The classes in a group read by ReadGroup, as a set.
+function Report.Classes(members)
+    local classes = {}
+    for _, m in ipairs(members) do
+        if m.class then
+            classes[m.class] = true
+        end
+    end
+    return classes
+end
+
+local buffByKey = {}
+for _, buff in ipairs(Report.BUFFS) do
+    buffByKey[buff.key] = buff
+end
+Report.BuffByKey = buffByKey
+
+-- One cell of the ready check window, for a consumable key or a raid buff key:
+-- { state = "ok" | "low" | "missing" | "unknown", icon, left }. "low" is an expiring or lower quality flask.
+function Report.Cell(member, key)
+    if not member.auras then
+        return { state = "unknown" }
+    end
+    local aura, entry
+    local buff = buffByKey[key]
+    if buff then
+        local spellName = C_Spell.GetSpellName(buff.spell)
+        for _, a in ipairs(member.auras) do
+            if a.id == buff.spell or (spellName and a.name == spellName) then
+                aura = a
+                break
+            end
+        end
+    else
+        local ids, fallback
+        if key == "food" then
+            ids, fallback = foodIds()
+        elseif key == "vantus" then
+            ids, fallback = {}, FALLBACK.vantus
+        else
+            ids, fallback = Consumables:BuffIds(key), FALLBACK[key]
+        end
+        aura, entry = findAura(member.auras, ids, fallback)
+    end
+    if not aura then
+        return { state = "missing" }
+    end
+    local s = settings()
+    local state = "ok"
+    if key == "flask" and ((s.lowFlask and entry and entry.low) or ((s.flaskWarn or 0) > 0 and aura.left and aura.left < s.flaskWarn * 60)) then
+        state = "low"
+    end
+    return { state = state, icon = aura.icon, left = aura.left }
 end
 
 -- Text --------------------------------------------------------------------------------

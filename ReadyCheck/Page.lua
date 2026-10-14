@@ -3,6 +3,7 @@ local ADDON, CRT = ...
 -- The Ready Check page, with three tabs:
 --   Raid report     check the group's food, flask, rune, Vantus rune and raid buffs, and post them
 --   On ready check  the automatic report and what counts
+--   Window          the ready check window: when it opens and which columns it shows
 --   Your bar        your own consumables bar (Consumables/Page.lua)
 
 local Report = CRT.RaidReport
@@ -11,6 +12,7 @@ local UI = CRT.UI
 local TABS = {
     { key = "report", label = "Raid report" },
     { key = "auto", label = "On ready check" },
+    { key = "window", label = "Window" },
     { key = "bar", label = "Your bar" },
 }
 local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "Raid chat" }, { key = "officer", label = "Officer chat" } }
@@ -51,11 +53,16 @@ local function makeCheck(parent, x, y, text, field, sub)
     check:SetPoint("TOPLEFT", x, y)
     local fs = label(parent, text, "CRTFontSmall")
     fs:SetPoint("LEFT", check, "RIGHT", 2, 0)
+    -- sub is a key of CRTDB.readycheck, or a function returning the table that holds field.
     local function holder()
+        if type(sub) == "function" then
+            return sub()
+        end
         return sub and settings()[sub] or settings()
     end
     check:SetScript("OnClick", function(self)
         holder()[field] = self:GetChecked() and true or false
+        CRT.ReadyCheckWindow:Apply()
     end)
     check.refresh = function()
         check:SetChecked(holder()[field] and true or false)
@@ -199,6 +206,80 @@ local function buildAuto(f)
     notHere:SetWidth(640)
 end
 
+-- Window tab -------------------------------------------------------------------------------------
+
+local function windowSettings()
+    return settings().window
+end
+
+local function windowColumns()
+    return settings().window.columns
+end
+
+local function makeNumber(parent, x, y, text, field, low, high)
+    local fs = label(parent, text, "CRTFontSmall")
+    fs:SetPoint("TOPLEFT", x, y - 4)
+    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(CRTFontHighlight)
+    edit:SetNumeric(true)
+    edit:SetMaxLetters(3)
+    edit:SetSize(44, 20)
+    edit:SetPoint("TOPLEFT", x + 190, y - 2)
+    edit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    edit:SetScript("OnEditFocusLost", function(self)
+        local value = tonumber(self:GetText())
+        if value then
+            windowSettings()[field] = math.max(low, math.min(high, math.floor(value)))
+            CRT.ReadyCheckWindow:Apply()
+        end
+        self:SetText(tostring(windowSettings()[field]))
+    end)
+    edit.refresh = function()
+        if not edit:HasFocus() then
+            edit:SetText(tostring(windowSettings()[field]))
+        end
+    end
+    controls[#controls + 1] = edit
+end
+
+local function buildWindow(f)
+    local hint = label(f, "A table of every player's ready answer, consumables and raid buffs that opens on a ready check and closes after the time below or on a right-click. Drag it to move it, or use Toggle previews to place it with sample players.", "CRTFontDisableSmall")
+    hint:SetPoint("TOPLEFT", 8, -8)
+    hint:SetWidth(670)
+
+    makeCheck(f, 4, -52, "Open the window on a ready check", "enabled", windowSettings)
+    makeCheck(f, 28, -80, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings)
+    makeCheck(f, 28, -108, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
+    makeNumber(f, 32, -138, "Seconds open (5 to 120)", "seconds", 5, 120)
+    makeNumber(f, 32, -166, "Size % (50 to 150)", "scale", 50, 150)
+
+    local cols = label(f, "Columns")
+    cols:SetPoint("TOPLEFT", 8, -206)
+    for i, col in ipairs(CRT.ReadyCheckWindow.COLUMNS) do
+        local c, r = (i - 1) % 3, math.floor((i - 1) / 3)
+        makeCheck(f, 4 + c * 220, -228 - r * 28, col.label, col.key, windowColumns)
+    end
+
+    local y = -228 - math.ceil(#CRT.ReadyCheckWindow.COLUMNS / 3) * 28 - 16
+    local key = label(f, "In the table: an icon means they have it, a gold number is minutes left on an expiring flask, x is missing, ? means the game hid their buffs. Durability only shows for players who run Cowfee Raid Tools, since each one sends their own.", "CRTFontDisableSmall")
+    key:SetPoint("TOPLEFT", 8, y)
+    key:SetWidth(670)
+
+    local test = makeButton(f, "Show it now", 160)
+    test:SetPoint("TOPLEFT", 8, y - 50)
+    test:SetScript("OnClick", function()
+        CRT.ReadyCheckWindow:Show()
+    end)
+    local reset = makeButton(f, "Reset position", 160)
+    reset:SetPoint("LEFT", test, "RIGHT", 8, 0)
+    reset:SetScript("OnClick", function()
+        CRT.ReadyCheckWindow:ResetPosition()
+    end)
+end
+
 -- Tabs ----------------------------------------------------------------------------------------
 
 local function selectTab(key)
@@ -212,6 +293,8 @@ local function selectTab(key)
             buildReport(tabFrames[key])
         elseif key == "auto" then
             buildAuto(tabFrames[key])
+        elseif key == "window" then
+            buildWindow(tabFrames[key])
         else
             CRT.ConsumablesPage.Build(tabFrames[key])
         end

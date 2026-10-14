@@ -43,6 +43,19 @@ local defaults = {
         food = "any",
         flaskWarn = 5,
         lowFlask = true,
+        -- The ready check window. columns[key] shows that column. position is added when it is moved.
+        window = {
+            enabled = true,
+            leadOnly = true, -- only open it for the raid leader and assistants
+            seconds = 30,
+            scale = 100, -- percent
+            groupBuffsOnly = true, -- raid buff columns only for buffs your group can give
+            columns = {
+                food = true, flask = true, rune = true, vantus = false,
+                intellect = true, stamina = true, attack = true, versatility = true, mastery = true, movement = true,
+                durability = true,
+            },
+        },
     },
     -- The in-combat debuff panel. Every player has their own copy of these in their own saved
     -- variables, so nothing here is shared between players. position is added when it is moved.
