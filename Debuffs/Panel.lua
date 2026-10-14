@@ -78,7 +78,9 @@ local function addAnchors()
         return
     end
     local size, count = Debuffs:Size(), Debuffs:MaxCount()
-    local signature = size .. ":" .. count .. ":" .. tostring(Debuffs:DispelIcon())
+    local timerPoint, timerRelative, timerX, timerY = Debuffs:TimerAnchor()
+    local signature = table.concat({ size, count, tostring(Debuffs:DispelIcon()), tostring(Debuffs:Get("swipe")), tostring(Debuffs:Get("swipeEdge")),
+        tostring(Debuffs:Get("countdownNumbers")), tostring(timerPoint), tostring(timerX), tostring(timerY), tostring(Debuffs:Get("borderScale")) }, ":")
     if signature == appliedAnchors then
         return
     end
@@ -105,18 +107,22 @@ local function addAnchors()
                 unitToken = "player",
                 auraIndex = index,
                 parent = slot,
-                showCooldownFrame = true,
-                showCooldownEdge = true,
-                showCountdownNumbers = true,
+                showCooldownFrame = Debuffs:Get("swipe") and true or false,
+                showCooldownEdge = (Debuffs:Get("swipe") and Debuffs:Get("swipeEdge")) and true or false,
+                showCountdownNumbers = Debuffs:Get("countdownNumbers") and true or false,
                 showDispelIcon = Debuffs:DispelIcon(),
                 isContainer = false,
                 iconInfo = {
                     iconAnchor = { point = "CENTER", relativeTo = slot, relativePoint = "CENTER", offsetX = 0, offsetY = 0 },
                     iconWidth = size,
                     iconHeight = size,
+                    borderScale = Debuffs:Get("borderScale") or 1,
                 },
-                durationAnchor = { point = "TOP", relativeTo = slot, relativePoint = "BOTTOM", offsetX = 0, offsetY = -2 },
             }
+            -- No anchor for the timer text means the game draws none.
+            if timerPoint then
+                args.durationAnchor = { point = timerPoint, relativeTo = slot, relativePoint = timerRelative, offsetX = timerX, offsetY = timerY }
+            end
             local ok, id = pcall(C_UnitAuras.AddPrivateAuraAnchor, args)
             if ok and id then
                 anchorIds[index] = id
@@ -133,15 +139,18 @@ end
 -- Sample debuffs drawn by this addon, in the size and spacing of the real panel, so it can be placed
 -- and sized. Private auras only exist during a boss mechanic, so there is nothing real to show.
 
+-- left is the seconds remaining when the preview starts. Each sample runs for SAMPLE_SECONDS, then
+-- starts over, so the swipe and the timer keep moving.
+local SAMPLE_SECONDS = 30
 local SAMPLES = {
-    { spell = 589, time = "12s" },
-    { spell = 116, time = "8s" },
-    { spell = 172, time = "21s", stacks = 3 },
-    { spell = 703, time = "27s" },
-    { spell = 348, time = "5s" },
-    { spell = 686, time = "17s", stacks = 2 },
-    { spell = 980, time = "24s" },
-    { spell = 1022, time = "9s" },
+    { spell = 589, left = 12 },
+    { spell = 116, left = 8 },
+    { spell = 172, left = 21, stacks = 3 },
+    { spell = 703, left = 27 },
+    { spell = 348, left = 5 },
+    { spell = 686, left = 17, stacks = 2 },
+    { spell = 980, left = 24 },
+    { spell = 1022, left = 9 },
 }
 
 local function sampleIcon(spellId)
@@ -161,9 +170,17 @@ local function makeTile()
     tile.icon:SetPoint("TOPLEFT", 1, -1)
     tile.icon:SetPoint("BOTTOMRIGHT", -1, 1)
     tile.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    tile.time = tile:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
-    tile.time:SetPoint("TOP", tile, "BOTTOM", 0, -2)
-    tile.count = tile:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    local ok, cooldown = pcall(CreateFrame, "Cooldown", nil, tile, "CooldownFrameTemplate")
+    if ok and cooldown then
+        cooldown:SetAllPoints(tile.icon)
+        tile.cooldown = cooldown
+    end
+    -- The text sits on its own frame above the swipe, so the swipe never covers it.
+    tile.over = CreateFrame("Frame", nil, tile)
+    tile.over:SetAllPoints()
+    tile.over:SetFrameLevel(tile:GetFrameLevel() + 5)
+    tile.time = tile.over:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    tile.count = tile.over:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
     tile.count:SetPoint("BOTTOMRIGHT", -2, 2)
     tile:Hide()
     return tile
@@ -186,11 +203,47 @@ local function updateTiles()
             tile:ClearAllPoints()
             tile:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), 0)
             tile.icon:SetTexture(sampleIcon(sample.spell))
-            tile.time:SetText(sample.time)
             tile.count:SetText(sample.stacks or "")
+            local timerPoint, timerRelative, timerX, timerY = Debuffs:TimerAnchor()
+            tile.time:ClearAllPoints()
+            if timerPoint then
+                tile.time:SetPoint(timerPoint, tile, timerRelative, timerX, timerY)
+            end
+            tile.time:SetShown(timerPoint ~= nil)
+            if tile.cooldown then
+                tile.cooldown:SetDrawSwipe(Debuffs:Get("swipe") and true or false)
+                tile.cooldown:SetDrawEdge((Debuffs:Get("swipe") and Debuffs:Get("swipeEdge")) and true or false)
+                tile.cooldown:SetHideCountdownNumbers(not Debuffs:Get("countdownNumbers"))
+            end
+            if not tile.endsAt then
+                tile.endsAt = GetTime() + sample.left
+                if tile.cooldown then
+                    tile.cooldown:SetCooldown(tile.endsAt - SAMPLE_SECONDS, SAMPLE_SECONDS)
+                end
+            end
             tile:Show()
         else
+            tile.endsAt = nil
             tile:Hide()
+        end
+    end
+end
+
+-- Counts the preview timers down, and starts a sample over when it runs out.
+local function tickTiles()
+    if not previewOn then
+        return
+    end
+    local now = GetTime()
+    for _, tile in ipairs(tiles) do
+        if tile:IsShown() and tile.endsAt then
+            if tile.endsAt <= now then
+                tile.endsAt = now + SAMPLE_SECONDS
+                if tile.cooldown then
+                    tile.cooldown:SetCooldown(now, SAMPLE_SECONDS)
+                end
+            end
+            tile.time:SetText(math.ceil(tile.endsAt - now) .. "s")
         end
     end
 end
@@ -216,6 +269,13 @@ local function pick(enum, names)
 end
 
 local chosen = {}
+local regularCooldowns = {} -- the swipe of each regular row button, to apply the look to
+
+local function applyCooldownLook(cooldown)
+    pcall(cooldown.SetDrawSwipe, cooldown, Debuffs:Get("swipe") and true or false)
+    pcall(cooldown.SetDrawEdge, cooldown, (Debuffs:Get("swipe") and Debuffs:Get("swipeEdge")) and true or false)
+    pcall(cooldown.SetHideCountdownNumbers, cooldown, not Debuffs:Get("countdownNumbers"))
+end
 
 local function sortOptions()
     local methods, directions = sortEnums()
@@ -250,6 +310,8 @@ local function initializeButton(a, b)
     if ok and cooldown then
         cooldown:SetAllPoints(icon)
         try("button", button, "SetDurationCooldown", cooldown)
+        regularCooldowns[#regularCooldowns + 1] = cooldown
+        applyCooldownLook(cooldown)
     else
         note("button: could not create a Cooldown frame")
     end
@@ -367,6 +429,17 @@ local function updateVisibility()
     end
 end
 
+-- The drag handle sits above the icons, or above their timer text when it is placed above them.
+local function placeHandle()
+    if not handle then
+        return
+    end
+    local lift = Debuffs:Get("timerPosition") == "above" and 18 or 0
+    handle:ClearAllPoints()
+    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2 + lift)
+    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2 + lift)
+end
+
 function Panel:Apply()
     if not frame or InCombatLockdown() then
         return
@@ -383,6 +456,10 @@ function Panel:Apply()
         try("container", container, "UpdateAllAuras")
     end
     layout()
+    placeHandle()
+    for _, cooldown in ipairs(regularCooldowns) do
+        applyCooldownLook(cooldown)
+    end
     updateTiles()
     updateVisibility()
 end
@@ -443,6 +520,7 @@ local function build()
         Debuffs:SavePosition(point, relativePoint, x, y)
     end)
     handle:Hide()
+    placeHandle()
 
     createContainer()
     layout()
@@ -455,6 +533,7 @@ local function build()
         end
         elapsed = 0
         layout()
+        tickTiles()
     end)
     updateVisibility()
 end
@@ -505,6 +584,8 @@ function Panel:InfoText()
     add("Game build: " .. tostring(select(4, GetBuildInfo())))
     add("In combat: lockdown " .. tostring(InCombatLockdown()) .. ", flag " .. tostring(inCombat) .. ", UnitAffectingCombat " .. tostring(UnitAffectingCombat("player")) .. "; preview on: " .. tostring(previewOn) .. ", enabled: " .. tostring(Debuffs:Enabled()))
     add(format("Settings: size %d, max %d, dispel icon %s, regular row %s", Debuffs:Size(), Debuffs:MaxCount(), tostring(Debuffs:DispelIcon()), tostring(Debuffs:IncludeRegular())))
+    add(format("Look: swipe %s, edge %s, countdown numbers %s, timer %s (%s, %s), border %s", tostring(Debuffs:Get("swipe")), tostring(Debuffs:Get("swipeEdge")),
+        tostring(Debuffs:Get("countdownNumbers")), tostring(Debuffs:Get("timerPosition")), tostring(Debuffs:Get("timerX")), tostring(Debuffs:Get("timerY")), tostring(Debuffs:Get("borderScale"))))
     if frame then
         local point, _, relativePoint, x, y = frame:GetPoint()
         add(format("Panel: alpha %s, shown %s, effective alpha %s, size %s x %s, at %s %s %s,%s",

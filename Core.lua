@@ -70,6 +70,14 @@ local defaults = {
         maxCount = 4, -- how many to show at once
         dispelIcon = false, -- show the dispel type icon on mechanic debuffs
         includeRegular = false, -- also show regular (not boss mechanic) debuffs in a second row
+        -- The look: only what the game lets an addon pass to its own debuff icons.
+        swipe = true, -- the dark swipe that sweeps over the icon as the debuff runs out
+        swipeEdge = true, -- the bright line on the swipe's edge
+        countdownNumbers = true, -- the game's numbers on the swipe
+        timerPosition = "below", -- where the timer text goes: below, above, center, left, right or hidden
+        timerX = 0, -- nudges the timer text, in pixels
+        timerY = 0,
+        borderScale = 1, -- the game's debuff border: 0.5 thin, 1 normal, 1.5 thick
     },
     -- Raid notes. list[id] holds each imported or received note. window and alert hold the
     -- note window and personal alert settings, with position added when they are moved.

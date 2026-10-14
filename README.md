@@ -97,7 +97,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 
 ## Debuffs
 
-`/crt debuffs`. A movable panel that shows the boss mechanic debuffs on you during combat, using the slots the game provides for them. Choose the icon size and how many to show, and place it with Previews.
+`/crt debuffs`. A movable panel that shows the boss mechanic debuffs on you during combat, using the slots the game provides for them. Choose the icon size and how many to show, and place it with Previews. Under Look, set where the timer text goes (below, above, on the icon, left, right or hidden, with a nudge in pixels), the swipe and its edge, the countdown numbers, the dispel type icon and the border size. The game draws these debuffs itself, so their font, text size and colors can't be changed by any addon.
 
 ## Raid Notes
 
