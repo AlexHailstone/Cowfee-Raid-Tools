@@ -1,15 +1,18 @@
 local ADDON, CRT = ...
 
 -- The row of consumable icons shown above the ready check: one icon per category with the
--- time left, or the number in your bags when it is missing. Edited on the Consumables page.
--- Food, flask and weapon icons are clickable: a click uses the first assigned item in your bags.
+-- time left, or the number in your bags when it is missing. A missing or expiring consumable
+-- gets marching ants around its icon. Food, flask and weapon icons are clickable and use the
+-- first listed item in your bags. The list is in Consumables/Database.lua and the player only
+-- chooses the order, on the Consumables page.
 --
--- Clickable icons are secure buttons, which makes them and their parent frame protected.
--- While you are in combat the row cannot be shown, hidden or moved, and their click action
--- cannot be changed, so those changes wait for PLAYER_REGEN_ENABLED. The row is built at login,
--- out of combat, because secure buttons should be created outside combat.
+-- Every icon is a secure button, so the icon order can change without making new frames. That
+-- makes the buttons and their parent frame protected: in combat the row cannot be shown,
+-- hidden or moved and a click action cannot change, so those wait for PLAYER_REGEN_ENABLED.
+-- The row is built at login, out of combat, because secure buttons should be created there.
 
 local Consumables = CRT.Consumables
+local Ants = CRT.Ants
 local Display = {}
 CRT.ConsumablesDisplay = Display
 
@@ -19,12 +22,10 @@ local PAD = 6
 local REFRESH_SECONDS = 0.5
 local PREVIEW_SECONDS = 20
 
-local COLORS = {
-    active = { 0.35, 0.35, 0.35 },
+local BORDER = { 0.35, 0.35, 0.35 }
+local ANT_COLORS = {
+    missing = { 1, 0.25, 0.25 },
     low = { 1, 0.82, 0 },
-    missing = { 0.9, 0.2, 0.2 },
-    unknown = { 0.6, 0.6, 0.6 },
-    unset = { 0.45, 0.45, 0.45 },
 }
 
 local BACKDROP = {
@@ -49,6 +50,7 @@ local function formatTime(seconds)
 end
 
 local function showTooltip(self)
+    local def = Consumables:Def(self.key)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     if self.useItem then
         GameTooltip:SetText(self.useItem.name, 1, 1, 1)
@@ -57,40 +59,32 @@ local function showTooltip(self)
             GameTooltip:AddLine("Shift-click for the off hand", 0.7, 0.7, 0.7)
         end
     else
-        GameTooltip:SetText(self.label or "", 1, 1, 1)
-        GameTooltip:AddLine("None of the assigned items are in your bags.", 0.9, 0.4, 0.4)
+        GameTooltip:SetText(def and def.label or "", 1, 1, 1)
+        if def and def.clickable then
+            GameTooltip:AddLine("None of the listed items are in your bags.", 0.9, 0.4, 0.4)
+        end
     end
     GameTooltip:Show()
 end
 
-local function createSlot(parent, index, def)
-    local slot
-    if def.clickable then
-        slot = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate,BackdropTemplate")
-        slot:RegisterForClicks("AnyUp")
-        slot:SetAttribute("useOnKeyDown", false)
-        slot.hl = slot:CreateTexture(nil, "HIGHLIGHT")
-        slot.hl:SetAllPoints()
-        slot.hl:SetColorTexture(1, 1, 1, 0.18)
-        slot:SetScript("OnEnter", showTooltip)
-        slot:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-    else
-        slot = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    end
-    slot.key = def.key
-    slot.label = def.label
-    slot.clickable = def.clickable
+local function createSlot(parent, index)
+    local slot = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate,BackdropTemplate")
+    slot:RegisterForClicks("AnyUp")
+    slot:SetAttribute("useOnKeyDown", false)
     slot:SetSize(ICON_SIZE, ICON_SIZE)
     slot:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD + (index - 1) * (ICON_SIZE + GAP), -PAD)
     slot:SetBackdrop(BACKDROP)
     slot:SetBackdropColor(0, 0, 0, 0.6)
+    slot:SetBackdropBorderColor(BORDER[1], BORDER[2], BORDER[3], 1)
 
     slot.icon = slot:CreateTexture(nil, "ARTWORK")
     slot.icon:SetPoint("TOPLEFT", 1, -1)
     slot.icon:SetPoint("BOTTOMRIGHT", -1, 1)
     slot.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+    slot.hl = slot:CreateTexture(nil, "HIGHLIGHT")
+    slot.hl:SetAllPoints()
+    slot.hl:SetColorTexture(1, 1, 1, 0.18)
 
     slot.time = slot:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
     slot.time:SetPoint("BOTTOM", 0, 3)
@@ -101,6 +95,13 @@ local function createSlot(parent, index, def)
     slot.tag = slot:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     slot.tag:SetPoint("TOPLEFT", 3, -3)
     slot.tag:SetTextColor(0.3, 0.9, 1)
+
+    Ants:Attach(slot)
+
+    slot:SetScript("OnEnter", showTooltip)
+    slot:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     return slot
 end
 
@@ -117,11 +118,15 @@ local function build()
     frame:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
     frame:Hide()
 
-    for index, def in ipairs(Consumables.CATEGORIES) do
-        slots[index] = createSlot(frame, index, def)
+    for index = 1, count do
+        slots[index] = createSlot(frame, index)
     end
 
     frame:SetScript("OnUpdate", function(_, dt)
+        -- The ants move every frame, and the statuses refresh twice a second.
+        for _, slot in ipairs(slots) do
+            Ants:Update(slot, dt)
+        end
         elapsed = elapsed + dt
         if elapsed < REFRESH_SECONDS then
             return
@@ -145,20 +150,21 @@ local function place()
     end
 end
 
--- Points a clickable icon at the item a click should use. Not allowed in combat.
-local function updateClickAction(slot)
+-- Points a clickable icon at the item a click should use, and clears it for the others.
+-- Not allowed in combat.
+local function updateClickAction(slot, clickable)
     if InCombatLockdown() then
         return
     end
-    local item = Consumables:NextItem(slot.key)
+    local item = clickable and Consumables:NextItem(slot.key) or nil
     slot.useItem = item
-    local name = item and item.name
-    if slot.appliedName == name then
+    local signature = item and (slot.key .. ":" .. item.name) or "none"
+    if slot.appliedSignature == signature then
         return
     end
-    slot.appliedName = name
+    slot.appliedSignature = signature
 
-    if not name then
+    if not item then
         slot:SetAttribute("type", nil)
         slot:SetAttribute("macrotext", nil)
         slot:SetAttribute("shift-type1", nil)
@@ -166,12 +172,12 @@ local function updateClickAction(slot)
     elseif slot.key == "weapon" then
         -- Use the oil or stone, then apply it to the main hand. Shift-click uses the off hand.
         slot:SetAttribute("type", "macro")
-        slot:SetAttribute("macrotext", "/use " .. name .. "\n/use " .. (INVSLOT_MAINHAND or 16))
+        slot:SetAttribute("macrotext", "/use " .. item.name .. "\n/use " .. (INVSLOT_MAINHAND or 16))
         slot:SetAttribute("shift-type1", "macro")
-        slot:SetAttribute("shift-macrotext1", "/use " .. name .. "\n/use " .. (INVSLOT_OFFHAND or 17))
+        slot:SetAttribute("shift-macrotext1", "/use " .. item.name .. "\n/use " .. (INVSLOT_OFFHAND or 17))
     else
         slot:SetAttribute("type", "macro")
-        slot:SetAttribute("macrotext", "/use " .. name)
+        slot:SetAttribute("macrotext", "/use " .. item.name)
     end
 end
 
@@ -208,21 +214,30 @@ function Display:Refresh()
     end
     place()
 
-    for index, def in ipairs(Consumables.CATEGORIES) do
+    Consumables:RefreshBags()
+    for index, key in ipairs(Consumables:Order()) do
         local slot = slots[index]
-        local status = Consumables:Status(def.key)
-        local color = COLORS[status.state] or COLORS.unknown
+        local def = Consumables:Def(key)
+        slot.key = key
+        local status = Consumables:Status(key)
 
-        slot:SetBackdropBorderColor(color[1], color[2], color[3], 1)
         slot.icon:SetTexture(status.icon or Consumables.QUESTION_MARK)
         local dim = status.state == "missing" or status.state == "unset" or status.state == "unknown"
         slot.icon:SetDesaturated(dim)
         slot.icon:SetAlpha(dim and 0.6 or 1)
 
+        -- Ants for a missing or expiring consumable.
+        local color = ANT_COLORS[status.state]
+        if color then
+            Ants:Start(slot, color[1], color[2], color[3])
+        else
+            Ants:Stop(slot)
+        end
+
         if status.state == "unknown" then
             slot.time:SetText("?")
         elseif status.state == "unset" then
-            slot.time:SetText("set up")
+            slot.time:SetText("no data")
         elseif status.left then
             slot.time:SetText(formatTime(status.left))
         else
@@ -246,9 +261,7 @@ function Display:Refresh()
         end
         slot.tag:SetText(status.tag or "")
 
-        if slot.clickable then
-            updateClickAction(slot)
-        end
+        updateClickAction(slot, def and def.clickable)
     end
 end
 

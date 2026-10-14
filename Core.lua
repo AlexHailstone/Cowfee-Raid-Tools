@@ -16,18 +16,14 @@ local defaults = {
         source = "raid",
         working = {},
     },
-    -- Consumables shown on the ready check. buffs[spellId] and items[itemId] are
-    -- { name = "...", icon = fileID } entries the player assigns on the Consumables page.
+    -- The consumables list ships in Consumables/Database.lua. Players only choose the order:
+    -- categoryOrder is the icon order, and itemOrder[category] is which item is used first.
+    -- An older "categories" key from version 0.2.0 may remain in saved data and is ignored.
     consumables = {
         enabled = true,
         lowMinutes = 10,
-        categories = {
-            food = { buffs = {}, items = {} },
-            flask = { buffs = {}, items = {} },
-            potion = { buffs = {}, items = {} },
-            weapon = { buffs = {}, items = {} },
-            rune = { buffs = {}, items = {} },
-        },
+        categoryOrder = {},
+        itemOrder = {},
     },
 }
 
