@@ -1,19 +1,30 @@
 local ADDON, CRT = ...
 
--- Sharing notes with the group through addon messages. A message holds at most 255 characters and the
--- game allows a burst of about 10 per prefix, then about 1 a second, so a note is sent in numbered chunks
--- at that pace. Addon messages are blocked during a boss encounter, so share before the pull.
+-- Sharing notes with the group through addon messages. The game allows each prefix a burst of 10
+-- messages, then 1 a second, and 255 characters a message. So a note is compressed first with the
+-- game's own C_EncodingUtil.CompressString (Deflate), which makes a typical note a quarter of its
+-- size, and the parts are sent straight away, waiting only when the game reports the throttle. A note
+-- of up to 10 parts after compression arrives at once. Addon messages are blocked during a boss
+-- encounter, so share before the pull.
 --
--- Message: "<id>|<part>|<total>|<text>". Only a raid leader or assistant can share, and by default notes
--- are only accepted from them.
+-- Message under the prefix CRTNote2: "<hash>|<part>|<total>|<data>". hash is a fingerprint of the
+-- note text, so a raider who already has that exact note ignores it. data is the compressed note,
+-- with byte 0 (not allowed in addon messages) and the escape byte 1 written as two bytes each.
+-- Version 0.12 and earlier sent plain text under CRTNote, "<id>|<part>|<total>|<text>", which is
+-- still received so older senders keep working. Only a raid leader or assistant can share, and by
+-- default notes are only accepted from them.
 
 local Notes = CRT.Notes
 local Comm = {}
 CRT.NoteComm = Comm
 
-local PREFIX = "CRTNote"
-local CHUNK = 220
-local BURST = 8
+local PREFIX = "CRTNote2"
+local OLD_PREFIX = "CRTNote"
+local OLD_CHUNK = 220 -- the plain-text part size, used only when compression is missing
+-- Data bytes a part may carry after escaping. The header is at most 22 characters (a 13-digit
+-- fingerprint and two 3-digit part numbers with their separators), so a message stays under 255.
+local MAX_DATA = 230
+local MAX_PARTS = 200
 
 local RESULT = Enum and Enum.SendAddonMessageResult or {}
 local SUCCESS = RESULT.Success or 0
@@ -22,13 +33,20 @@ local LOCKDOWN = RESULT.AddOnMessageLockdown or 11
 
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
+    C_ChatInfo.RegisterAddonMessagePrefix(OLD_PREFIX)
 end
 
-local outgoing -- { id, chunks, index, name }
-local incoming = {} -- sender .. id -> { total, parts, count }
+local Encoding = C_EncodingUtil
+local DEFLATE = Enum and Enum.CompressionMethod and Enum.CompressionMethod.Deflate or 0
+local canCompress = Encoding and Encoding.CompressString and Encoding.DecompressString and true or false
+
+local outgoing -- { prefix, hash, parts, index, name, started }
+local incoming = {} -- sender .. hash -> { total, parts, count, skip }
 
 local function channel()
-    if IsInRaid() then
+    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        return "INSTANCE_CHAT"
+    elseif IsInRaid() then
         return "RAID"
     elseif IsInGroup() then
         return "PARTY"
@@ -39,6 +57,65 @@ end
 local function isLeaderOrAssist(unit)
     return (UnitIsGroupLeader(unit) or UnitIsGroupAssistant(unit)) and true or false
 end
+
+-- Fingerprint --------------------------------------------------------------------------------
+
+-- A 32-bit fingerprint of the text (djb2) as 8 hex digits, plus its length, so two different notes
+-- practically never match.
+local function fingerprint(text)
+    local h = 5381
+    for i = 1, #text do
+        h = (h * 33 + text:byte(i)) % 4294967296
+    end
+    return format("%08x%x", h, #text)
+end
+Comm.Fingerprint = fingerprint
+
+local known = {} -- raw text -> fingerprint, so stored notes are not hashed again and again
+
+-- Whether a stored note already has exactly this text.
+local function haveNote(hash)
+    for _, record in pairs(CRT.db.notes.list) do
+        local raw = record.raw or ""
+        known[raw] = known[raw] or fingerprint(raw)
+        if known[raw] == hash then
+            return true
+        end
+    end
+    return false
+end
+
+-- Escaping ---------------------------------------------------------------------------------------
+
+-- Byte 0 is not allowed in an addon message, so cut() writes 0 as 1 2 and 1 as 1 1, and this
+-- reverses it.
+local function unescape(data)
+    return (data:gsub("\1(.)", function(c)
+        return c == "\1" and "\1" or "\0"
+    end))
+end
+
+-- Cuts the compressed note into parts of at most MAX_DATA bytes after escaping, never splitting an
+-- escaped pair.
+local function cut(data)
+    local parts, current, size = {}, {}, 0
+    for i = 1, #data do
+        local c = data:sub(i, i)
+        local e = (c == "\0" and "\1\2") or (c == "\1" and "\1\1") or c
+        if size + #e > MAX_DATA then
+            parts[#parts + 1] = table.concat(current)
+            current, size = {}, 0
+        end
+        current[#current + 1] = e
+        size = size + #e
+    end
+    if size > 0 then
+        parts[#parts + 1] = table.concat(current)
+    end
+    return parts
+end
+
+-- Sending -----------------------------------------------------------------------------------------
 
 function Comm:CanShare()
     if not channel() then
@@ -54,53 +131,49 @@ function Comm:CanShare()
 end
 
 function Comm:Sharing()
-    return outgoing and outgoing.index - 1 or nil, outgoing and #outgoing.chunks or nil
+    return outgoing and outgoing.index - 1 or nil, outgoing and #outgoing.parts or nil
 end
 
-local function sendNext()
+local function finish(message)
+    if message then
+        CRT:Print(message)
+    end
+    outgoing = nil
+    Notes:Fire()
+end
+
+-- Sends every part the game will take right now, then waits a second if it reports the throttle.
+local function sendParts()
     if not outgoing then
         return
     end
-    local i = outgoing.index
-    local chunk = outgoing.chunks[i]
-    local message = outgoing.id .. "|" .. i .. "|" .. #outgoing.chunks .. "|" .. chunk
     local ch = channel()
     if not ch then
-        CRT:Print("Sharing stopped: you left the group.")
-        outgoing = nil
+        finish("Sharing stopped: you left the group.")
         return
     end
-    local ok, result = pcall(C_ChatInfo.SendAddonMessage, PREFIX, message, ch)
-    if not ok then
-        CRT:Print("Sharing failed: " .. tostring(result))
-        outgoing = nil
-        return
-    end
-    if result == true or result == nil or result == SUCCESS then
-        outgoing.index = i + 1
-        Notes:Fire()
-        if outgoing.index > #outgoing.chunks then
-            CRT:Print("Shared " .. outgoing.name .. " with the group.")
-            outgoing = nil
-            Notes:Fire()
+    while outgoing.index <= #outgoing.parts do
+        local i = outgoing.index
+        local message = outgoing.hash .. "|" .. i .. "|" .. #outgoing.parts .. "|" .. outgoing.parts[i]
+        local ok, result = pcall(C_ChatInfo.SendAddonMessage, outgoing.prefix, message, ch)
+        if not ok then
+            finish("Sharing failed: " .. tostring(result))
             return
         end
-    elseif result == THROTTLED then
-        -- Try the same part again after a pause.
-        C_Timer.After(1.5, sendNext)
-        return
-    elseif result == LOCKDOWN then
-        CRT:Print("Notes can't be shared during an encounter. Share again after the pull ends.")
-        outgoing = nil
-        Notes:Fire()
-        return
-    else
-        CRT:Print("Sharing failed with result " .. tostring(result) .. ".")
-        outgoing = nil
-        Notes:Fire()
-        return
+        if result == THROTTLED then
+            C_Timer.After(1, sendParts)
+            return
+        elseif result == LOCKDOWN then
+            finish("Notes can't be shared during an encounter. Share again after the pull ends.")
+            return
+        elseif not (result == true or result == nil or result == SUCCESS) then
+            finish("Sharing failed with result " .. tostring(result) .. ".")
+            return
+        end
+        outgoing.index = i + 1
     end
-    C_Timer.After(outgoing.index <= BURST and 0.2 or 1.1, sendNext)
+    local seconds = GetTime() - outgoing.started
+    finish(format("Shared %s with the group in %d part%s, %.1f seconds.", outgoing.name, #outgoing.parts, #outgoing.parts == 1 and "" or "s", seconds))
 end
 
 function Comm:Share(id)
@@ -114,29 +187,62 @@ function Comm:Share(id)
         CRT:Print("Pick a note to share first.")
         return
     end
-    local chunks = {}
     local text = record.raw or ""
-    for pos = 1, #text, CHUNK do
-        chunks[#chunks + 1] = text:sub(pos, pos + CHUNK - 1)
-    end
-    if #chunks == 0 then
+    if text == "" then
         CRT:Print("That note is empty.")
         return
     end
+
+    local prefix, parts = PREFIX, nil
+    if canCompress then
+        local okCompress, data = pcall(Encoding.CompressString, text, DEFLATE)
+        if okCompress and type(data) == "string" and data ~= "" then
+            parts = cut(data)
+        end
+    end
+    if not parts then
+        -- No compression in this client: plain text in the old format.
+        prefix, parts = OLD_PREFIX, {}
+        for pos = 1, #text, OLD_CHUNK do
+            parts[#parts + 1] = text:sub(pos, pos + OLD_CHUNK - 1)
+        end
+    end
+    if #parts > MAX_PARTS then
+        CRT:Print("That note is too long to share.")
+        return
+    end
+
     outgoing = {
-        id = format("%04x", math.random(0, 65535)),
-        chunks = chunks,
+        prefix = prefix,
+        hash = prefix == PREFIX and fingerprint(text) or format("%04x", math.random(0, 65535)),
+        parts = parts,
         index = 1,
         name = record.name or "note",
+        started = GetTime(),
     }
-    CRT:Print(format("Sharing %s in %d parts. This takes about %d seconds.", outgoing.name, #chunks, math.max(1, #chunks - BURST)))
-    sendNext()
+    if #parts > 10 then
+        CRT:Print(format("Sharing %s in %d parts. The game allows 10 at once and then 1 a second, so this takes about %d seconds.", outgoing.name, #parts, #parts - 10))
+    end
+    Notes:Fire()
+    sendParts()
+end
+
+-- Receiving ---------------------------------------------------------------------------------------
+
+local function received(text, short)
+    local newId, result = Notes:Import(text, short)
+    if newId then
+        Notes:SetActive(newId)
+        CRT:Print("Received a note from " .. short .. ". " .. result)
+    else
+        CRT:Print("Received a note from " .. short .. " that could not be read: " .. tostring(result))
+    end
 end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("CHAT_MSG_ADDON")
 events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
-    if prefix ~= PREFIX or type(message) ~= "string" or type(sender) ~= "string" then
+    if (prefix ~= PREFIX and prefix ~= OLD_PREFIX) or type(message) ~= "string" or type(sender) ~= "string" then
         return
     end
     local short = Ambiguate(sender, "none")
@@ -146,30 +252,51 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     if Notes:TrustedOnly() and not isLeaderOrAssist(short) then
         return
     end
-    local id, part, total, chunk = message:match("^(%x+)|(%d+)|(%d+)|(.*)$")
+    local hash, part, total, data = message:match("^(%x+)|(%d+)|(%d+)|(.*)$")
     part, total = tonumber(part), tonumber(total)
-    if not (id and part and total) or total < 1 or total > 200 or part < 1 or part > total then
+    if not (hash and part and total) or total < 1 or total > MAX_PARTS or part < 1 or part > total then
         return
     end
-    local key = sender .. ":" .. id
+
+    local key = prefix .. sender .. ":" .. hash
     local buffer = incoming[key]
     if not buffer then
-        buffer = { total = total, parts = {}, count = 0 }
+        -- Already have this exact note: ignore all of its parts, with no import and no redraw.
+        buffer = { total = total, parts = {}, count = 0, skip = prefix == PREFIX and haveNote(hash) }
         incoming[key] = buffer
     end
     if not buffer.parts[part] then
-        buffer.parts[part] = chunk
+        buffer.parts[part] = buffer.skip and true or data
         buffer.count = buffer.count + 1
     end
-    if buffer.count >= buffer.total then
-        incoming[key] = nil
-        local text = table.concat(buffer.parts, "", 1, buffer.total)
-        local newId, result = Notes:Import(text, short)
-        if newId then
-            Notes:SetActive(newId)
-            CRT:Print("Received a note from " .. short .. ". " .. result)
-        else
-            CRT:Print("Received a note from " .. short .. " that could not be read: " .. tostring(result))
-        end
+    if buffer.count < buffer.total then
+        return
     end
+    incoming[key] = nil
+    if buffer.skip then
+        return
+    end
+
+    if prefix == OLD_PREFIX then
+        received(table.concat(buffer.parts, "", 1, buffer.total), short)
+        return
+    end
+    if not canCompress then
+        CRT:Print("Received a note from " .. short .. ", but this game client cannot unpack it.")
+        return
+    end
+    local packed = {}
+    for i = 1, buffer.total do
+        packed[i] = unescape(buffer.parts[i])
+    end
+    local ok, text = pcall(Encoding.DecompressString, table.concat(packed), DEFLATE)
+    if not ok or type(text) ~= "string" then
+        CRT:Print("Received a note from " .. short .. " that could not be unpacked.")
+        return
+    end
+    if fingerprint(text) ~= hash then
+        CRT:Print("Received a note from " .. short .. " that arrived damaged. Ask them to share it again.")
+        return
+    end
+    received(text, short)
 end)

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.12.2</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -103,7 +103,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 
 **The note format.** Lines of `key:value;` pairs. A timer line looks like `time:34;ph:1;tag:Name;spellid:64843;` or `time:48;ph:1;tag:G1;text:Group 1 go in;dur:8;`. A tag can be a player name, a role (`tank`, `healer`, `dps`, `melee`, `ranged`), a raid group (`G1`, `Group 1`), or `everyone`. A line starting `EncounterID:` names the boss, and an `invitelist:` line becomes a Raid Groups layout. Every other line is assignment text.
 
-- **Share to raid** sends the note to everyone with the addon. Only the leader or an assistant can share, and only before the pull, since the game blocks addon messages during a boss fight.
+- **Share to raid** sends the note to everyone with the addon. Notes are compressed, so most arrive at once. Only the leader or an assistant can share, and only before the pull, since the game blocks addon messages during a boss fight. Raiders need version 0.13.0 or later to receive notes shared from 0.13.0.
 - **Three windows:** the timers, counting down from the pull; the assignments, with your lines marked and names class colored; and your own personal note. Each can be locked so clicks pass through, or unlocked to drag and resize.
 - **Show only me** keeps only the timers for your name, role, raid group or everyone.
 - **Your alert** shows your next spell or callout before it is due, and can read it out with text to speech.
@@ -129,6 +129,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 | `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |
 | `/crt late export` | The late totals as text to paste into Discord |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
+| `/crt perf` | Shows the addon's CPU use since the last `/reload`, from the game's profiler |
 | `/crt help` | Lists the commands |
 
 ## FAQ

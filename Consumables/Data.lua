@@ -391,6 +391,9 @@ local lastCounts = {} -- itemId -> bag count at the last check
 local lastAuraIds = {} -- spellId -> true at the last check
 local learnElapsed = 0
 local learnNotice
+-- The check runs only after the game reports a change to your bags or buffs, or while it is waiting
+-- for a buff to appear, so it costs nothing while nothing changes.
+local bagsChanged, aurasChanged = true, true
 
 local function auraSet(list)
     local set = {}
@@ -418,16 +421,23 @@ local function learnPoll()
     if InCombatLockdown() then
         return
     end
+    if not bagsChanged and not aurasChanged and not next(learnTarget) then
+        return
+    end
+    local checkBags = bagsChanged
+    bagsChanged, aurasChanged = false, false
     local current = auraSet(helpfulAuras())
 
     -- Notice a used item: its bag count went down since the last check.
-    for _, entry in ipairs(unknownBuffEntries()) do
-        local count = itemCount(entry.item)
-        local before = lastCounts[entry.item]
-        if before and count < before and not learnTarget[entry.item] then
-            learnTarget[entry.item] = { baseline = lastAuraIds, started = GetTime() }
+    if checkBags then
+        for _, entry in ipairs(unknownBuffEntries()) do
+            local count = itemCount(entry.item)
+            local before = lastCounts[entry.item]
+            if before and count < before and not learnTarget[entry.item] then
+                learnTarget[entry.item] = { baseline = lastAuraIds, started = GetTime() }
+            end
+            lastCounts[entry.item] = count
         end
-        lastCounts[entry.item] = count
     end
 
     -- Look for the buff that appeared.
@@ -480,6 +490,15 @@ function Consumables:LearningText()
 end
 
 local learnFrame = CreateFrame("Frame")
+learnFrame:RegisterEvent("BAG_UPDATE_DELAYED")
+learnFrame:RegisterUnitEvent("UNIT_AURA", "player")
+learnFrame:SetScript("OnEvent", function(_, event)
+    if event == "BAG_UPDATE_DELAYED" then
+        bagsChanged = true
+    else
+        aurasChanged = true
+    end
+end)
 learnFrame:SetScript("OnUpdate", function(_, dt)
     learnElapsed = learnElapsed + dt
     if learnElapsed < 1 then

@@ -27,6 +27,16 @@ NoteWindow.FONTS = {
 
 local previewOn = false
 
+-- The windows' text is rebuilt only when something it shows may have changed: the note, the settings,
+-- the group, your role, or previews. contentVersion goes up on each of those, and a window rebuilds
+-- when it has not drawn the current version. The timers window also rebuilds every refresh while a
+-- note is running, for the countdown. A rebuild every few seconds anyway catches anything missed.
+local contentVersion = 1
+local SAFETY_SECONDS = 5
+local function changed()
+    contentVersion = contentVersion + 1
+end
+
 -- Text helpers --------------------------------------------------------------------------
 
 local function fmtTime(seconds)
@@ -344,6 +354,13 @@ local function createWindow(key, defaultPosition, build)
     end
 
     function w:Refresh()
+        local live = key == "window" and Engine.running or false
+        if not live and not self.wasLive and self.drawnVersion == contentVersion and GetTime() - (self.drawnAt or 0) < SAFETY_SECONDS then
+            return
+        end
+        self.wasLive = live
+        self.drawnVersion = contentVersion
+        self.drawnAt = GetTime()
         local text, heading, hasContent = build()
         local visible = previewOn or (s().shown and hasContent)
         frame:SetShown(visible and true or false)
@@ -420,12 +437,19 @@ driver:SetScript("OnUpdate", function(_, dt)
     NoteWindow:RefreshAll()
 end)
 driver:RegisterEvent("PLAYER_LOGIN")
-driver:SetScript("OnEvent", function()
-    build()
-    styleAll()
+driver:RegisterEvent("GROUP_ROSTER_UPDATE")
+driver:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+driver:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+driver:SetScript("OnEvent", function(_, event)
+    changed()
+    if event == "PLAYER_LOGIN" then
+        build()
+        styleAll()
+    end
 end)
 
 Notes:OnChange(function()
+    changed()
     if built then
         styleAll()
     end
@@ -434,5 +458,6 @@ end)
 CRT.UI:RegisterPreview("note", function(on)
     build()
     previewOn = on and true or false
+    changed()
     styleAll()
 end)
