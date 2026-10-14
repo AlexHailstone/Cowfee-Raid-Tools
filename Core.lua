@@ -118,6 +118,11 @@ local defaults = {
             ttsRate = 0,
         },
     },
+    -- Quality of Life options. lowHealth is the experimental low-health alert: threshold is the health
+    -- percent at or under which the banner shows. position is added when the banner is moved.
+    qol = {
+        lowHealth = { enabled = false, threshold = 35 },
+    },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout
     -- that lists who is expected. current is the running night, history the finished ones.

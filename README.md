@@ -42,6 +42,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Ready Check** | Your own consumables bar on every ready check. A raid report of everyone's food, flask, augment rune, Vantus rune and the raid buffs your group can give, shown to you or posted to chat. A ready check window for leaders with every player's answer, consumables, buffs and durability |
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
 | **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
+| **Quality of Life** | Small conveniences. First: an experimental LOW HEALTH banner at or under a health percent you set with a slider. Off by default |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 
 **Toggle previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
@@ -129,7 +130,8 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 | `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |
 | `/crt late export` | The late totals as text to paste into Discord |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
-| `/crt qol` | The Quality of Life page, for small conveniences (empty for now) |
+| `/crt qol` | The Quality of Life page, with the experimental low-health alert |
+| `/crt lowhp off`, `/crt lowhp on` | Turns the experimental low-health alert off or on |
 | `/crt perf` | Shows the addon's CPU use since the last `/reload`, from the game's profiler |
 | `/crt help` | Lists the commands |
 

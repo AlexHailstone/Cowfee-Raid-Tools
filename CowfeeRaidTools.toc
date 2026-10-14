@@ -36,4 +36,5 @@ Notes\Settings.lua
 Notes\Page.lua
 Late\Data.lua
 Late\Page.lua
+QoL\LowHealth.lua
 QoL\Page.lua
