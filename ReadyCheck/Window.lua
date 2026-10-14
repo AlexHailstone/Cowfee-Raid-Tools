@@ -17,6 +17,16 @@ CRT.ReadyCheckWindow = Window
 local PREFIX = "CRTReady"
 local NAME_W = 130
 local READY_W = 26
+local ROLE_W = 20 -- the role icon, between the ready icon and the name
+local LEAD_W = READY_W + ROLE_W
+
+-- The same role art as the Raid Groups page.
+local ROLE_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
+local ROLE_COORDS = {
+    TANK = { 0, 19 / 64, 22 / 64, 41 / 64 },
+    HEALER = { 20 / 64, 39 / 64, 1 / 64, 20 / 64 },
+    DAMAGER = { 20 / 64, 39 / 64, 22 / 64, 41 / 64 },
+}
 local COL_W = 46
 local ROW_H = 20
 local TOP_H = 50 -- title and column headings
@@ -259,7 +269,7 @@ function Window.NewTable(parent, edit, onEdit)
 end
 
 local function columnX(j)
-    return 6 + READY_W + NAME_W + (j - 1) * COL_W
+    return 6 + LEAD_W + NAME_W + (j - 1) * COL_W
 end
 
 -- The column index under the cursor, 1 to count.
@@ -357,7 +367,11 @@ function Table:Row(i)
     row.ready:SetSize(ICON, ICON)
     row.ready:SetPoint("LEFT", 4, 0)
     row.name = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.name:SetPoint("LEFT", READY_W, 0)
+    row.role = row:CreateTexture(nil, "ARTWORK")
+    row.role:SetSize(ICON, ICON)
+    row.role:SetPoint("LEFT", READY_W, 0)
+    row.role:SetTexture(ROLE_TEXTURE)
+    row.name:SetPoint("LEFT", LEAD_W, 0)
     row.name:SetWidth(NAME_W - 4)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
@@ -373,7 +387,7 @@ local function getCell(row, j)
     end
     cell = CreateFrame("Frame", nil, row)
     cell:SetSize(COL_W, ROW_H)
-    cell:SetPoint("LEFT", READY_W + NAME_W + (j - 1) * COL_W, 0)
+    cell:SetPoint("LEFT", LEAD_W + NAME_W + (j - 1) * COL_W, 0)
     cell.icon = cell:CreateTexture(nil, "ARTWORK")
     cell.icon:SetSize(ICON, ICON)
     cell.icon:SetPoint("CENTER")
@@ -436,7 +450,7 @@ function Table:Draw(members, columns, dim)
     for j = #columns + 1, #self.headers do
         self.headers[j]:Hide()
     end
-    self.parent:SetSize(12 + READY_W + NAME_W + math.max(#columns, 3) * COL_W, TOP_H + math.max(#members, 1) * ROW_H + 8)
+    self.parent:SetSize(12 + LEAD_W + NAME_W + math.max(#columns, 3) * COL_W, TOP_H + math.max(#members, 1) * ROW_H + 8)
 
     local readyCount = 0
     for i, m in ipairs(members) do
@@ -455,6 +469,13 @@ function Table:Draw(members, columns, dim)
             readyCount = readyCount + 1
         end
         row.ready:SetTexture(m.ready and READY_ICONS[m.ready] or nil)
+        local coords = m.role and ROLE_COORDS[m.role]
+        if coords then
+            row.role:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+            row.role:Show()
+        else
+            row.role:Hide()
+        end
         for j, col in ipairs(columns) do
             local cell = getCell(row, j)
             cell:Show()

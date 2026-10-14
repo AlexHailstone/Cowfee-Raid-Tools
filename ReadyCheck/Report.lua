@@ -122,13 +122,37 @@ local function subgroupOf(unit)
     return 1
 end
 
--- TANK, HEALER or DAMAGER, or nil when no role is assigned or it can't be read.
-local function roleOf(unit)
-    local role = UnitGroupRolesAssigned(unit)
-    if isSecret(role) or role == "NONE" then
+-- Your role from your current specialization, for when the group has not assigned one.
+local function specRole()
+    local info = C_SpecializationInfo
+    local getSpec = (info and info.GetSpecialization) or GetSpecialization
+    local getRole = (info and info.GetSpecializationRole) or GetSpecializationRole
+    if not getSpec or not getRole then
         return nil
     end
-    return role
+    local ok, role = pcall(function()
+        local spec = getSpec()
+        return spec and getRole(spec)
+    end)
+    return ok and role or nil
+end
+
+local ROLES = { TANK = true, HEALER = true, DAMAGER = true }
+
+-- TANK, HEALER or DAMAGER, or nil. The role the group assigned, else your spec's role for you, else
+-- the last role the Raid Groups page saw for that player.
+local function roleOf(unit, name)
+    local role = UnitGroupRolesAssigned(unit)
+    if isSecret(role) or not ROLES[role] then
+        role = nil
+    end
+    if not role and UnitIsUnit(unit, "player") then
+        role = specRole()
+    end
+    if not role and CRT.Groups then
+        role = CRT.Groups.CachedRole(CRT.Groups.Normalize(name))
+    end
+    return ROLES[role] and role or nil
 end
 
 -- Everyone in the group with their class, raid group, role and buffs, in raid order (order).
@@ -145,7 +169,7 @@ local function readGroup()
                 name = Ambiguate(name, "short"),
                 class = (not isSecret(class)) and class or nil,
                 subgroup = subgroupOf(unit),
-                role = roleOf(unit),
+                role = roleOf(unit, name),
                 order = #members + 1,
                 auras = auras,
                 why = why,
