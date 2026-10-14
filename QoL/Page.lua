@@ -59,7 +59,7 @@ end
 
 -- A horizontal slider with its value beside it, built from the plain Slider widget and color
 -- textures. Returns the slider and the value text. The caller sets its scripts.
-local function makeSlider(pf, x, y, low, high, width)
+local function makeSlider(pf, x, y, low, high, width, step)
     local slider = CreateFrame("Slider", nil, pf, "BackdropTemplate")
     slider:SetOrientation("HORIZONTAL")
     slider:SetSize(width, 14)
@@ -72,11 +72,25 @@ local function makeSlider(pf, x, y, low, high, width)
     thumb:SetSize(10, 18)
     slider:SetThumbTexture(thumb)
     slider:SetMinMaxValues(low, high)
-    slider:SetValueStep(1)
+    slider:SetValueStep(step or 1)
     slider:SetObeyStepOnDrag(true)
     local value = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     value:SetPoint("LEFT", slider, "RIGHT", 12, 0)
     return slider, value
+end
+
+-- A small button in the game's small font, the size of the Previews button's text.
+-- Rounds a slider value to its step of 5, however the value arrived.
+local function toFive(v)
+    return math.floor(v / 5 + 0.5) * 5
+end
+
+local function smallButton(pf, text)
+    local b = makeButton(pf, text, 110, 20)
+    b:SetNormalFontObject(GameFontNormalSmall)
+    b:SetHighlightFontObject(GameFontHighlightSmall)
+    b:SetDisabledFontObject(GameFontDisableSmall)
+    return b
 end
 
 -- Panel size ----------------------------------------------------------------------------------
@@ -86,19 +100,19 @@ local function buildPanelSize(pf, top)
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.panelSize)
     local sliderLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    sliderLabel:SetPoint("TOPLEFT", 12, top - 22)
+    sliderLabel:SetPoint("TOPLEFT", 10, top - 16)
     sliderLabel:SetText(TEXT.panelSizeLabel)
 
-    local slider, value = makeSlider(pf, 16, top - 44, UI.MIN_SCALE, UI.MAX_SCALE, 240)
+    local slider, value = makeSlider(pf, 10, top - 32, UI.MIN_SCALE, UI.MAX_SCALE, 100, 5)
     -- The slider sits inside the window it resizes, so the size is applied when the mouse lets go,
     -- not on every step, or the slider would move under the mouse while dragging.
     local updating = false
     slider:SetScript("OnValueChanged", function(_, v)
-        value:SetText(math.floor(v + 0.5) .. "%")
+        value:SetText(toFive(v) .. "%")
     end)
     slider:SetScript("OnMouseUp", function(self)
         if not updating then
-            UI:SetScale(self:GetValue())
+            UI:SetScale(toFive(self:GetValue()))
         end
     end)
     slider.refresh = function()
@@ -109,14 +123,14 @@ local function buildPanelSize(pf, top)
     end
     controls[#controls + 1] = slider
 
-    local reset = makeButton(pf, TEXT.panelSizeReset, 140, 22)
+    local reset = smallButton(pf, TEXT.panelSizeReset)
     reset:SetPoint("LEFT", value, "RIGHT", 16, 0)
     reset:SetScript("OnClick", function()
         UI:SetScale(100)
     end)
 
     local note = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    note:SetPoint("TOPLEFT", 16, top - 66)
+    note:SetPoint("TOPLEFT", 10, top - 54)
     note:SetWidth(650)
     note:SetJustifyH("LEFT")
     note:SetText(TEXT.panelSizeNote)
@@ -131,9 +145,9 @@ local function buildLowHealth(pf, top)
 
     local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     check:SetSize(24, 24)
-    check:SetPoint("TOPLEFT", 4, top - 20)
+    check:SetPoint("TOPLEFT", 6, top - 18)
     local checkText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    checkText:SetPoint("LEFT", check, "RIGHT", 2, 0)
+    checkText:SetPoint("LEFT", check, "RIGHT", 1, 0)
     checkText:SetText(TEXT.lowHealthEnable)
     check:SetScript("OnClick", function(self)
         LowHealth:SetEnabled(self:GetChecked())
@@ -146,13 +160,13 @@ local function buildLowHealth(pf, top)
 
     -- The slider, with the percent beside it. Built from the plain Slider widget and color textures.
     local sliderLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    sliderLabel:SetPoint("TOPLEFT", 32, top - 46)
+    sliderLabel:SetPoint("TOPLEFT", 10, top - 42)
     sliderLabel:SetText(TEXT.lowHealthThreshold)
-    local slider, value = makeSlider(pf, 36, top - 66, 5, 90, 240)
+    local slider, value = makeSlider(pf, 10, top - 58, 5, 90, 100, 5)
 
     local updating = false
     slider:SetScript("OnValueChanged", function(_, v)
-        v = math.floor(v + 0.5)
+        v = toFive(v)
         value:SetText(v .. "%")
         if not updating then
             settings().threshold = v
@@ -172,14 +186,14 @@ local function buildLowHealth(pf, top)
     end
     controls[#controls + 1] = slider
 
-    local reset = makeButton(pf, TEXT.resetPosition, 160)
-    reset:SetPoint("TOPLEFT", 36, top - 90)
+    local reset = smallButton(pf, TEXT.resetPosition)
+    reset:SetPoint("LEFT", value, "RIGHT", 16, 0)
     reset:SetScript("OnClick", function()
         LowHealth:ResetPosition()
     end)
 
     local note = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    note:SetPoint("TOPLEFT", 36, top - 120)
+    note:SetPoint("TOPLEFT", 10, top - 82)
     note:SetWidth(630)
     note:SetJustifyH("LEFT")
     note:SetText(TEXT.lowHealthNote)
@@ -198,8 +212,8 @@ local function build(pf)
     hint:SetJustifyH("LEFT")
     hint:SetText(TEXT.hint)
 
-    buildPanelSize(pf, -62)
-    buildLowHealth(pf, -168)
+    buildPanelSize(pf, -50)
+    buildLowHealth(pf, -132)
 
     pf:SetScript("OnShow", refresh)
     -- Ctrl + mouse wheel changes the size too, so the slider follows it.

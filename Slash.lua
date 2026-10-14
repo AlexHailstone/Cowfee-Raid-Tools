@@ -95,6 +95,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.LowHealth:SetEnabled(msg == "lowhp on")
         CRT:Print("Low-health alert " .. (msg == "lowhp on" and "on." or "off."))
     --@do-not-package@
+    elseif msg == "dev clear" then
+        if CRT.Dev then
+            CRT.Dev:ClearAll()
+        end
     elseif msg == "dev" then
         if CRT.Dev then
             CRT.Dev:Toggle()

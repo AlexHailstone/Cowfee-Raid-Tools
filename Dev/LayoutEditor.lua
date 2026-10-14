@@ -509,6 +509,16 @@ local function build()
     end)
 end
 
+-- /crt dev clear: drops every saved change, for after they have been written into the code.
+function Dev:ClearAll()
+    local count = 0
+    for _ in pairs(db().overrides) do
+        count = count + 1
+    end
+    db().overrides = {}
+    CRT:Print(format("Cleared %d dev layout change%s. /reload to see the code's own layout.", count, count == 1 and "" or "s"))
+end
+
 function Dev:Toggle(state)
     if state == nil then
         state = not on

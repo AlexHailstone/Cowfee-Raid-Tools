@@ -608,7 +608,14 @@ local function build(pf)
     end, 0, 60)
 
     -- Expected roster, start and end.
-    layoutButton = makeButton(pf, "Expected roster", 360)
+    -- The three buttons use the game's standard button font, a little smaller than the addon's.
+    local function standardFont(b)
+        b:SetNormalFontObject(GameFontNormal)
+        b:SetHighlightFontObject(GameFontHighlight)
+        b:SetDisabledFontObject(GameFontDisable)
+    end
+    layoutButton = makeButton(pf, "Expected roster", 250)
+    standardFont(layoutButton)
     layoutButton:SetPoint("TOPLEFT", 8, -134)
     layoutButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     layoutButton:SetScript("OnClick", function(_, button)
@@ -616,8 +623,9 @@ local function build(pf)
     end)
     tooltip(layoutButton, "Expected roster", "Click for the next saved Raid Groups layout, right-click for the previous one. Everyone in it is expected. A night already running keeps the roster it started with.")
 
-    startButton = makeButton(pf, "Start raid now", 170)
-    startButton:SetPoint("LEFT", layoutButton, "RIGHT", 8, 0)
+    startButton = makeButton(pf, "Start raid now", 140)
+    standardFont(startButton)
+    startButton:SetPoint("LEFT", layoutButton, "RIGHT", 4, 0)
     startButton:SetScript("OnClick", function()
         local restarting = Late:Current() ~= nil
         if Late:Start("button", time()) then
@@ -626,8 +634,9 @@ local function build(pf)
     end)
     tooltip(startButton, "Start raid now", "Starts tonight's clock now, for when invites go out. On a raid day it replaces the scheduled start. While a night is running, it restarts it from now and the running night is not saved.")
 
-    endButton = makeButton(pf, "End raid", 130)
-    endButton:SetPoint("LEFT", startButton, "RIGHT", 8, 0)
+    endButton = makeButton(pf, "End raid", 100)
+    standardFont(endButton)
+    endButton:SetPoint("LEFT", startButton, "RIGHT", 4, 0)
     endButton:SetScript("OnClick", function()
         Late:End("button", time())
     end)
