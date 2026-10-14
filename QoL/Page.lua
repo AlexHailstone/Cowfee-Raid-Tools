@@ -21,7 +21,7 @@ local TEXT = {
     lowHealthTag = "(experimental)",
     lowHealthEnable = "Show a LOW HEALTH banner when my health is low",
     lowHealthThreshold = "Show it at or under this much health:",
-    lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Toggle previews to place the banner.",
+    lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
     resetPosition = "Reset position",
 }
 

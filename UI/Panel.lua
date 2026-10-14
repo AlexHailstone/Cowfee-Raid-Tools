@@ -13,7 +13,7 @@ function UI:RegisterPage(key, title, builder)
 end
 
 -- Previews: the panels that appear on their own, such as the ready check bar and the debuff panel,
--- register here. "Toggle previews" in the corner of the main panel shows them all so they can be
+-- register here. "Previews" in the corner of the main panel shows them all so they can be
 -- dragged into place, and hides them again. setFn(on) shows or hides one panel's preview.
 UI.previews = {}
 UI.previewing = false
@@ -36,7 +36,7 @@ function UI:SetPreviews(on)
         end
     end
     if self.previewButton then
-        self.previewButton:SetText(on and "Previews: ON" or "Toggle previews")
+        self.previewButton:SetText(on and "Previews: ON" or "Previews")
     end
 end
 
@@ -124,26 +124,27 @@ function UI:Create()
         UI:SetPreviews(false)
     end)
 
-    -- "Toggle previews", in the top right corner beside the close button.
+    -- "Previews", in the title bar beside the close button. It uses the game's small fonts, not the
+    -- addon's scaled ones, and is 18 high and 1 pixel lower than centre, so it fits inside the title bar.
     local pb = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    pb:SetNormalFontObject(CRTFontNormal)
-    pb:SetHighlightFontObject(CRTFontHighlight)
-    pb:SetDisabledFontObject(CRTFontDisable)
-    pb:SetSize(150, 20)
+    pb:SetNormalFontObject(GameFontNormalSmall)
+    pb:SetHighlightFontObject(GameFontHighlightSmall)
+    pb:SetDisabledFontObject(GameFontDisableSmall)
+    pb:SetSize(96, 18)
     -- Beside the close button, centred on it, so it sits inside the title bar.
     if f.CloseButton then
-        pb:SetPoint("RIGHT", f.CloseButton, "LEFT", -2, 0)
+        pb:SetPoint("RIGHT", f.CloseButton, "LEFT", -2, -1)
     else
         pb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, -2)
     end
-    pb:SetText("Toggle previews")
+    pb:SetText("Previews")
     pb:SetScript("OnClick", function()
         UI:TogglePreviews()
     end)
     pb:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Toggle previews", 1, 1, 1)
-        GameTooltip:AddLine("Shows the ready check bar and the debuff panel so you can drag them where you want them. Closing this window also turns the previews off.", 0.8, 0.8, 0.8, true)
+        GameTooltip:SetText("Previews", 1, 1, 1)
+        GameTooltip:AddLine("Shows every movable window with sample content (the ready check bar and window, the debuff panel, the note windows, your alert and the low-health banner) so you can drag them into place. Closing this window also turns the previews off.", 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     pb:SetScript("OnLeave", function()

@@ -245,7 +245,7 @@ function Display:Preview()
 end
 
 -- Keeps the row on screen, with its drag handle, until it is turned off. Used by the
--- "Toggle previews" button in the main panel.
+-- "Previews" button in the main panel.
 function Display:SetPreview(on)
     if on then
         show(nil, true)

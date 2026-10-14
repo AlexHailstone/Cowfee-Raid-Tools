@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- The Debuffs page: settings for the in-combat debuff panel. The panel is moved with
--- "Toggle previews" in the corner of the main window.
+-- "Previews" in the corner of the main window.
 
 local Debuffs = CRT.Debuffs
 local UI = CRT.UI
@@ -101,7 +101,7 @@ local function build(pf)
     hint:SetPoint("TOPLEFT", 8, -34)
     hint:SetWidth(660)
     hint:SetJustifyH("LEFT")
-    hint:SetText("A movable panel for the short debuffs a boss puts on you in combat. The game hides those from addons, but lets an addon choose where it draws them, so this panel is where they appear. Press Toggle previews in the top right corner of this window to see it and drag it into place.")
+    hint:SetText("A movable panel for the short debuffs a boss puts on you in combat. The game hides those from addons, but lets an addon choose where it draws them, so this panel is where they appear. Press Previews in the top right corner of this window to see it and drag it into place.")
 
     enabledCheck = makeCheck(pf, "Show the panel in combat", -86, function(checked)
         Debuffs:SetEnabled(checked)

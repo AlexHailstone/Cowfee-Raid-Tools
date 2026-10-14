@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.1</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -45,7 +45,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Quality of Life** | Small conveniences: the panel's size, 50% to 200% with the text scaled too (also Ctrl + mouse wheel over the panel), and an experimental LOW HEALTH banner at or under a health percent you set with a slider. Off by default |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 
-**Toggle previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
+**Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
 
 ## Installation
 
@@ -58,7 +58,7 @@ The folder name must be exactly `CowfeeRaidTools`, with the `.toc` file directly
 
 ## Quick start
 
-1. Type `/crt` and press **Toggle previews** to place the windows you want.
+1. Type `/crt` and press **Previews** to place the windows you want.
 2. Raid leaders: build and save your layouts on **Raid Groups**, and import the night's notes on **Raid Notes**, then press **Share to raid** before the pull.
 3. Everyone: the Ready Check bar, the debuff panel and the raid note windows work on their own once placed.
 
@@ -97,7 +97,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 
 ## Debuffs
 
-`/crt debuffs`. A movable panel that shows the boss mechanic debuffs on you during combat, using the slots the game provides for them. Choose the icon size and how many to show, and place it with Toggle previews.
+`/crt debuffs`. A movable panel that shows the boss mechanic debuffs on you during combat, using the slots the game provides for them. Choose the icon size and how many to show, and place it with Previews.
 
 ## Raid Notes
 

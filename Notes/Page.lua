@@ -4,7 +4,7 @@ local ADDON, CRT = ...
 --   Notes     the list of notes (one per boss), the text of the selected one, importing, sharing with
 --             the group, the roster link to Raid Groups, your personal note, and a test run
 --   Settings  the three note windows, your alert and sharing (Notes/Settings.lua)
--- The note windows and your alert are moved with "Toggle previews".
+-- The note windows and your alert are moved with "Previews".
 
 local Notes = CRT.Notes
 local Engine = CRT.NoteEngine

@@ -603,7 +603,7 @@ function Window.ColumnLine(col, members)
 end
 
 -- Posts a column to the "Post to" channel on the On ready check tab, or raid chat if that is Only me.
--- Sample players (Show it now, Toggle previews) are only printed to you, never posted.
+-- Sample players (Show it now, Previews) are only printed to you, never posted.
 function Window:PostColumn(key)
     local t = windowTable
     if not (t and t.members and t.columns) then

@@ -195,7 +195,7 @@ local function makeNumber(parent, x, y, text, field, low, high)
 end
 
 local function buildWindow(f)
-    local hint = label(f, "A table of every player's ready answer, consumables and raid buffs that opens on a ready check, or any time with /crt check, and closes after the time below or on a right-click. Shift-click a heading in it to post who is missing that to raid chat. Drag it to move it, or use Toggle previews to place it.", "CRTFontDisableSmall")
+    local hint = label(f, "A table of every player's ready answer, consumables and raid buffs that opens on a ready check, or any time with /crt check, and closes after the time below or on a right-click. Shift-click a heading in it to post who is missing that to raid chat. Drag it to move it, or use Previews to place it.", "CRTFontDisableSmall")
     hint:SetPoint("TOPLEFT", 8, -8)
     hint:SetWidth(670)
 

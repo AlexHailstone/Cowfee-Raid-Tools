@@ -10,7 +10,7 @@ local Notes = CRT.Notes
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
 local TEXT = {
-    hint = "Untick Locked to drag a window and resize it from its bottom-right corner, then lock it again so clicks pass through. Toggle previews shows every window with sample text. Everything here is saved for you.",
+    hint = "Untick Locked to drag a window and resize it from its bottom-right corner, then lock it again so clicks pass through. Previews shows every window with sample text. Everything here is saved for you.",
 
     -- The three window columns.
     timers = "Timers",

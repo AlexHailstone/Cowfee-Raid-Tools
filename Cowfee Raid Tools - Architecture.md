@@ -91,7 +91,7 @@ Food, flask and weapon icons are secure buttons that use the first assigned item
 
 ## Previews and saved positions
 
-`UI/Panel.lua` has a preview registry. A floating panel calls `UI:RegisterPreview(key, setFn)`, and the **Toggle previews** button in the corner of the main window calls every registered function, then turns them off again when the window closes. Each panel shows a drag handle during a preview and saves its position in `CRTDB` when dropped, in `CRTDB.consumables.position` and `CRTDB.debuffs.position`. All of this is saved per player in their own saved variables, and new settings are added as defaults in `Core.lua`.
+`UI/Panel.lua` has a preview registry. A floating panel calls `UI:RegisterPreview(key, setFn)`, and the **Previews** button in the corner of the main window calls every registered function, then turns them off again when the window closes. Each panel shows a drag handle during a preview and saves its position in `CRTDB` when dropped, in `CRTDB.consumables.position` and `CRTDB.debuffs.position`. All of this is saved per player in their own saved variables, and new settings are added as defaults in `Core.lua`.
 
 ## Ready Check
 
