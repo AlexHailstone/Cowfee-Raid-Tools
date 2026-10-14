@@ -82,6 +82,16 @@ local function sortOptions()
     return method, direction
 end
 
+-- Notes about layout problems are recorded once each, since layout runs twice a second.
+local layoutNotes = {}
+
+local function layoutNote(key, text)
+    if not layoutNotes[key] then
+        layoutNotes[key] = true
+        note(text)
+    end
+end
+
 -- Lays the icons out in a row. Done by hand because the container's own layout options are not
 -- documented. Out of combat only, since the frames may be restricted in combat.
 local function layout()
@@ -98,9 +108,22 @@ local function layout()
     for index = 1, total do
         local ok2, button = pcall(container.GetAuraGroupFrame, container, GROUP, index)
         if ok2 and button then
-            pcall(button.SetSize, button, size, size)
-            pcall(button.ClearAllPoints, button)
-            pcall(button.SetPoint, button, "TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), 0)
+            -- The container's aura frames can report their anchoring as secret. When they do, they
+            -- are left to the container's own layout, and that is recorded once for the diagnostics.
+            local okA, anchorSecret = pcall(button.IsAnchoringSecret, button)
+            if okA and anchorSecret then
+                layoutNote("secret", "aura frames report secret anchoring, so they are left to the container's own layout")
+            else
+                if not pcall(button.SetSize, button, size, size) then
+                    layoutNote("size", "SetSize on an aura frame failed")
+                end
+                if not pcall(button.ClearAllPoints, button) then
+                    layoutNote("clear", "ClearAllPoints on an aura frame failed")
+                end
+                if not pcall(button.SetPoint, button, "TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), 0) then
+                    layoutNote("point", "SetPoint on an aura frame failed")
+                end
+            end
         end
     end
     frame:SetSize(count * size + (count - 1) * GAP, size)
@@ -281,6 +304,66 @@ end
 
 -- Diagnostics: what was built, what failed, and what the game offers. --------------------
 
+local function isSecret(value)
+    return issecretvalue and issecretvalue(value) or false
+end
+
+-- Text for any value. A secret value is printed as "(secret)", because joining one into text is an
+-- error, and the size and position of the container's aura frames are secret.
+local function safe(value)
+    if isSecret(value) then
+        return "(secret)"
+    end
+    return tostring(value)
+end
+
+-- A short description of a value, with tables shown a few levels deep.
+local function describe(value, depth)
+    if isSecret(value) then
+        return "(secret)"
+    end
+    local kind = type(value)
+    if kind == "table" then
+        if depth <= 0 then
+            return "{...}"
+        end
+        local parts = {}
+        for k, v in pairs(value) do
+            parts[#parts + 1] = safe(k) .. "=" .. describe(v, depth - 1)
+            if #parts >= 40 then
+                parts[#parts + 1] = "..."
+                break
+            end
+        end
+        table.sort(parts)
+        return "{" .. table.concat(parts, ", ") .. "}"
+    elseif kind == "function" then
+        return "function"
+    end
+    return safe(value)
+end
+
+-- What can be said about one aura frame without reading anything that is secret.
+local function describeFrame(button)
+    local function ask(method, ...)
+        local fn = button[method]
+        if type(fn) ~= "function" then
+            return "n/a"
+        end
+        local ok, a, b, c, d, e = pcall(fn, button, ...)
+        if not ok then
+            return "error"
+        end
+        return safe(a) .. (b ~= nil and (", " .. safe(b)) or "") .. (c ~= nil and (", " .. safe(c)) or "")
+            .. (d ~= nil and (", " .. safe(d)) or "") .. (e ~= nil and (", " .. safe(e)) or "")
+    end
+    return "shown " .. ask("IsShown")
+        .. " | size " .. ask("GetSize")
+        .. " | anchor " .. ask("GetPoint")
+        .. " | anchoring secret " .. ask("IsAnchoringSecret")
+        .. " | anchoring restricted " .. ask("IsAnchoringRestricted")
+end
+
 function Panel:InfoText()
     local lines = {}
     local function add(text)
@@ -328,19 +411,33 @@ function Panel:InfoText()
     table.sort(found)
     add("Related names: " .. (#found > 0 and table.concat(found, ", ") or "none found"))
 
+    -- The option tables Blizzard defines for the container, which the wiki does not document.
+    add("")
+    add("Option tables the game defines (these show the real field names and values):")
+    local dumped = {}
+    for key, value in pairs(_G) do
+        if type(key) == "string" and key:find("AuraContainer") and type(value) == "table"
+            and not key:find("Mixin$") and not key:find("^C_") and not key:find("^CRT") then
+            dumped[#dumped + 1] = key
+        end
+    end
+    table.sort(dumped)
+    for _, key in ipairs(dumped) do
+        add("  " .. key .. " = " .. describe(_G[key], 3))
+    end
+
     if container then
         local count = 0
         local ok, n = pcall(container.GetAuraGroupFrameCount, container, GROUP)
-        if ok and type(n) == "number" then
+        if ok and not isSecret(n) and type(n) == "number" then
             count = n
         end
+        add("")
         add("Aura frames in the group: " .. count)
         for index = 1, count do
             local ok2, button = pcall(container.GetAuraGroupFrame, container, GROUP, index)
             if ok2 and button then
-                local shown = button.IsShown and button:IsShown()
-                local point, _, _, x, y = button:GetPoint()
-                add(format("  frame %d: shown %s, size %dx%d, at %s %s,%s", index, tostring(shown), button:GetWidth(), button:GetHeight(), tostring(point), tostring(x), tostring(y)))
+                add("  frame " .. index .. ": " .. describeFrame(button))
             end
         end
     end

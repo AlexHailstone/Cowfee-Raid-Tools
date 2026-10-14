@@ -2,7 +2,7 @@
 ## Title: |cFFC8A050Cowfee|r Raid Tools
 ## Notes: Save, edit and apply raid group layouts, check your consumables on a ready check, and show debuffs in combat. Type /crt to open.
 ## Author: Alex
-## Version: 0.5.0
+## Version: 0.5.1
 ## SavedVariables: CRTDB
 ## Category: Dungeons & Raids
 
