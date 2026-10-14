@@ -90,8 +90,8 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 `/crt readycheck` opens the page, which has three tabs.
 
 - **Window.** A table that opens on a ready check for the raid leader and assistants: every player's ready answer, consumables, raid buffs and durability, for 30 seconds or until you right-click it. Arrange its columns by dragging the headings in the copy on this tab, and click a heading to hide it. Sort players by group, role or name, with a class color bar behind each row.
-- **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own.
-- **Settings.** Run the report automatically on a ready check or a pull timer, choose where it goes, and what counts (best food only, flask expiring warning). The automatic report only goes to chat from whoever started the ready check, so it is posted once.
+- **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own, and drag the rows to set the icon order and which item is used first.
+- **Settings.** Run the report automatically on a ready check or a pull timer, choose where it goes, and what counts (best food only, flask expiring warning). The automatic report only goes to chat from whoever started the ready check, so it is posted once. Here you also turn your bar on or off, hide it on a ready check you started yourself, and set when it warns that a buff is running low.
 
 Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own. Shift-clicking the Dur heading posts everyone under 30%.
 

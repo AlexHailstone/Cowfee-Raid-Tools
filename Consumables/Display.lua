@@ -276,7 +276,16 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("READY_CHECK")
 events:RegisterEvent("READY_CHECK_FINISHED")
-events:SetScript("OnEvent", function(_, event, _, timeLeft)
+-- True when the ready check was started by you. The name can come with a realm, or be hidden from
+-- addons, in which case it does not count as yours.
+local function startedByMe(initiator)
+    if type(initiator) ~= "string" or (issecretvalue and issecretvalue(initiator)) then
+        return false
+    end
+    return Ambiguate(initiator, "none") == UnitName("player")
+end
+
+events:SetScript("OnEvent", function(_, event, initiator, timeLeft)
     if event == "PLAYER_LOGIN" then
         -- Create the secure buttons now, out of combat.
         if not InCombatLockdown() then
@@ -289,6 +298,9 @@ events:SetScript("OnEvent", function(_, event, _, timeLeft)
             Display:Refresh()
         end
     elseif event == "READY_CHECK" then
+        if Consumables:NotStarter() and startedByMe(initiator) then
+            return
+        end
         local seconds = type(timeLeft) == "number" and timeLeft or 30
         show(seconds + 1, false)
         -- Blizzard's dialog may not be on screen yet when this event arrives, so place it again shortly.

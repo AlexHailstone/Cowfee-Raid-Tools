@@ -72,6 +72,16 @@ function Consumables:SetEnabled(value)
     self:Fire()
 end
 
+-- True when your bar should stay hidden on a ready check you started yourself.
+function Consumables:NotStarter()
+    return cdb().notStarter and true or false
+end
+
+function Consumables:SetNotStarter(value)
+    cdb().notStarter = value and true or false
+    self:Fire()
+end
+
 function Consumables:LowMinutes()
     return cdb().lowMinutes
 end
@@ -104,21 +114,15 @@ function Consumables:Database()
     return CRT.ConsumablesDB
 end
 
--- Moves one id by delta positions within a list of ids, returning the new list.
-local function moved(list, id, delta)
+-- Moves one id to a place in a list of ids (1 is first), returning the new list.
+local function movedTo(list, id, index)
     local out = {}
-    for i, v in ipairs(list) do
-        out[i] = v
-    end
-    for i, v in ipairs(out) do
-        if v == id then
-            local j = i + delta
-            if j >= 1 and j <= #out then
-                out[i], out[j] = out[j], out[i]
-            end
-            break
+    for _, v in ipairs(list) do
+        if v ~= id then
+            out[#out + 1] = v
         end
     end
+    table.insert(out, math.max(1, math.min(#out + 1, index)), id)
     return out
 end
 
@@ -139,8 +143,9 @@ function Consumables:Order()
     return out
 end
 
-function Consumables:MoveCategory(key, delta)
-    cdb().categoryOrder = moved(self:Order(), key, delta)
+-- Puts a category at a place in the icon order, 1 being leftmost.
+function Consumables:MoveCategoryTo(key, index)
+    cdb().categoryOrder = movedTo(self:Order(), key, index)
     self:Fire()
 end
 
@@ -179,12 +184,13 @@ function Consumables:Entries(key)
     return out
 end
 
-function Consumables:MoveItem(key, itemId, delta)
+-- Puts an item at a place in its category's list, 1 being used first.
+function Consumables:MoveItemTo(key, itemId, index)
     local ids = {}
     for _, entry in ipairs(self:Entries(key)) do
         ids[#ids + 1] = entry.item
     end
-    cdb().itemOrder[key] = moved(ids, itemId, delta)
+    cdb().itemOrder[key] = movedTo(ids, itemId, index)
     self:Fire()
 end
 

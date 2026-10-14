@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- consumables ships with the addon, and here you can:
 --   * see the same bar that shows on the ready check, with live status,
 --   * drag an item from your bags onto an icon to add it to that category (optional),
---   * set the icon order, and which item is used first when you click an icon.
+--   * drag the rows to set the icon order, and which item is used first when you click an icon.
+-- Whether the bar shows, and the warning time, are on the Ready Check page's Settings tab.
 -- The buff of a food or flask is learned the first time you use it, see Consumables/Data.lua.
 
 local Consumables = CRT.Consumables
@@ -43,7 +44,7 @@ local function makeButton(parent, label, width, height)
     return b
 end
 
-local page, enabledCheck, lowEdit, itemTitle, itemHint, itemEmpty, footer, learning, itemChild, barFrame
+local page, itemTitle, itemHint, itemEmpty, footer, learning, itemChild, barFrame
 local selected = "food"
 local catRows, itemRows, barSlots = {}, {}, {}
 local refresh
@@ -91,7 +92,7 @@ local function buildBar(pf)
     local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     label:SetPoint("TOPLEFT", 8, -44)
     label:SetText("Your bar")
-    UI.Help(pf, "Your bar", "Your own bar of consumable icons that appears during a ready check. It uses a built-in list of consumables kept up to date with the addon. You can add your own, and choose the order.\n\nDrag an item from your bags onto an icon to add it. Click an icon to see its items."):SetPoint("LEFT", label, "RIGHT", 6, 0)
+    UI.Help(pf, "Your bar", "Your own bar of consumable icons that appears during a ready check. It uses a built-in list of consumables kept up to date with the addon. You can add your own, and choose the order.\n\nDrag an item from your bags onto an icon to add it. Click an icon to see its items. Drag the rows below to change the order.\n\nWhether it shows, and when it warns, are on the Settings tab."):SetPoint("LEFT", label, "RIGHT", 6, 0)
 
     local count = #Consumables.CATEGORIES
     barFrame = CreateFrame("Frame", nil, pf, "BackdropTemplate")
@@ -120,7 +121,78 @@ local function buildBar(pf)
     end
 end
 
--- Icon order: five rows, each with Up and Down. Clicking a row selects its category. -----------
+-- Drag to reorder ------------------------------------------------------------------------------
+-- A row in either list can be dragged up or down. While it is dragged, a gold line shows where it
+-- will land, and letting go moves it there. Clicking a row without dragging still selects it.
+
+local drag -- { rows = the shown rows, top to bottom, from = the dragged row's place, onDrop = function(place) }
+local marker
+
+-- Where the dragged row would land: before row i, or after the last row (#rows + 1).
+local function insertAt(rows)
+    local _, y = GetCursorPosition()
+    y = y / rows[1]:GetEffectiveScale()
+    local index = 1
+    for i, row in ipairs(rows) do
+        local _, centre = row:GetCenter()
+        if centre and y < centre then
+            index = i + 1
+        end
+    end
+    return index
+end
+
+local function placeMarker()
+    if not drag then
+        return
+    end
+    local rows = drag.rows
+    local index = insertAt(rows)
+    marker:ClearAllPoints()
+    if index <= #rows then
+        marker:SetPoint("BOTTOMLEFT", rows[index], "TOPLEFT", 0, 1)
+        marker:SetPoint("BOTTOMRIGHT", rows[index], "TOPRIGHT", 0, 1)
+    else
+        marker:SetPoint("TOPLEFT", rows[#rows], "BOTTOMLEFT", 0, -1)
+        marker:SetPoint("TOPRIGHT", rows[#rows], "BOTTOMRIGHT", 0, -1)
+    end
+    marker:Show()
+end
+
+-- Makes a row draggable. getRows returns the list's shown rows in order, and onDrop(place) moves the
+-- row's entry to that place (1 is the top).
+local function draggable(row, getRows, onDrop)
+    row:RegisterForDrag("LeftButton")
+    row:SetScript("OnDragStart", function(self)
+        local rows = getRows()
+        for i, r in ipairs(rows) do
+            if r == self then
+                drag = { rows = rows, from = i, onDrop = onDrop, row = self }
+            end
+        end
+        if drag then
+            self:SetAlpha(0.5)
+            placeMarker()
+        end
+    end)
+    row:SetScript("OnDragStop", function(self)
+        self:SetAlpha(1)
+        marker:Hide()
+        if not drag then
+            return
+        end
+        local index = insertAt(drag.rows)
+        -- The row leaves its old place first, so a place below it moves up by one.
+        local place = index > drag.from and index - 1 or index
+        local d = drag
+        drag = nil
+        if place ~= d.from then
+            d.onDrop(place)
+        end
+    end)
+end
+
+-- Icon order: five rows to drag into order. Clicking a row selects its category. ----------------
 
 local function buildCategoryRows(pf)
     local top = -156
@@ -134,15 +206,10 @@ local function buildCategoryRows(pf)
         row.text:SetPoint("LEFT", 10, 0)
         row.text:SetJustifyH("LEFT")
 
-        row.down = makeButton(row, "Down", 54, 24)
-        row.down:SetPoint("RIGHT", -4, 0)
-        row.down:SetScript("OnClick", function()
-            Consumables:MoveCategory(row.key, 1)
-        end)
-        row.up = makeButton(row, "Up", 44, 24)
-        row.up:SetPoint("RIGHT", row.down, "LEFT", -4, 0)
-        row.up:SetScript("OnClick", function()
-            Consumables:MoveCategory(row.key, -1)
+        draggable(row, function()
+            return catRows
+        end, function(place)
+            Consumables:MoveCategoryTo(row.key, place)
         end)
 
         row:SetScript("OnClick", function(self)
@@ -176,18 +243,25 @@ local function itemRow(index)
     row.icon:SetPoint("LEFT", 6, 0)
     row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-    row.down = makeButton(row, "Down", 46, 22)
-    row.down:SetPoint("RIGHT", -4, 0)
-    row.down:SetScript("OnClick", function()
-        Consumables:MoveItem(selected, row.itemId, 1)
+    -- Drag the row to change which item is used first. Dropping an item from your bags on a row
+    -- still adds it to the list.
+    row:EnableMouse(true)
+    draggable(row, function()
+        local rows = {}
+        for _, r in ipairs(itemRows) do
+            if r:IsShown() then
+                rows[#rows + 1] = r
+            end
+        end
+        return rows
+    end, function(place)
+        Consumables:MoveItemTo(selected, row.itemId, place)
     end)
-    row.up = makeButton(row, "Up", 34, 22)
-    row.up:SetPoint("RIGHT", row.down, "LEFT", -3, 0)
-    row.up:SetScript("OnClick", function()
-        Consumables:MoveItem(selected, row.itemId, -1)
+    row:SetScript("OnReceiveDrag", function()
+        drop(selected)
     end)
     row.remove = makeButton(row, "Remove", 58, 22)
-    row.remove:SetPoint("RIGHT", row.up, "LEFT", -3, 0)
+    row.remove:SetPoint("RIGHT", -4, 0)
     row.remove:SetScript("OnClick", function()
         Consumables:RemoveExtra(selected, row.itemId)
     end)
@@ -195,7 +269,7 @@ local function itemRow(index)
     -- The name on the top line, and how many are in your bags under it, so a long name has room.
     row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, 1)
-    row.text:SetPoint("RIGHT", row.up, "LEFT", -6, 0)
+    row.text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
     row.side = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -212,7 +286,7 @@ local function refreshItems()
     if def and def.kind == "count" then
         itemHint:SetText("Only the total in your bags is shown for this icon. Drag more items here to add them.")
     elseif def and def.clickable then
-        itemHint:SetText("Clicking the icon uses the first item you have in your bags. Drag more items here to add them.")
+        itemHint:SetText("Clicking the icon uses the first item you have in your bags. Drag the rows to change which comes first. Drag more items here to add them.")
     else
         itemHint:SetText("This icon is not clickable. Drag more items here to add them.")
     end
@@ -233,10 +307,12 @@ local function refreshItems()
             row.side:SetText("|cff888888none|r")
         end
         row.remove:SetShown(entry.user and true or false)
-        -- The name runs up to the leftmost button, which is Remove only for your own items.
-        row.text:SetPoint("RIGHT", entry.user and row.remove or row.up, "LEFT", -6, 0)
-        row.up:SetEnabled(i > 1)
-        row.down:SetEnabled(i < #entries)
+        -- The name runs to the row's edge, or up to Remove for your own items.
+        if entry.user then
+            row.text:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
+        else
+            row.text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+        end
         row:Show()
     end
     for i = #entries + 1, #itemRows do
@@ -250,19 +326,12 @@ refresh = function()
     if not page or not page:IsShown() then
         return
     end
-    enabledCheck:SetChecked(Consumables:Enabled())
-    if not lowEdit:HasFocus() then
-        lowEdit:SetText(tostring(Consumables:LowMinutes()))
-    end
-
     local order = Consumables:Order()
     for i, row in ipairs(catRows) do
         local key = order[i]
         local def = Consumables:Def(key)
         row.key = key
         row.text:SetText(i .. ".  " .. (def and def.label or key))
-        row.up:SetEnabled(i > 1)
-        row.down:SetEnabled(i < #order)
         local color = (key == selected) and GOLD or GRAY
         row:SetBackdropBorderColor(color[1], color[2], color[3], 1)
     end
@@ -283,43 +352,15 @@ end
 local function build(pf)
     page = pf
 
-
-    enabledCheck = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
-    enabledCheck:SetSize(26, 26)
-    enabledCheck:SetPoint("TOPLEFT", 4, -12)
-    local enabledLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    enabledLabel:SetPoint("LEFT", enabledCheck, "RIGHT", 2, 0)
-    enabledLabel:SetText("Show on ready check")
-    enabledCheck:SetScript("OnClick", function(self)
-        Consumables:SetEnabled(self:GetChecked())
-    end)
-
-    local lowLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lowLabel:SetPoint("LEFT", enabledLabel, "RIGHT", 28, 0)
-    lowLabel:SetText("Warn when under")
-
-    lowEdit = CreateFrame("EditBox", nil, pf, "InputBoxTemplate")
-    lowEdit:SetAutoFocus(false)
-    lowEdit:SetFontObject(CRTFontHighlight)
-    lowEdit:SetNumeric(true)
-    lowEdit:SetMaxLetters(3)
-    lowEdit:SetSize(44, 22)
-    lowEdit:SetPoint("LEFT", lowLabel, "RIGHT", 12, 0)
-    lowEdit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    lowEdit:SetScript("OnEscapePressed", function(self)
-        self:SetText(tostring(Consumables:LowMinutes()))
-        self:ClearFocus()
-    end)
-    lowEdit:SetScript("OnEditFocusLost", function(self)
-        Consumables:SetLowMinutes(self:GetText())
-        self:SetText(tostring(Consumables:LowMinutes()))
-    end)
-
-    local minutes = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    minutes:SetPoint("LEFT", lowEdit, "RIGHT", 6, 0)
-    minutes:SetText("minutes left")
+    -- The gold line that shows where a dragged row will land. It is its own frame, drawn above the
+    -- lists, so the item box's background does not cover it.
+    marker = CreateFrame("Frame", nil, pf)
+    marker:SetFrameStrata("DIALOG")
+    marker:SetHeight(2)
+    local line = marker:CreateTexture(nil, "OVERLAY")
+    line:SetAllPoints()
+    line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    marker:Hide()
 
     local resetBar = makeButton(pf, "Reset bar position", 170)
     resetBar:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -176, -10)
@@ -385,7 +426,17 @@ local function build(pf)
     footer:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 12)
 
     pf:SetScript("OnShow", refresh)
+    -- A drag that is still going when the tab closes is dropped, without moving anything.
+    pf:SetScript("OnHide", function()
+        if drag then
+            drag.row:SetAlpha(1)
+            drag = nil
+        end
+        marker:Hide()
+    end)
     pf:SetScript("OnUpdate", function(_, dt)
+        -- The gold line follows the mouse while a row is dragged.
+        placeMarker()
         -- The ants move every frame, and the bar's status refreshes twice a second.
         for _, slot in ipairs(barSlots) do
             Ants:Update(slot, dt)

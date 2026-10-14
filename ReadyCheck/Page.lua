@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- shift-click on a heading posts that column to chat. The page's tabs:
 --   Window          the ready check window: when it opens and which columns it shows
 --   Your bar        your own consumables bar (Consumables/Page.lua)
---   Settings        the automatic report (printed to you, or posted) and what counts
+--   Settings        the automatic report (printed to you, or posted), what counts, and whether
+--                   your bar shows
 -- Like every page, its general settings are on a Settings tab, last.
 
 local Report = CRT.RaidReport
@@ -150,6 +151,49 @@ local function buildAuto(f)
     makeCycle(f, 8, -246, 240, "Food", "food", FOODS)
     makeCycle(f, 8, -274, 240, "Flask expiring warning", "flaskWarn", WARNS)
     makeCheck(f, 4, -302, "Count a lower quality flask as a problem", "lowFlask")
+
+    -- Your bar, top right. The bar itself is arranged on the Your bar tab.
+    local Consumables = CRT.Consumables
+    local function bar()
+        return CRT.db.consumables
+    end
+    local barTitle = label(f, "Your bar")
+    barTitle:SetPoint("TOPLEFT", 404, -12)
+    UI.Help(f, "Your bar", "Your own row of consumable icons on a ready check. Arrange it on the Your bar tab.\n\nNot when I start it: a raid leader who starts the check usually has no need to see it."):SetPoint("LEFT", barTitle, "RIGHT", 6, 0)
+    makeCheck(f, 400, -32, "Show my bar on a ready check", "enabled", bar)
+    makeCheck(f, 424, -56, "Not when I start the ready check", "notStarter", bar, function()
+        return bar().enabled
+    end)
+
+    local warn = label(f, "Warn under", "CRTFontSmall")
+    warn:SetPoint("TOPLEFT", 404, -88)
+    local lowEdit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    lowEdit:SetAutoFocus(false)
+    lowEdit:SetFontObject(CRTFontHighlight)
+    lowEdit:SetNumeric(true)
+    lowEdit:SetMaxLetters(3)
+    lowEdit:SetSize(40, 20)
+    lowEdit:SetPoint("LEFT", warn, "RIGHT", 10, 0)
+    lowEdit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    lowEdit:SetScript("OnEscapePressed", function(self)
+        self:SetText(tostring(Consumables:LowMinutes()))
+        self:ClearFocus()
+    end)
+    lowEdit:SetScript("OnEditFocusLost", function(self)
+        Consumables:SetLowMinutes(self:GetText())
+        self:SetText(tostring(Consumables:LowMinutes()))
+    end)
+    lowEdit.refresh = function()
+        if not lowEdit:HasFocus() then
+            lowEdit:SetText(tostring(Consumables:LowMinutes()))
+        end
+    end
+    controls[#controls + 1] = lowEdit
+    local minutes = label(f, "minutes left", "CRTFontSmall")
+    minutes:SetPoint("LEFT", lowEdit, "RIGHT", 6, 0)
+    UI.Help(f, "Warn under", "An icon gets gold marching ants when its buff or weapon oil has less time left than this, 1 to 240 minutes."):SetPoint("LEFT", minutes, "RIGHT", 6, 0)
 end
 
 -- Window tab -------------------------------------------------------------------------------------

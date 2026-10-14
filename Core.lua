@@ -22,6 +22,7 @@ local defaults = {
     -- saved data and is ignored.
     consumables = {
         enabled = true,
+        notStarter = false, -- true hides your bar on a ready check you started yourself
         lowMinutes = 10,
         categoryOrder = {},
         itemOrder = {},
