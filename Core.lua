@@ -86,6 +86,18 @@ local defaults = {
             ttsRate = 0,
         },
     },
+    -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
+    -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout
+    -- that lists who is expected. current is the running night, history the finished ones.
+    late = {
+        days = {},
+        hour = 20,
+        minute = 0,
+        grace = 0, -- minutes after the start before someone counts as late
+        history = {},
+        nextId = 1,
+        lastAuto = "", -- the day the schedule last started (or skipped) a night
+    },
 }
 
 local function copyDefaults(src, dst)

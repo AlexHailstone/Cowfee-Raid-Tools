@@ -1,8 +1,8 @@
 ## Interface: 120105
 ## Title: |cFFC8A050Cowfee|r Raid Tools
-## Notes: Save, edit and apply raid group layouts, check your consumables on a ready check, and show debuffs in combat. Type /crt to open.
+## Notes: Save, edit and apply raid group layouts, check your consumables on a ready check, show debuffs in combat, run raid notes, and track who is late. Type /crt to open.
 ## Author: Alex
-## Version: 0.8.0
+## Version: 0.9.0
 ## SavedVariables: CRTDB
 ## Category: Dungeons & Raids
 
@@ -30,3 +30,5 @@ Notes\Alert.lua
 Notes\Comm.lua
 Notes\Page.lua
 Notes\WindowsPage.lua
+Late\Data.lua
+Late\Page.lua

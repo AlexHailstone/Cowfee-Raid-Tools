@@ -10,6 +10,8 @@ local function printHelp()
     print("  |cffffd100/crt debuffs info|r - diagnostics for the debuff panel")
     print("  |cffffd100/crt notes|r - open the Raid Notes page")
     print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
+    print("  |cffffd100/crt late|r - open the Late Tracker page")
+    print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
     print("  |cffffd100/crt consumables check|r - test every ID in the built-in consumables list")
@@ -47,6 +49,19 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT:Print(ph and ("Phase " .. ph .. " started.") or "No phase left to start, or nothing is running.")
     elseif msg == "note stop" then
         CRT.NoteEngine:Stop()
+    elseif msg == "late" then
+        CRT.UI:Show("late")
+    elseif msg == "late start" then
+        if CRT.Late:Start("button", time()) then
+            CRT:Print("Raid night started.")
+        end
+    elseif msg == "late end" then
+        if CRT.Late:Current() then
+            CRT.Late:End("button", time())
+            CRT:Print("Raid night ended and saved to the history.")
+        else
+            CRT:Print("No raid night is running.")
+        end
     elseif msg == "previews" then
         CRT.UI:TogglePreviews()
     elseif msg == "readycheck" or msg == "rc" then
