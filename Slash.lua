@@ -5,6 +5,7 @@ local function printHelp()
     print("  |cffffd100/crt|r - open or close the main panel")
     print("  |cffffd100/crt groups|r - open the Raid Groups page")
     print("  |cffffd100/crt readycheck|r - open the Ready Check page (|cffffd100/crt consumables|r opens its Your bar tab)")
+    print("  |cffffd100/crt check|r - open the ready check window for your group, open until you right-click it")
     print("  |cffffd100/crt check food|r, |cffffd100flask|r, |cffffd100rune|r, |cffffd100vantus|r, |cffffd100buffs|r or |cffffd100all|r - check the group, add |cffffd100chat|r to post it")
     print("  |cffffd100/crt rc|r - preview your ready check bar")
     print("  |cffffd100/crt debuffs|r - open the Debuffs page")
@@ -30,6 +31,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.ReadyCheckPage.Open("report")
     elseif msg == "consumables" then
         CRT.ReadyCheckPage.Open("bar")
+    elseif msg == "check" then
+        CRT.ReadyCheckWindow:Show(nil, false, true)
     elseif msg:match("^check") then
         local what, chat = msg:match("^check%s*(%a*)%s*(%a*)$")
         local keys = {}

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.12.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.12.1</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -91,7 +91,7 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 - **Window.** A table that opens on a ready check for the raid leader and assistants: every player's ready answer, consumables, raid buffs and durability, for 30 seconds or until you right-click it. Arrange its columns by dragging the headings in the copy on this tab, and click a heading to hide it.
 - **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own.
 
-Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own.
+Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own. `/crt check` opens the window for your group at any time, with no timer.
 
 ## Debuffs
 
@@ -120,6 +120,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 | `/crt` | Opens or closes the panel |
 | `/crt groups` | Raid Groups |
 | `/crt readycheck` | Ready Check. `/crt consumables` opens its Your bar tab |
+| `/crt check` | Opens the ready check window for your current group, open until you right-click it |
 | `/crt check food` (or `flask`, `rune`, `vantus`, `buffs`, `all`) | Checks the group and shows it to you. Add `chat` to post it, such as `/crt check all chat` |
 | `/crt rc` | Shows your ready check bar for 20 seconds, for testing |
 | `/crt debuffs` | Debuffs |

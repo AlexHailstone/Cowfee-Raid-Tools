@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 --
 -- Durability is not something the game shows about other players, so every player running this
 -- addon sends their own over an addon message when a ready check starts: "D:<percent>" under the
--- prefix CRTReady. Players without the addon show a blank.
+-- prefix CRTReady. Opening the window by hand sends "Q", which asks everyone to send theirs. Your own
+-- is read live. Players without the addon show a blank.
 
 local Report = CRT.RaidReport
 local Window = {}
@@ -41,6 +42,8 @@ Window.COLUMNS[#Window.COLUMNS + 1] = { key = "durability", short = "Dur", label
 
 local frame
 local shownUntil, previewOn = 0, false
+local stayOpen = false -- opened by /crt check: no timer, closes on a right-click
+local checkActive = false -- a ready check is running, between READY_CHECK and READY_CHECK_FINISHED
 local sampleOn = false -- opened by Show it now: sample players, closes like the real one
 local readyState = {} -- short name -> "ready" | "notready" | "waiting"
 local durability = {} -- short name -> percent
@@ -84,10 +87,23 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 end
 
-local function sendDurability()
+local function send(text)
     local channel = groupChannel()
     if channel and C_ChatInfo and C_ChatInfo.SendAddonMessage then
-        pcall(C_ChatInfo.SendAddonMessage, PREFIX, "D:" .. myDurability(), channel)
+        pcall(C_ChatInfo.SendAddonMessage, PREFIX, text, channel)
+    end
+end
+
+local lastSent = 0
+local function sendDurability()
+    lastSent = GetTime()
+    send("D:" .. myDurability())
+end
+
+-- Answers a request for durability, at most once every 5 seconds so a burst of requests is one reply.
+local function answerRequest()
+    if GetTime() - lastSent >= 5 then
+        sendDurability()
     end
 end
 
@@ -430,8 +446,19 @@ local function liveMembers(members, columns)
                 readyState[m.name] = status
             end
         end
-        m.ready = readyState[m.name] or "waiting"
-        m.dur = durability[m.name]
+        -- Outside a ready check, a window opened with /crt check has no answers to show.
+        if checkActive then
+            m.ready = readyState[m.name] or "waiting"
+        elseif stayOpen then
+            m.ready = nil
+        else
+            m.ready = readyState[m.name] or "waiting"
+        end
+        if UnitIsUnit(m.unit, "player") then
+            m.dur = myDurability()
+        else
+            m.dur = durability[m.name]
+        end
         m.cells = {}
         for _, col in ipairs(columns) do
             if col.key ~= "durability" then
@@ -459,8 +486,18 @@ function Window:Refresh()
     end
     local readyCount = windowTable:Draw(members, columns)
     local left = math.max(0, math.ceil(shownUntil - GetTime()))
-    frame.title:SetText(format("Ready check  %d/%d ready", readyCount, #members))
-    frame.timer:SetText(previewOn and "preview" or (left .. "s, right-click to close"))
+    if stayOpen and not checkActive and not previewOn then
+        frame.title:SetText(format("Group check  %d %s", #members, #members == 1 and "player" or "players"))
+    else
+        frame.title:SetText(format("Ready check  %d/%d ready", readyCount, #members))
+    end
+    if previewOn then
+        frame.timer:SetText("preview")
+    elseif stayOpen then
+        frame.timer:SetText("right-click to close")
+    else
+        frame.timer:SetText(left .. "s, right-click to close")
+    end
 end
 
 -- What the Window tab draws: every column in order, the hidden ones faded, with sample players.
@@ -533,19 +570,29 @@ local function build()
     frame:Hide()
 end
 
--- sample shows the sample players from the Window tab instead of your group.
-function Window:Show(seconds, sample)
+-- sample shows the sample players from the Window tab instead of your group. stay keeps it open with
+-- no timer until it is right-clicked, for /crt check.
+function Window:Show(seconds, sample, stay)
     if not frame then
         build()
     end
     sampleOn = sample and true or false
     applyPosition()
-    shownUntil = GetTime() + (seconds or settings().seconds or 30)
+    if not sample then
+        send("Q") -- ask the group for their durability
+    end
+    if stay then
+        stayOpen = true
+        shownUntil = math.huge
+    elseif not stayOpen then
+        shownUntil = GetTime() + (seconds or settings().seconds or 30)
+    end
     frame:Show()
     self:Refresh()
 end
 
 function Window:Hide()
+    stayOpen = false
     if frame and not previewOn then
         frame:Hide()
     end
@@ -596,6 +643,7 @@ end
 local events = CreateFrame("Frame")
 events:RegisterEvent("READY_CHECK")
 events:RegisterEvent("READY_CHECK_CONFIRM")
+events:RegisterEvent("READY_CHECK_FINISHED")
 events:RegisterEvent("CHAT_MSG_ADDON")
 events:SetScript("OnEvent", function(_, event, ...)
     if not CRT.db then
@@ -604,6 +652,7 @@ events:SetScript("OnEvent", function(_, event, ...)
     if event == "READY_CHECK" then
         local initiator = ...
         readyState, durability = {}, {}
+        checkActive = true
         if initiator and not isSecret(initiator) then
             readyState[Ambiguate(initiator, "short")] = "ready"
         end
@@ -612,6 +661,9 @@ events:SetScript("OnEvent", function(_, event, ...)
         if mayShow() then
             Window:Show()
         end
+    elseif event == "READY_CHECK_FINISHED" then
+        checkActive = false
+        Window:Refresh()
     elseif event == "READY_CHECK_CONFIRM" then
         local unit, isReady = ...
         local name = unit and GetUnitName(unit, true)
@@ -623,7 +675,9 @@ events:SetScript("OnEvent", function(_, event, ...)
         local prefix, text, _, sender = ...
         if prefix == PREFIX and type(text) == "string" and sender and not isSecret(sender) then
             local percent = tonumber(text:match("^D:(%d+)$"))
-            if percent then
+            if text == "Q" then
+                answerRequest()
+            elseif percent then
                 durability[Ambiguate(sender, "short")] = math.min(100, percent)
                 Window:Refresh()
             end
