@@ -94,10 +94,52 @@ end
 
 -- The columns to draw: ticked in settings, and for raid buffs only those your group can give when
 -- "Only buffs my group can give" is on.
+local byKey = {}
+for _, col in ipairs(Window.COLUMNS) do
+    byKey[col.key] = col
+end
+
+-- Every column in the player's order (CRTDB.readycheck.window.order). Columns added in a later
+-- version, and so missing from a saved order, go at the end.
+function Window:OrderedColumns()
+    local out, seen = {}, {}
+    for _, key in ipairs(settings().order or {}) do
+        if byKey[key] and not seen[key] then
+            out[#out + 1] = byKey[key]
+            seen[key] = true
+        end
+    end
+    for _, col in ipairs(Window.COLUMNS) do
+        if not seen[col.key] then
+            out[#out + 1] = col
+        end
+    end
+    return out
+end
+
+-- Moves a column one place left (delta -1) or right (delta 1).
+function Window:MoveColumn(key, delta)
+    local keys = {}
+    for i, col in ipairs(self:OrderedColumns()) do
+        keys[i] = col.key
+    end
+    for i, k in ipairs(keys) do
+        if k == key then
+            local j = i + delta
+            if j >= 1 and j <= #keys then
+                keys[i], keys[j] = keys[j], keys[i]
+            end
+            break
+        end
+    end
+    settings().order = keys
+    self:Apply()
+end
+
 local function visibleColumns(classes)
     local s = settings()
     local out = {}
-    for _, col in ipairs(Window.COLUMNS) do
+    for _, col in ipairs(Window:OrderedColumns()) do
         if s.columns[col.key] and not (col.buff and s.groupBuffsOnly and classes and not classes[col.buff.class]) then
             out[#out + 1] = col
         end

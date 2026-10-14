@@ -256,20 +256,61 @@ local function buildWindow(f)
     makeNumber(f, 32, -138, "Seconds open (5 to 120)", "seconds", 5, 120)
     makeNumber(f, 32, -166, "Size % (50 to 150)", "scale", 50, 150)
 
-    local cols = label(f, "Columns")
+    local cols = label(f, "Columns, top is leftmost. Tick to show, Up and Down to move.")
     cols:SetPoint("TOPLEFT", 8, -206)
-    for i, col in ipairs(CRT.ReadyCheckWindow.COLUMNS) do
-        local c, r = (i - 1) % 3, math.floor((i - 1) / 3)
-        makeCheck(f, 4 + c * 220, -228 - r * 28, col.label, col.key, windowColumns)
+    -- One row per column. The rows stay put and take the column at their place in the order.
+    local Window = CRT.ReadyCheckWindow
+    for i = 1, #Window.COLUMNS do
+        local y = -228 - (i - 1) * 26
+        local check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+        check:SetSize(24, 24)
+        check:SetPoint("TOPLEFT", 4, y)
+        local name = label(f, "", "CRTFontSmall")
+        name:SetPoint("LEFT", check, "RIGHT", 2, 0)
+        name:SetWidth(200)
+        local up = makeButton(f, "Up", 60, 22)
+        up:SetPoint("TOPLEFT", 240, y - 1)
+        local down = makeButton(f, "Down", 70, 22)
+        down:SetPoint("LEFT", up, "RIGHT", 4, 0)
+        local function column()
+            return Window:OrderedColumns()[i]
+        end
+        check:SetScript("OnClick", function(self)
+            windowColumns()[column().key] = self:GetChecked() and true or false
+            Window:Apply()
+        end)
+        up:SetScript("OnClick", function()
+            Window:MoveColumn(column().key, -1)
+            refresh()
+        end)
+        down:SetScript("OnClick", function()
+            Window:MoveColumn(column().key, 1)
+            refresh()
+        end)
+        check.refresh = function()
+            local col = column()
+            name:SetText(col.label)
+            check:SetChecked(windowColumns()[col.key] and true or false)
+            up:SetEnabled(i > 1)
+            down:SetEnabled(i < #Window.COLUMNS)
+        end
+        controls[#controls + 1] = check
     end
+    local resetOrder = makeButton(f, "Default order", 140, 22)
+    resetOrder:SetPoint("TOPLEFT", 400, -228)
+    resetOrder:SetScript("OnClick", function()
+        windowSettings().order = {}
+        Window:Apply()
+        refresh()
+    end)
 
-    local y = -228 - math.ceil(#CRT.ReadyCheckWindow.COLUMNS / 3) * 28 - 16
+    local y = -228 - #Window.COLUMNS * 26 - 12
     local key = label(f, "In the table: an icon means they have it, a gold number is minutes left on an expiring flask, x is missing, ? means the game hid their buffs. Durability only shows for players who run Cowfee Raid Tools, since each one sends their own.", "CRTFontDisableSmall")
     key:SetPoint("TOPLEFT", 8, y)
     key:SetWidth(670)
 
     local test = makeButton(f, "Show it now", 160)
-    test:SetPoint("TOPLEFT", 8, y - 50)
+    test:SetPoint("TOPLEFT", 8, y - 44)
     test:SetScript("OnClick", function()
         CRT.ReadyCheckWindow:Show()
     end)

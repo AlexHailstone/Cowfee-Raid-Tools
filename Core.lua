@@ -43,13 +43,15 @@ local defaults = {
         food = "any",
         flaskWarn = 5,
         lowFlask = true,
-        -- The ready check window. columns[key] shows that column. position is added when it is moved.
+        -- The ready check window. columns[key] shows that column, order is their left-to-right order.
+        -- position is added when it is moved.
         window = {
             enabled = true,
             leadOnly = true, -- only open it for the raid leader and assistants
             seconds = 30,
             scale = 100, -- percent
             groupBuffsOnly = true, -- raid buff columns only for buffs your group can give
+            order = {}, -- column keys left to right, filled in when a column is moved
             columns = {
                 food = true, flask = true, rune = true, vantus = false,
                 intellect = true, stamina = true, attack = true, versatility = true, mastery = true, movement = true,
