@@ -609,13 +609,13 @@ local function bestBuff(entries)
             if not ok then
                 unknown = true
             elseif aura then
-                local expires, icon = aura.expirationTime, aura.icon
+                local expires, icon, name = aura.expirationTime, aura.icon, aura.name
                 if isSecret(expires) or isSecret(icon) then
                     unknown = true
                 else
                     local left = (type(expires) == "number" and expires > 0) and (expires - GetTime()) or nil
                     if not best or (left or math.huge) > (best.left or math.huge) then
-                        best = { left = left, icon = icon }
+                        best = { left = left, icon = icon, name = (not isSecret(name)) and name or nil }
                     end
                 end
             end
@@ -678,6 +678,8 @@ function Consumables:Status(key)
         local enchant = weaponEnchant()
         if enchant then
             status.tag = enchant.label
+            status.name = enchant.label == "OH" and "Off hand" or "Main hand"
+            status.charges = enchant.charges and enchant.charges > 0 and enchant.charges or nil
             status.left = enchant.left
             status.count = enchant.charges and enchant.charges > 0 and enchant.charges or nil
             local mainhand = GetInventoryItemTexture and GetInventoryItemTexture("player", INVSLOT_MAINHAND or 16)
@@ -713,6 +715,7 @@ function Consumables:Status(key)
     if best then
         status.icon = best.icon or status.icon
         status.left = best.left
+        status.name = best.name
         status.state = (best.left and best.left < lowSeconds) and "low" or "active"
     elseif unknown then
         status.state = "unknown"

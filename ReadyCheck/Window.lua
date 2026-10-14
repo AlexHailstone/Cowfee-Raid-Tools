@@ -203,7 +203,7 @@ function Window.SampleMembers()
         m.order = i
         m.cells = {}
         for _, col in ipairs(Window.COLUMNS) do
-            m.cells[col.key] = { state = m.states[col.key] or "missing", icon = sampleIcon(col.key), left = 240 }
+            m.cells[col.key] = { state = m.states[col.key] or "missing", icon = sampleIcon(col.key), left = (m.states[col.key] == "low") and 240 or 2460, name = col.label .. " (sample)", why = "sample player" }
         end
     end
     return list
@@ -402,12 +402,50 @@ function Table:Row(i)
     return row
 end
 
+-- A cell's tooltip: the player and the check, then the buff and its time left, or why it is missing.
+local function cellEnter(cell)
+    local info = cell.info
+    if not info then
+        return
+    end
+    GameTooltip:SetOwner(cell, "ANCHOR_TOP")
+    GameTooltip:SetText(info.player .. ": " .. info.label, 1, 1, 1)
+    local c = info.cell
+    if info.durability then
+        GameTooltip:AddLine("Lowest item durability: " .. info.durability .. "%", 1, 1, 1)
+    elseif not c then
+        GameTooltip:AddLine("Durability only shows for players who run Cowfee Raid Tools.", 0.6, 0.6, 0.6, true)
+    elseif c.state == "ok" or c.state == "low" then
+        local left = c.left and (CRT.ConsumablesBar.LongTime(c.left) .. " left") or "no time limit"
+        if c.state == "low" then
+            GameTooltip:AddLine((c.name or info.label) .. ": " .. left .. " (running low)", 1, 0.82, 0)
+        else
+            GameTooltip:AddLine((c.name or info.label) .. ": " .. left, 0.4, 1, 0.4)
+        end
+    elseif c.state == "missing" then
+        GameTooltip:AddLine("Missing", 1, 0.3, 0.3)
+    elseif c.state == "unknown" then
+        GameTooltip:AddLine("Couldn't check" .. (c.why and (": " .. c.why) or ""), 0.6, 0.6, 0.6)
+    end
+    GameTooltip:Show()
+end
+
+local function cellLeave()
+    GameTooltip:Hide()
+end
+
 local function getCell(row, j)
     local cell = row.cells[j]
     if cell then
         return cell
     end
     cell = CreateFrame("Frame", nil, row)
+    cell:EnableMouse(true)
+    if cell.SetMouseClickEnabled then
+        cell:SetMouseClickEnabled(false)
+    end
+    cell:SetScript("OnEnter", cellEnter)
+    cell:SetScript("OnLeave", cellLeave)
     cell:SetSize(COL_W, ROW_H)
     cell:SetPoint("LEFT", LEAD_W + NAME_W + (j - 1) * COL_W, 0)
     cell.icon = cell:CreateTexture(nil, "ARTWORK")
@@ -505,8 +543,11 @@ function Table:Draw(members, columns, dim)
             cell:SetAlpha(dim[col.key] and 0.25 or 1)
             if col.key == "durability" then
                 drawDurability(cell, m.dur)
+                cell.info = { player = m.name, label = col.label, durability = m.dur }
             else
-                drawCell(cell, m.cells[col.key] or { state = "missing" })
+                local c = m.cells[col.key] or { state = "missing" }
+                drawCell(cell, c)
+                cell.info = { player = m.name, label = col.label, cell = c }
             end
         end
         for j = #columns + 1, #row.cells do

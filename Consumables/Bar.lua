@@ -40,6 +40,43 @@ function Bar.FormatTime(seconds)
     return format("%dm", math.floor(seconds / 60 + 0.5))
 end
 
+-- Time left for a tooltip: 45 s, 42 min, or 1 h 05 min.
+function Bar.LongTime(seconds)
+    seconds = math.max(0, math.floor(seconds + 0.5))
+    if seconds < 60 then
+        return seconds .. " s"
+    elseif seconds < 3600 then
+        return math.floor(seconds / 60 + 0.5) .. " min"
+    end
+    return format("%d h %02d min", math.floor(seconds / 3600), math.floor((seconds % 3600) / 60))
+end
+
+-- The lines a tooltip shows for an icon's status (from Consumables:Status): what is active and how
+-- long it has left, or that it is missing.
+function Bar.AddStatusLines(status)
+    if not status then
+        return
+    end
+    if status.state == "active" or status.state == "low" then
+        local name = status.name or "Active"
+        local left = status.left and (Bar.LongTime(status.left) .. " left") or "no time limit"
+        if status.state == "low" then
+            GameTooltip:AddLine(name .. ": " .. left .. " (running low)", 1, 0.82, 0)
+        else
+            GameTooltip:AddLine(name .. ": " .. left, 0.4, 1, 0.4)
+        end
+        if status.charges then
+            GameTooltip:AddLine(status.charges .. " charges left", 0.8, 0.8, 0.8)
+        end
+    elseif status.state == "missing" then
+        GameTooltip:AddLine("Missing", 1, 0.3, 0.3)
+    elseif status.state == "unknown" then
+        GameTooltip:AddLine("The game is hiding your buffs right now", 0.6, 0.6, 0.6)
+    elseif status.state == "unset" then
+        GameTooltip:AddLine("Nothing is listed for this icon yet", 0.6, 0.6, 0.6)
+    end
+end
+
 -- One icon. secure = true makes a protected button that can run a click action.
 function Bar.CreateSlot(parent, index, secure)
     local slot
@@ -82,6 +119,7 @@ end
 
 -- Shows a status (from Consumables:Status) on an icon: the picture, the ants, and the text.
 function Bar.Apply(slot, status)
+    slot.status = status -- kept for the icon's tooltip
     -- Reset the border every time, so a highlight set by a caller (the selected icon on the
     -- Consumables tab) goes away as soon as it stops being applied.
     slot:SetBackdropBorderColor(BORDER[1], BORDER[2], BORDER[3], 1)

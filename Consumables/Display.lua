@@ -42,6 +42,7 @@ local function showTooltip(self)
             GameTooltip:AddLine("None of the listed items are in your bags.", 0.9, 0.4, 0.4)
         end
     end
+    Bar.AddStatusLines(self.status)
     GameTooltip:Show()
 end
 

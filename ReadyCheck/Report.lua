@@ -303,7 +303,7 @@ Report.BuffByKey = buffByKey
 -- { state = "ok" | "low" | "missing" | "unknown", icon, left }. "low" is an expiring or lower quality flask.
 function Report.Cell(member, key)
     if not member.auras then
-        return { state = "unknown" }
+        return { state = "unknown", why = member.why }
     end
     local aura, entry
     local buff = buffByKey[key]
@@ -334,7 +334,7 @@ function Report.Cell(member, key)
     if key == "flask" and ((s.lowFlask and entry and entry.low) or ((s.flaskWarn or 0) > 0 and aura.left and aura.left < s.flaskWarn * 60)) then
         state = "low"
     end
-    return { state = state, icon = aura.icon, left = aura.left }
+    return { state = state, icon = aura.icon, left = aura.left, name = aura.name }
 end
 
 -- Text --------------------------------------------------------------------------------
