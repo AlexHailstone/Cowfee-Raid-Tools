@@ -39,6 +39,31 @@ local defaults = {
         dispelIcon = false, -- show the dispel type icon on mechanic debuffs
         includeRegular = false, -- also show regular (not boss mechanic) debuffs in a second row
     },
+    -- Raid notes. list[id] holds each imported or received note. window and alert hold the
+    -- note window and personal alert settings, with position added when they are moved.
+    notes = {
+        list = {},
+        nextId = 1,
+        trustedOnly = true, -- only accept shared notes from the raid leader or assistants
+        window = {
+            shown = true,
+            hidePassed = true,
+            fontSize = 14,
+            alpha = 100, -- percent
+            bgAlpha = 50, -- percent
+            width = 420,
+            height = 300,
+            font = "Friz Quadrata",
+        },
+        alert = {
+            enabled = true,
+            seconds = 10, -- show your next spell this many seconds early
+            tts = true,
+            ttsSeconds = 3, -- read it out at this many seconds left
+            ttsVolume = 100,
+            ttsRate = 0,
+        },
+    },
 }
 
 local function copyDefaults(src, dst)

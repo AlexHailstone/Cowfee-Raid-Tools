@@ -8,6 +8,8 @@ local function printHelp()
     print("  |cffffd100/crt readycheck|r - preview the ready check consumables row")
     print("  |cffffd100/crt debuffs|r - open the Debuffs page")
     print("  |cffffd100/crt debuffs info|r - diagnostics for the debuff panel")
+    print("  |cffffd100/crt notes|r - open the Raid Notes page")
+    print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
     print("  |cffffd100/crt consumables check|r - test every ID in the built-in consumables list")
@@ -31,6 +33,20 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.UI:Show("debuffs")
     elseif msg == "debuffs info" then
         CRT.DebuffPanel:ShowInfo()
+    elseif msg == "notes" then
+        CRT.UI:Show("notes")
+    elseif msg == "note test" then
+        local id = CRT.Notes:Active()
+        if id then
+            CRT.NoteEngine:Start(CRT.Notes:Parsed(id), "test")
+        else
+            CRT:Print("No note is in use. Pick one on the Raid Notes page.")
+        end
+    elseif msg == "note next" then
+        local ph = CRT.NoteEngine:NextPhase()
+        CRT:Print(ph and ("Phase " .. ph .. " started.") or "No phase left to start, or nothing is running.")
+    elseif msg == "note stop" then
+        CRT.NoteEngine:Stop()
     elseif msg == "previews" then
         CRT.UI:TogglePreviews()
     elseif msg == "readycheck" or msg == "rc" then
