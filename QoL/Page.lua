@@ -13,7 +13,7 @@ local TEXT = {
     hint = "Small conveniences for raid nights.",
 
     panelSize = "Panel size",
-    panelSizeLabel = "Size of this window, text included (50% to 200%):",
+    panelSizeLabel = "Window Scale: (50% to 200%)",
     panelSizeNote = "The new size applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.",
     panelSizeReset = "Reset to 100%",
 
