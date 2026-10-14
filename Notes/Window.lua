@@ -152,6 +152,14 @@ local function timersText()
     end
     local lines = {}
     local heading = record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "")
+    -- "Show only me" keeps your lines, your group's and role's, and lines with no tag.
+    local onlyMe = Notes:WindowSettings("window").onlyMe
+    local function shown(item)
+        return not onlyMe or Engine:IsForMe(item)
+    end
+    if onlyMe then
+        heading = heading .. "   |cffffd100only me|r"
+    end
     if Engine.running and Engine:Note() == note then
         heading = heading .. "   Phase " .. tostring(Engine:CurrentPhase()) .. "   " .. fmtTime(Engine:Elapsed() or 0)
         local waiting = {}
@@ -159,7 +167,7 @@ local function timersText()
             local remaining = Engine:Remaining(item)
             if remaining == nil then
                 waiting[item.ph] = true
-            elseif not (Notes:WindowSettings("window").hidePassed and remaining < -(item.dur or 0)) then
+            elseif shown(item) and not (Notes:WindowSettings("window").hidePassed and remaining < -(item.dur or 0)) then
                 lines[#lines + 1] = timerLine(item, remaining)
             end
         end
@@ -171,12 +179,17 @@ local function timersText()
     else
         local lastPhase
         for _, item in ipairs(note.timers) do
-            if item.ph ~= lastPhase then
-                lines[#lines + 1] = "|cffffd100Phase " .. item.ph .. "|r"
-                lastPhase = item.ph
+            if shown(item) then
+                if item.ph ~= lastPhase then
+                    lines[#lines + 1] = "|cffffd100Phase " .. item.ph .. "|r"
+                    lastPhase = item.ph
+                end
+                lines[#lines + 1] = timerLine(item, item.time)
             end
-            lines[#lines + 1] = timerLine(item, item.time)
         end
+    end
+    if onlyMe and #lines == 0 and #note.timers > 0 then
+        lines[1] = "|cff777777Nothing in this note is for you. Untick Show only me to see every line.|r"
     end
     return table.concat(lines, "\n"), heading, #note.timers > 0
 end

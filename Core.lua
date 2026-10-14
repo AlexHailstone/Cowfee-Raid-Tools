@@ -49,6 +49,7 @@ local defaults = {
             shown = true,
             locked = true,
             hidePassed = true,
+            onlyMe = false, -- show only your lines: your name, role, raid group, everyone, or no tag
             fontSize = 14,
             alpha = 100, -- percent
             bgAlpha = 50, -- percent

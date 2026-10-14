@@ -96,7 +96,8 @@ local function buildColumn(pf, index, def)
     local y = top - 76
     if def.key == "window" then
         makeCheck(pf, x - 4, y, "Hide lines once passed", setting(def.key, "hidePassed"))
-        y = y - 26
+        makeCheck(pf, x - 4, y - 26, "Show only me", setting(def.key, "onlyMe"))
+        y = y - 52
     end
     makeNumber(pf, x, y, "Font size (8 to 32)", setting(def.key, "fontSize"), 8, 32)
     makeNumber(pf, x, y - 26, "Window alpha %", setting(def.key, "alpha"), 10, 100)

@@ -76,16 +76,63 @@ local function tokens()
     return t
 end
 
--- Whether a timer is for you. A name in a tag may carry a realm, which is ignored.
+-- Your raid group number. In a party or solo you count as group 1.
+local function mySubgroup()
+    if IsInRaid() then
+        for i = 1, GetNumGroupMembers() do
+            if UnitIsUnit("raid" .. i, "player") then
+                local _, _, subgroup = GetRaidRosterInfo(i)
+                return subgroup
+            end
+        end
+    end
+    return 1
+end
+
+-- The group number a tag names: "G1", "Grp1" or "Group1" in one word, or "G", "Grp" or "Group"
+-- followed by a number as the next word, so "Group 1" works too. Returns the number and how many
+-- words it used, or nil.
+local GROUP_WORDS = { g = true, grp = true, group = true }
+local function groupTag(word, nextWord)
+    local prefix, number = word:match("^(%a+)(%d)$")
+    if prefix and GROUP_WORDS[prefix] then
+        return tonumber(number), 1
+    end
+    if GROUP_WORDS[word] and nextWord and nextWord:match("^%d$") then
+        return tonumber(nextWord), 2
+    end
+    return nil
+end
+
+-- Whether a timer is for you: your name, your role, everyone, or your raid group. A name in a tag
+-- may carry a realm, which is ignored.
 function Engine:IsMine(item)
     local mine = tokens()
-    for _, tag in ipairs(item.tags) do
-        local word = tag:lower():gsub("%-.*$", "")
+    local tags = item.tags
+    local subgroup
+    local i = 1
+    while i <= #tags do
+        local word = tags[i]:lower():gsub("%-.*$", "")
         if mine[word] then
             return true
         end
+        local number, used = groupTag(word, tags[i + 1])
+        if number then
+            subgroup = subgroup or mySubgroup()
+            if number == subgroup then
+                return true
+            end
+            i = i + used
+        else
+            i = i + 1
+        end
     end
     return false
+end
+
+-- Whether a timer stays when "Show only me" is on: it is yours, or it has no tag, which means everyone.
+function Engine:IsForMe(item)
+    return #item.tags == 0 or self:IsMine(item)
 end
 
 -- Words that also appear in ordinary sentences, so they never mark a line of free text as yours.
