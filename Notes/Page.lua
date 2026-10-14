@@ -32,6 +32,19 @@ local function skin(frame, alpha)
     frame:SetBackdropBorderColor(GRAY[1], GRAY[2], GRAY[3], 1)
 end
 
+-- The edit box only covers the lines it holds, so a click on the empty part of its box would do
+-- nothing. This makes the whole box and its scroll area put the cursor at the end of the text.
+local function clickToType(box, scroll, edit)
+    local function focus()
+        edit:SetFocus()
+        edit:SetCursorPosition(#(edit:GetText() or ""))
+    end
+    for _, frame in ipairs({ box, scroll }) do
+        frame:EnableMouse(true)
+        frame:SetScript("OnMouseDown", focus)
+    end
+end
+
 local function makeButton(parent, label, width, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
@@ -261,6 +274,7 @@ local function buildNotes(pf)
         self:ClearFocus()
     end)
     scroll:SetScrollChild(editor)
+    clickToType(box, scroll, editor)
 
     local save = makeButton(pf, "Save text changes", 170)
     save:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", 0, -6)
@@ -298,6 +312,7 @@ local function buildNotes(pf)
         self:ClearFocus()
     end)
     pscroll:SetScrollChild(personal)
+    clickToType(pbox, pscroll, personal)
     personal.refresh = function()
         if not personal:HasFocus() then
             personal:SetText(Notes:Personal())

@@ -15,6 +15,7 @@ local function printHelp()
     print("  |cffffd100/crt late|r - open the Late Tracker page")
     print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
     print("  |cffffd100/crt late export|r - the late totals as text to paste into Discord")
+    print("  |cffffd100/crt qol|r - open the Quality of Life page")
     print("  |cffffd100/crt perf|r - this addon's CPU use since the last /reload, from the game's profiler")
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
@@ -87,6 +88,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("No raid night is running.")
         end
+    elseif msg == "qol" then
+        CRT.UI:Show("qol")
     elseif msg == "perf" then
         CRT.Perf:Report()
     elseif msg == "previews" then

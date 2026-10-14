@@ -129,6 +129,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 | `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |
 | `/crt late export` | The late totals as text to paste into Discord |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
+| `/crt qol` | The Quality of Life page, for small conveniences (empty for now) |
 | `/crt perf` | Shows the addon's CPU use since the last `/reload`, from the game's profiler |
 | `/crt help` | Lists the commands |
 

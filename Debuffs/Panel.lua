@@ -220,12 +220,7 @@ local chosen = {}
 local function sortOptions()
     local methods, directions = sortEnums()
     local method, methodName = pick(methods, { "Expiration", "ExpirationOnly" })
-    local direction, directionName
-    if Debuffs:Reverse() then
-        direction, directionName = pick(directions, { "Reverse" })
-    else
-        direction, directionName = pick(directions, { "Normal" })
-    end
+    local direction, directionName = pick(directions, { "Normal" })
     chosen.methodName = methodName or "Default"
     chosen.directionName = directionName or "Default"
     return method, direction
@@ -509,7 +504,7 @@ function Panel:InfoText()
     add("Debuff panel diagnostics")
     add("Game build: " .. tostring(select(4, GetBuildInfo())))
     add("In combat: lockdown " .. tostring(InCombatLockdown()) .. ", flag " .. tostring(inCombat) .. ", UnitAffectingCombat " .. tostring(UnitAffectingCombat("player")) .. "; preview on: " .. tostring(previewOn) .. ", enabled: " .. tostring(Debuffs:Enabled()))
-    add(format("Settings: size %d, max %d, dispel icon %s, regular row %s, reverse %s", Debuffs:Size(), Debuffs:MaxCount(), tostring(Debuffs:DispelIcon()), tostring(Debuffs:IncludeRegular()), tostring(Debuffs:Reverse())))
+    add(format("Settings: size %d, max %d, dispel icon %s, regular row %s", Debuffs:Size(), Debuffs:MaxCount(), tostring(Debuffs:DispelIcon()), tostring(Debuffs:IncludeRegular())))
     if frame then
         local point, _, relativePoint, x, y = frame:GetPoint()
         add(format("Panel: alpha %s, shown %s, effective alpha %s, size %s x %s, at %s %s %s,%s",

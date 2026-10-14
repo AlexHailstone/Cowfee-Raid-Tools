@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 local Debuffs = CRT.Debuffs
 local UI = CRT.UI
 
-local page, enabledCheck, sizeEdit, countEdit, dispelCheck, regularCheck, reverseCheck
+local page, enabledCheck, sizeEdit, countEdit, dispelCheck, regularCheck
 local refresh
 
 local function makeButton(parent, label, width, height)
@@ -77,7 +77,6 @@ refresh = function()
     enabledCheck:SetChecked(Debuffs:Enabled())
     dispelCheck:SetChecked(Debuffs:DispelIcon())
     regularCheck:SetChecked(Debuffs:IncludeRegular())
-    reverseCheck:SetChecked(Debuffs:Reverse())
     if not sizeEdit:HasFocus() then
         sizeEdit:SetText(tostring(Debuffs:Size()))
     end
@@ -89,7 +88,6 @@ refresh = function()
     usable(countEdit, on)
     usable(dispelCheck, on)
     usable(regularCheck, on)
-    usable(reverseCheck, on and Debuffs:IncludeRegular() and true or false)
 end
 
 local function build(pf)
@@ -126,12 +124,8 @@ local function build(pf)
     regularCheck = makeCheck(pf, "Also show regular debuffs in a second row (this includes long ones)", -222, function(checked)
         Debuffs:SetIncludeRegular(checked)
     end)
-    reverseCheck = makeCheck(pf, "Regular row: reverse the order (try this if the longest show first)", -252, function(checked)
-        Debuffs:SetReverse(checked)
-    end)
-
     local reset = makeButton(pf, "Reset position", 160)
-    reset:SetPoint("TOPLEFT", 8, -298)
+    reset:SetPoint("TOPLEFT", 8, -268)
     reset:SetScript("OnClick", function()
         CRT.DebuffPanel:ResetPosition()
     end)
@@ -142,11 +136,24 @@ local function build(pf)
         CRT.DebuffPanel:ShowInfo()
     end)
 
-    local note = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    note:SetPoint("TOPLEFT", 8, -352)
-    note:SetWidth(660)
-    note:SetJustifyH("LEFT")
-    note:SetText("These are the boss mechanic debuffs the game calls private auras, which are short by design, so no time filter is needed. Regular debuffs cannot be limited to short ones, because the game hides their durations from addons in combat, which is why that row is off by default. Show diagnostics prints what the game allows on your client. Your settings are saved in your own saved variables.")
+    -- The longer explanation, as a tooltip on a small link instead of a paragraph on the page.
+    local about = CreateFrame("Button", nil, pf)
+    about:SetPoint("LEFT", info, "RIGHT", 16, 0)
+    about:SetSize(150, 22)
+    local aboutText = about:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    aboutText:SetPoint("LEFT")
+    aboutText:SetText("|cff80c0ff(?) How this works|r")
+    about:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("How the debuff panel works", 1, 1, 1)
+        GameTooltip:AddLine("These are the boss mechanic debuffs the game calls private auras, which are short by design, so no time filter is needed.", 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine("Regular debuffs cannot be limited to short ones, because the game hides their durations from addons in combat, which is why that row is off by default.", 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine("Show diagnostics prints what the game allows on your client. Your settings are saved in your own saved variables.", 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    about:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)

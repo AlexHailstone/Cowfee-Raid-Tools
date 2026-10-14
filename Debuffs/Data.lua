@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
 -- Settings for the in-combat debuff panel, saved per player in CRTDB.debuffs:
---   enabled, size (icon size), maxCount (how many at once), reverse (flip the sort order),
+--   enabled, size (icon size), maxCount (how many at once), and the dispel icon and regular row options.
+--   A reverse option existed until 0.13.0. Its saved value may remain and is ignored.
 --   position = { point, relativePoint, x, y } once the panel has been moved.
 -- Each player has their own copy in their own saved variables, so nothing is shared between players.
 
@@ -74,15 +75,6 @@ end
 
 function Debuffs:SetIncludeRegular(value)
     ddb().includeRegular = value and true or false
-    self:Fire()
-end
-
-function Debuffs:Reverse()
-    return ddb().reverse and true or false
-end
-
-function Debuffs:SetReverse(value)
-    ddb().reverse = value and true or false
     self:Fire()
 end
 
