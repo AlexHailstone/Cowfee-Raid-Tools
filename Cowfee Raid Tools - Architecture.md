@@ -105,7 +105,7 @@ Food, flask and weapon icons are secure buttons that use the first assigned item
 
 ## Raid notes
 
-`Notes/Parse.lua` reads the note text into timers, phases, free text and an invite list. `Notes/Data.lua` stores notes in `CRTDB.notes`, caches spell names and icons out of combat, and turns an invite list into a Raid Groups layout. `Notes/Engine.lua` starts the timers on `ENCOUNTER_START` (or a test run), starts later phases on Next phase, and decides which lines are yours by name or role. `Notes/Window.lua` builds three windows from one design (timers, assignments, personal note), each lockable and resizable by hand, `Notes/WindowsPage.lua` holds their settings, `Notes/Alert.lua` is the personal alert, and `Notes/Comm.lua` shares a note in parts over addon messages. See the maintenance skill's `references/notes.md`.
+`Notes/Parse.lua` reads the note text into timers, phases, free text and an invite list. `Notes/Data.lua` stores notes in `CRTDB.notes`, caches spell names and icons out of combat, and turns an invite list into a Raid Groups layout. `Notes/Engine.lua` starts the timers on `ENCOUNTER_START` (or a test run), starts later phases on Next phase, and decides which lines are yours by name or role. `Notes/Window.lua` builds three windows from one design (timers, assignments, personal note), each lockable and resizable by hand, `Notes/Page.lua` is the Raid Notes page with a Notes tab and a Settings tab, `Notes/Settings.lua` builds the Settings tab (the windows, your alert and sharing), `Notes/Alert.lua` is the personal alert, and `Notes/Comm.lua` shares a note in parts over addon messages. See the maintenance skill's `references/notes.md`.
 
 ## Late tracker
 
