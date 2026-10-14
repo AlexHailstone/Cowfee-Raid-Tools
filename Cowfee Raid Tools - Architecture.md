@@ -75,6 +75,36 @@ A name pasted without a realm is stored with your realm. `Groups.MakeLookup` (gr
 
 Edits go through `Groups:SetSlot`, `Swap` and `ReplaceWorking`. Each ends in `Groups:Touch()`, which marks the grid unsaved, auto-saves when Keep changes is on, and fires the refresh.
 
+## Consumables
+
+The ready check row is separate from the group layout code. `Consumables/Database.lua` is the list of consumables that ships with the addon. `Consumables/Data.lua` holds the categories, the player's saved order in `CRTDB.consumables`, bag helpers, and `Consumables:Status(key)`, which turns one category into an icon, a time, a count and a state (active, low, missing, unknown, unset).
+
+`Consumables/Bar.lua` draws the icons, and is shared by the ready check row and the bar on the tab.
+
+The tab lets the player drag items onto the bar to add their own entries (`CRTDB.consumables.extra`), and `Data.lua` learns the buff of an item the first time it is used, by watching its bag count drop and a new long buff appear (`CRTDB.consumables.learned`).
+
+`Consumables/Ants.lua` is the marching ants animation, and `Consumables/Tools.lua` holds the `scan` and `check` maintainer commands. `Consumables/Display.lua` is the five-icon frame, shown on `READY_CHECK`, anchored to Blizzard's dialog when it can be found, and refreshed twice a second.
+
+Food, flask and weapon icons are secure buttons that use the first assigned item in your bags, which makes the row protected, so showing, hiding, moving and changing the click action wait for the end of combat.
+
+`Consumables/Page.lua` is the tab: the live bar, drag and drop, the icon order, and the item priority. The full detail, display rules and the update routine are in the maintenance skill's `references/consumables.md`.
+
+## Previews and saved positions
+
+`UI/Panel.lua` has a preview registry. A floating panel calls `UI:RegisterPreview(key, setFn)`, and the **Toggle previews** button in the corner of the main window calls every registered function, then turns them off again when the window closes. Each panel shows a drag handle during a preview and saves its position in `CRTDB` when dropped, in `CRTDB.consumables.position` and `CRTDB.debuffs.position`. All of this is saved per player in their own saved variables, and new settings are added as defaults in `Core.lua`.
+
+## Debuffs
+
+`Debuffs/Data.lua` holds the settings, `Debuffs/Panel.lua` builds a plain movable frame whose slots are private aura anchors (`C_UnitAuras.AddPrivateAuraAnchor`), which is how the game lets an addon place its boss mechanic debuffs, plus an optional second row using a Blizzard `AuraContainer` for regular debuffs, and `Debuffs/Page.lua` is the settings page. The panel is faded with alpha, not shown or hidden, so combat cannot block it. The container formats are largely undocumented, so each setup call is guarded and `/crt debuffs info` reports what worked. See the maintenance skill's `references/debuffs.md`.
+
+## Raid notes
+
+`Notes/Parse.lua` reads the note text into timers, phases, free text and an invite list. `Notes/Data.lua` stores notes in `CRTDB.notes`, caches spell names and icons out of combat, and turns an invite list into a Raid Groups layout. `Notes/Engine.lua` starts the timers on `ENCOUNTER_START` (or a test run), starts later phases on Next phase, and decides which lines are yours by name or role. `Notes/Window.lua` builds three windows from one design (timers, assignments, personal note), each lockable and resizable by hand, `Notes/WindowsPage.lua` holds their settings, `Notes/Alert.lua` is the personal alert, and `Notes/Comm.lua` shares a note in parts over addon messages. See the maintenance skill's `references/notes.md`.
+
+## Late tracker
+
+`Late/Data.lua` keeps the schedule and the expected Raid Groups layout in `CRTDB.late`, starts a raid night from the schedule (a 5-second ticker) or from Start raid now, marks players as joined on `GROUP_ROSTER_UPDATE`, ends the night when the group disbands, on End raid or after 8 hours, and adds up the totals. `Late/Page.lua` is the Late Tracker page. The running night is stored in saved variables, so a reload does not lose it. See the maintenance skill's `references/late.md`.
+
 ## Apply algorithm
 
 `Apply:Start(slots)` runs only for a raid leader or assistant, in a raid, out of combat.
