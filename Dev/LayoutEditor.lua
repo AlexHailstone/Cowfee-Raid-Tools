@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 --   + and -                    font size of selected text
 -- Changes are kept in CRTDB.dev.overrides as differences from the code's own layout, applied again
 -- after each /reload, and Export lists them so they can be written into the real code. Once they are,
--- Reset page clears them.
+-- /crt dev clear (or Reset page) drops them. Each change also remembers where the code had the piece
+-- (base). If the code has since moved it, for example because the change was written in, the change
+-- is out of date and is skipped with a chat message, so it is never applied twice.
 --
 -- This file never ships: the .toc line that loads it is inside a do-not-package block, and the Dev
 -- folder is in .pkgmeta's ignore list, so release zips have neither. It is off in combat.
@@ -136,10 +138,26 @@ end
 
 -- Changing a piece ------------------------------------------------------------------------------
 
-local function override(path)
+-- Where the code put a piece: its first anchor's offsets, its size and its font size, rounded.
+local function snapshot(obj)
+    local _, _, _, x, y = obj:GetPoint(1)
+    local fs = obj.GetFont and obj or (obj.GetFontString and obj:GetFontString()) or nil
+    local size = fs and select(2, fs:GetFont()) or 0
+    local function r(v)
+        return math.floor((v or 0) + 0.5)
+    end
+    return { x = r(x), y = r(y), w = r(obj:GetWidth()), h = r(obj:GetHeight()), font = r(size) }
+end
+
+local function sameSnapshot(a, b)
+    return a.x == b.x and a.y == b.y and a.w == b.w and a.h == b.h and a.font == b.font
+end
+
+-- The saved change for a piece, made on its first edit with a snapshot of the code's layout.
+local function override(path, obj)
     local o = db().overrides[path]
     if not o then
-        o = { dx = 0, dy = 0, dw = 0, dh = 0, font = 0 }
+        o = { dx = 0, dy = 0, dw = 0, dh = 0, font = 0, base = obj and snapshot(obj) or nil }
         db().overrides[path] = o
     end
     return o
@@ -202,12 +220,19 @@ local function changeFont(obj, delta)
 end
 
 -- Puts a saved override on a piece the first time the piece is seen after a /reload.
+local stale = {}
+
 local function applyOverride(piece)
     local o = db().overrides[piece.path]
     if not o or applied[piece.obj] then
         return
     end
     applied[piece.obj] = true
+    -- The code moved this piece since the change was made: the change is out of date.
+    if o.base and not sameSnapshot(o.base, snapshot(piece.obj)) then
+        stale[#stale + 1] = piece.path
+        return
+    end
     if o.dx ~= 0 or o.dy ~= 0 then
         shift(piece.obj, o.dx, o.dy)
     end
@@ -220,8 +245,12 @@ local function applyOverride(piece)
 end
 
 function Dev:ApplyAll()
+    local before = #stale
     for _, piece in ipairs(allPieces()) do
         applyOverride(piece)
+    end
+    if #stale > before then
+        CRT:Print(format("Skipped %d dev layout change%s because the code has moved %s since: %s. Type /crt dev clear to drop old changes.", #stale - before, #stale - before == 1 and "" or "s", #stale - before == 1 and "that piece" or "those pieces", table.concat(stale, ", ", before + 1)))
     end
 end
 
@@ -304,7 +333,7 @@ local function edit(dx, dy, dw, dh, font)
     if not selected then
         return
     end
-    local o = override(selected.path)
+    local o = override(selected.path, selected.obj)
     applied[selected.obj] = true
     if dx ~= 0 or dy ~= 0 then
         shift(selected.obj, dx, dy)
