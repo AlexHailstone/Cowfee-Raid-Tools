@@ -32,7 +32,7 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     elseif msg == "groups" then
         CRT.UI:Show("groups")
     elseif msg == "readycheck" or msg == "ready" then
-        CRT.ReadyCheckPage.Open("report")
+        CRT.ReadyCheckPage.Open("window")
     elseif msg == "consumables" then
         CRT.ReadyCheckPage.Open("bar")
     elseif msg == "check" then

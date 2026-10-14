@@ -85,14 +85,15 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 
 ## Ready Check
 
-`/crt readycheck` opens the page, which has four tabs.
+`/crt check` opens the ready check window for your group at any time. **Shift-click a column heading** in it to post who is missing that consumable or buff to raid chat, such as "Mark of the Wild missing: Solex". Raid buffs only get a column when someone in the group can give them, and players whose buffs the game hides are listed as "couldn't check", never as missing.
 
-- **Raid report.** Check the group's food, flask, augment rune, Vantus rune and raid buffs. **Check** shows the result only to you, **Post to chat** sends it to the raid. Raid buffs are only checked when someone in the group can give them. Players whose buffs the game hides are listed as "couldn't check", never as missing.
+`/crt readycheck` opens the settings page, which has three tabs.
+
 - **On ready check.** Run the report automatically on a ready check or a pull timer, choose where it goes, and what counts (best food only, flask expiring warning). The automatic report only goes to chat from whoever started the ready check, so it is posted once.
 - **Window.** A table that opens on a ready check for the raid leader and assistants: every player's ready answer, consumables, raid buffs and durability, for 30 seconds or until you right-click it. Arrange its columns by dragging the headings in the copy on this tab, and click a heading to hide it. Sort players by group, role or name, with a class color bar behind each row.
 - **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own.
 
-Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own. `/crt check` opens the window for your group at any time, with no timer.
+Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own. Shift-clicking the Dur heading posts everyone under 80%.
 
 ## Debuffs
 
@@ -121,7 +122,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 | `/crt` | Opens or closes the panel |
 | `/crt groups` | Raid Groups |
 | `/crt readycheck` | Ready Check. `/crt consumables` opens its Your bar tab |
-| `/crt check` | Opens the ready check window for your current group, open until you right-click it |
+| `/crt check` | Opens the ready check window for your current group, open until you right-click it. Shift-click a heading to post who is missing it |
 | `/crt check food` (or `flask`, `rune`, `vantus`, `buffs`, `all`) | Checks the group and shows it to you. Add `chat` to post it, such as `/crt check all chat` |
 | `/crt rc` | Shows your ready check bar for 20 seconds, for testing |
 | `/crt debuffs` | Debuffs |

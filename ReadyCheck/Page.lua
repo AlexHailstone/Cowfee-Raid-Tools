@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
--- The Ready Check page, with three tabs:
---   Raid report     check the group's food, flask, rune, Vantus rune and raid buffs, and post them
---   On ready check  the automatic report and what counts
+-- The Ready Check page. Checking the group is done in the ready check window (/crt check), where a
+-- shift-click on a heading posts that column to chat. The page's tabs:
+--   On ready check  the automatic report (printed to you, or posted) and what counts
 --   Window          the ready check window: when it opens and which columns it shows
 --   Your bar        your own consumables bar (Consumables/Page.lua)
 
@@ -10,7 +10,6 @@ local Report = CRT.RaidReport
 local UI = CRT.UI
 
 local TABS = {
-    { key = "report", label = "Raid report" },
     { key = "auto", label = "On ready check" },
     { key = "window", label = "Window" },
     { key = "bar", label = "Your bar" },
@@ -23,7 +22,7 @@ local ROW_H = 34
 
 local page
 local tabButtons, tabFrames, built = {}, {}, {}
-local resultTexts, controls = {}, {}
+local controls = {}
 local refresh
 
 local function settings()
@@ -123,80 +122,6 @@ local function makeCycle(parent, x, y, width, prefix, field, choices, holder)
     return b
 end
 
--- Raid report tab -----------------------------------------------------------------------
-
-local function buildReport(f)
-    local hint = label(f, "Check shows the result only to you. Post to chat sends it to the channel chosen on the On ready check tab, or raid chat if that is Only me. Players whose buffs can't be read are listed as couldn't check, not as missing.", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -8)
-    hint:SetWidth(670)
-
-    for i, check in ipairs(Report.CHECKS) do
-        local y = -54 - (i - 1) * ROW_H
-        local name = label(f, check.label)
-        name:SetPoint("TOPLEFT", 8, y - 4)
-        name:SetWidth(130)
-
-        local checkButton = makeButton(f, "Check", 80)
-        checkButton:SetPoint("TOPLEFT", 140, y)
-        checkButton:SetScript("OnClick", function()
-            Report:Check({ check.key }, false)
-        end)
-
-        local post = makeButton(f, "Post to chat", 120)
-        post:SetPoint("LEFT", checkButton, "RIGHT", 6, 0)
-        post:SetScript("OnClick", function()
-            Report:Check({ check.key }, true)
-        end)
-
-        local result = label(f, "Not checked yet.", "CRTFontSmall")
-        result:SetPoint("TOPLEFT", post, "TOPRIGHT", 10, -2)
-        result:SetPoint("RIGHT", f, "RIGHT", -8, 0)
-        result:SetJustifyV("TOP")
-        result:SetHeight(ROW_H - 6)
-        result:SetWordWrap(true)
-        resultTexts[check.key] = result
-    end
-
-    local y = -54 - #Report.CHECKS * ROW_H - 6
-    local all = makeButton(f, "Check everything", 200)
-    all:SetPoint("TOPLEFT", 140, y)
-    all:SetScript("OnClick", function()
-        local keys = {}
-        for _, check in ipairs(Report.CHECKS) do
-            keys[#keys + 1] = check.key
-        end
-        Report:Check(keys, false)
-    end)
-    local postAll = makeButton(f, "Post the report to chat", 220)
-    postAll:SetPoint("LEFT", all, "RIGHT", 6, 0)
-    postAll:SetScript("OnClick", function()
-        Report:Check(Report:Included(), true)
-    end)
-    local postHint = label(f, "Posts the checks ticked under Include in the report.", "CRTFontDisableSmall")
-    postHint:SetPoint("TOPLEFT", all, "BOTTOMLEFT", 0, -6)
-
-    local listNote = label(f, "", "CRTFontDisableSmall")
-    listNote:SetPoint("TOPLEFT", 8, y - 58)
-    listNote:SetWidth(670)
-    listNote.refresh = function()
-        local empty = {}
-        for _, key in ipairs({ "food", "flask", "rune" }) do
-            if not next(CRT.Consumables:BuffIds(key)) then
-                empty[#empty + 1] = key
-            end
-        end
-        if #empty > 0 then
-            listNote:SetText("The built-in list has no buffs yet for: " .. table.concat(empty, ", ") .. ". Until it does, those checks look for the English buff names (Well Fed, Flask, Phial, Augment), so they only work on an English game client. Vantus runes always go by name.")
-        else
-            listNote:SetText("Vantus runes are found by their English buff name.")
-        end
-    end
-    controls[#controls + 1] = listNote
-
-    local commands = label(f, "/crt check food, flask, rune, vantus, buffs or all. Add chat to post it, such as /crt check food chat", "CRTFontDisableSmall")
-    commands:SetPoint("BOTTOMLEFT", 8, 8)
-end
-
 -- On ready check tab ------------------------------------------------------------------------
 
 local function buildAuto(f)
@@ -270,7 +195,7 @@ local function makeNumber(parent, x, y, text, field, low, high)
 end
 
 local function buildWindow(f)
-    local hint = label(f, "A table of every player's ready answer, consumables and raid buffs that opens on a ready check and closes after the time below or on a right-click. Drag it to move it, or use Toggle previews to place it with sample players.", "CRTFontDisableSmall")
+    local hint = label(f, "A table of every player's ready answer, consumables and raid buffs that opens on a ready check, or any time with /crt check, and closes after the time below or on a right-click. Shift-click a heading in it to post who is missing that to raid chat. Drag it to move it, or use Toggle previews to place it.", "CRTFontDisableSmall")
     hint:SetPoint("TOPLEFT", 8, -8)
     hint:SetWidth(670)
 
@@ -344,14 +269,12 @@ end
 
 local function selectTab(key)
     if not tabFrames[key] then
-        key = "report"
+        key = "window"
     end
     settings().tab = key
     if not built[key] then
         built[key] = true
-        if key == "report" then
-            buildReport(tabFrames[key])
-        elseif key == "auto" then
+        if key == "auto" then
             buildAuto(tabFrames[key])
         elseif key == "window" then
             buildWindow(tabFrames[key])
@@ -368,26 +291,12 @@ local function selectTab(key)
     refresh()
 end
 
-local function ago(t)
-    local seconds = time() - t
-    if seconds < 60 then
-        return "just now"
-    end
-    return math.floor(seconds / 60) .. " min ago"
-end
-
 refresh = function()
     if not page or not page:IsShown() then
         return
     end
     for _, control in ipairs(controls) do
         control.refresh()
-    end
-    for key, fs in pairs(resultTexts) do
-        local last = Report.last[key]
-        if last then
-            fs:SetText("|cff999999" .. ago(last.at) .. ":|r " .. table.concat(last.lines, "  "))
-        end
     end
 end
 
@@ -435,7 +344,7 @@ end
 
 UI:RegisterPage("readycheck", "Ready Check", build)
 
--- Opens the page on a tab: "report", "auto" or "bar".
+-- Opens the page on a tab: "auto", "window" or "bar".
 CRT.ReadyCheckPage = {
     Open = function(tab)
         settings().tab = tab

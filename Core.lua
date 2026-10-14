@@ -33,7 +33,7 @@ local defaults = {
     -- The Ready Check page: the raid report of everyone's consumables and raid buffs. output is
     -- "self", "raid" or "officer". food is "any" or "best". flaskWarn is minutes, 0 for off.
     readycheck = {
-        tab = "report",
+        tab = "window",
         auto = true,
         onPull = false,
         output = "self",

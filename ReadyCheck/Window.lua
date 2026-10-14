@@ -256,9 +256,10 @@ local Table = {}
 Table.__index = Table
 
 -- parent is a frame dressed by Window.Dress. edit turns on dragging and clicking the headings, and
--- onEdit is called after a column is moved, shown or hidden.
-function Window.NewTable(parent, edit, onEdit)
-    local t = setmetatable({ parent = parent, edit = edit, onEdit = onEdit, rows = {}, headers = {}, count = 0, rowCount = 0 }, Table)
+-- onEdit is called after a column is moved, shown or hidden. Without edit, onShiftClick(key) is called
+-- when a heading is shift-clicked, and a right-click on a heading closes the window like anywhere else.
+function Window.NewTable(parent, edit, onEdit, onShiftClick)
+    local t = setmetatable({ parent = parent, edit = edit, onEdit = onEdit, onShiftClick = onShiftClick, rows = {}, headers = {}, count = 0, rowCount = 0 }, Table)
     if edit then
         t.marker = parent:CreateTexture(nil, "OVERLAY")
         t.marker:SetColorTexture(1, 0.82, 0, 1)
@@ -345,7 +346,23 @@ function Table:Header(j)
             GameTooltip:Hide()
         end)
     else
-        h:EnableMouse(false)
+        h:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        h:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                Window:Hide()
+            elseif IsShiftKeyDown() and self.owner.onShiftClick then
+                self.owner.onShiftClick(self.key)
+            end
+        end)
+        h:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(self.label, 1, 1, 1)
+            GameTooltip:AddLine("Shift-click to post who is missing this to raid chat.", 0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        h:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
     end
     self.headers[j] = h
     return h
@@ -432,6 +449,7 @@ end
 function Table:Draw(members, columns, dim)
     dim = dim or {}
     self.count, self.rowCount = #columns, #members
+    self.members, self.columns = members, columns
     for j, col in ipairs(columns) do
         local h = self:Header(j)
         h.key, h.label, h.index = col.key, col.label, j
@@ -532,6 +550,80 @@ end
 
 local windowTable
 
+-- Shift-click posting ------------------------------------------------------------------------------
+
+local DURABILITY_LOW = 80 -- a durability post lists players under this percent
+
+-- One chat line for a column, from what the window shows: who is missing it, whose flask is running
+-- out, and whose buffs the game hid.
+function Window.ColumnLine(col, members)
+    if col.key == "durability" then
+        local low = {}
+        for _, m in ipairs(members) do
+            if m.dur and m.dur < DURABILITY_LOW then
+                low[#low + 1] = m.name .. " " .. m.dur .. "%"
+            end
+        end
+        if #low == 0 then
+            return "Durability: everyone with the addon is at " .. DURABILITY_LOW .. "% or more"
+        end
+        return "Durability under " .. DURABILITY_LOW .. "%: " .. table.concat(low, ", ")
+    end
+    local missing, low, unknown = {}, {}, {}
+    for _, m in ipairs(members) do
+        local c = m.cells and m.cells[col.key]
+        if c then
+            if c.state == "missing" then
+                missing[#missing + 1] = m.name
+            elseif c.state == "low" then
+                low[#low + 1] = m.name .. (c.left and (" (" .. math.max(1, math.floor(c.left / 60 + 0.5)) .. " min)") or "")
+            elseif c.state == "unknown" then
+                unknown[#unknown + 1] = m.name
+            end
+        end
+    end
+    local line
+    if #missing == 0 and #low == 0 then
+        line = col.label .. ": everyone has it"
+    elseif #missing > 0 then
+        line = col.label .. " missing: " .. table.concat(missing, ", ")
+        if #low > 0 then
+            line = line .. "; running out: " .. table.concat(low, ", ")
+        end
+    else
+        line = col.label .. " running out: " .. table.concat(low, ", ")
+    end
+    if #unknown > 0 then
+        line = line .. "; couldn't check: " .. table.concat(unknown, ", ")
+    end
+    return line
+end
+
+-- Posts a column to the "Post to" channel on the On ready check tab, or raid chat if that is Only me.
+-- Sample players (Show it now, Toggle previews) are only printed to you, never posted.
+function Window:PostColumn(key)
+    local t = windowTable
+    if not (t and t.members and t.columns) then
+        return
+    end
+    local col
+    for _, c in ipairs(t.columns) do
+        if c.key == key then
+            col = c
+        end
+    end
+    if not col then
+        return
+    end
+    local line = Window.ColumnLine(col, t.members)
+    if previewOn or sampleOn then
+        CRT:Print("(sample players, not posted) " .. line)
+        return
+    end
+    local output = CRT.db.readycheck.output
+    Report:Output({ line }, (output and output ~= "self") and output or "raid")
+end
+
 function Window:Refresh()
     if not frame or not frame:IsShown() then
         return
@@ -602,7 +694,9 @@ local function build()
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     Window.Dress(frame)
-    windowTable = Window.NewTable(frame, false)
+    windowTable = Window.NewTable(frame, false, nil, function(key)
+        Window:PostColumn(key)
+    end)
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
