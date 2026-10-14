@@ -232,13 +232,10 @@ end
 
 -- One window --------------------------------------------------------------------------------
 
+-- A note window's font: the one picked for it (from CRT:FontList), or the game's own for "default"
+-- or a shared font that is no longer loaded.
 local function fontPath(name)
-    for _, font in ipairs(NoteWindow.FONTS) do
-        if font.name == name then
-            return font.path
-        end
-    end
-    return NoteWindow.FONTS[1].path
+    return CRT:FontPath(name) or (GameFontHighlight:GetFont())
 end
 
 local function createWindow(key, defaultPosition, build)
@@ -331,7 +328,7 @@ local function createWindow(key, defaultPosition, build)
 
     function w:ApplyStyle()
         local settings = s()
-        font:SetFont(fontPath(settings.font), settings.fontSize or 14, "")
+        font:SetFont(fontPath(settings.font), settings.fontSize or 14, CRT.db.ui.outline or "")
         frame:SetSize(settings.width or 360, settings.height or 240)
         frame:SetAlpha((settings.alpha or 100) / 100)
         local bg = (settings.bgAlpha or 50) / 100

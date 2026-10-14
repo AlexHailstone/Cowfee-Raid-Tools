@@ -51,6 +51,10 @@ function UI.Dropdown(parent, text, opts)
     local dropdown = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
     dropdown:SetWidth(width)
     dropdown:SetPoint("LEFT", row.Label, "RIGHT", GAP, 0)
+    -- The template's text (GameFontHighlight), in the addon's font at the same size.
+    if type(dropdown.Text) == "table" then
+        dropdown.Text:SetFontObject(CRTFontStandardHighlight)
+    end
     dropdown:SetupMenu(function(_, root)
         local list = type(opts.options) == "function" and opts.options() or opts.options
         for _, option in ipairs(list) do
@@ -104,6 +108,10 @@ function UI.Slider(parent, text, opts)
         end),
     }
     slider:Init(opts.get() or low, low, high, (high - low) / step, formatters)
+    -- The value beside the bar (GameFontNormal in the template), in the addon's font.
+    if type(slider.RightText) == "table" then
+        slider.RightText:SetFontObject(CRTFontStandard)
+    end
     row.Slider = slider
 
     -- updating: the value is being set from the saved setting, so it is not saved back.

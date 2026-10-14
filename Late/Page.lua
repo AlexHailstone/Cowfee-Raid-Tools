@@ -557,9 +557,9 @@ end
 
 -- The three buttons use the game's standard button font, a little smaller than the addon's.
 local function standardFont(b)
-    b:SetNormalFontObject(GameFontNormal)
-    b:SetHighlightFontObject(GameFontHighlight)
-    b:SetDisabledFontObject(GameFontDisable)
+    b:SetNormalFontObject(CRTFontStandard)
+    b:SetHighlightFontObject(CRTFontStandardHighlight)
+    b:SetDisabledFontObject(CRTFontStandardDisable)
 end
 
 local function buildTonight(f)

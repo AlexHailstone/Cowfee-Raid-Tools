@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.1</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.2</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -43,7 +43,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
 | **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
 | **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider. Off by default |
-| **Addon Settings** | Settings for the whole addon: the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black, background opacity, the font, outline and text size of all the addon's text, and which layer each window is drawn in |
+| **Addon Settings** | Settings for the whole addon: the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), and which layer each window is drawn in |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 
 **Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.

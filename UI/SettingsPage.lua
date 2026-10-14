@@ -61,12 +61,39 @@ local function refresh()
     end
 end
 
+-- Read each time the menu opens, so fonts other addons share through LibSharedMedia appear.
 local function fontChoices()
     local out = { { key = "default", label = "Game default" } }
-    for _, font in ipairs(CRT.FONTS) do
+    for _, font in ipairs(CRT:FontList()) do
         out[#out + 1] = { key = font.name, label = font.name }
     end
     return out
+end
+
+local function fontLabel(key)
+    return key == "default" and "Game default" or key
+end
+
+-- The font changes every text in the addon, so it asks first, in the game's own confirmation box.
+local function confirmFont(key)
+    if key == ui().font then
+        return
+    end
+    StaticPopup_ShowCustomGenericConfirmation({
+        text = "Changing this changes all other fonts in this addon, the note windows included.\n\nUse %s for everything?",
+        text_arg1 = fontLabel(key),
+        acceptText = "Change all fonts",
+        cancelText = CANCEL,
+        showAlert = true,
+        callback = function()
+            CRT:SetAddonFont(key)
+            if page and page:IsShown() then
+                for _, control in ipairs(controls) do
+                    control.refresh()
+                end
+            end
+        end,
+    })
 end
 
 local function build(pf)
@@ -95,8 +122,8 @@ local function build(pf)
         end,
     }), -62)
     local resetScale = CreateFrame("Button", nil, pf, "UIPanelButtonTemplate")
-    resetScale:SetNormalFontObject(GameFontNormalSmall)
-    resetScale:SetHighlightFontObject(GameFontHighlightSmall)
+    resetScale:SetNormalFontObject(CRTFontButtonSmall)
+    resetScale:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     resetScale:SetSize(110, 20)
     resetScale:SetText("Reset to 100%")
     resetScale:SetPoint("LEFT", scale, "RIGHT", 12, 0)
@@ -133,20 +160,20 @@ local function build(pf)
     }), -126)
 
     -- Text.
-    heading(pf, -170, "Text", "The font, outline and size of the text in this window and in the addon's own on-screen displays, such as your next spell alert and the ready check bar and window.\n\nEach note window keeps its own font, set on Raid Notes. Boss debuff timers are drawn by the game in its own font, which no addon can change.\n\nGame default keeps the game's font, which also suits clients in other languages.")
-    add(UI.Dropdown(pf, "Font", {
+    heading(pf, -170, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Game default keeps the game's font, which also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
+    local font = add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
         labelWidth = LABEL_W,
         width = CONTROL_W,
         get = function()
             return ui().font
         end,
-        set = function(key)
-            ui().font = key
-            CRT:ApplyFonts()
-            refresh()
-        end,
+        set = confirmFont,
     }), -188)
+    local warning = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    warning:SetPoint("LEFT", font, "RIGHT", 10, 0)
+    warning:SetTextColor(1, 0.55, 0.1)
+    warning:SetText("Changing this changes all other fonts in this addon.")
     add(UI.Dropdown(pf, "Outline", {
         options = OUTLINES,
         labelWidth = LABEL_W,
@@ -194,8 +221,8 @@ local function build(pf)
         }), -314 - (i - 1) * 30)
     end
     local resetLayers = CreateFrame("Button", nil, pf, "UIPanelButtonTemplate")
-    resetLayers:SetNormalFontObject(GameFontNormalSmall)
-    resetLayers:SetHighlightFontObject(GameFontHighlightSmall)
+    resetLayers:SetNormalFontObject(CRTFontButtonSmall)
+    resetLayers:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     resetLayers:SetSize(130, 20)
     resetLayers:SetText("Default layers")
     resetLayers:SetPoint("TOPLEFT", 10, -314 - #UI.LAYERS * 30 - 6)

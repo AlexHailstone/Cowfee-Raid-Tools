@@ -281,12 +281,12 @@ function UI:Create()
         UI:SetPreviews(false)
     end)
 
-    -- "Previews", in the title bar beside the close button. It uses the game's small fonts, not the
-    -- addon's scaled ones, and is 18 high and 1 pixel above centre, so it fits inside the title bar.
+    -- "Previews", in the title bar beside the close button. It uses the game's small size, not the
+    -- addon's scaled one, and is 18 high and 1 pixel above centre, so it fits inside the title bar.
     local pb = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    pb:SetNormalFontObject(GameFontNormalSmall)
-    pb:SetHighlightFontObject(GameFontHighlightSmall)
-    pb:SetDisabledFontObject(GameFontDisableSmall)
+    pb:SetNormalFontObject(CRTFontButtonSmall)
+    pb:SetHighlightFontObject(CRTFontButtonSmallHighlight)
+    pb:SetDisabledFontObject(CRTFontButtonSmallDisable)
     pb:SetSize(96, 18)
     -- Beside the close button, centred on it, so it sits inside the title bar.
     if f.CloseButton then

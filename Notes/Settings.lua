@@ -192,9 +192,13 @@ local function buildColumn(pf, index, def, top)
     makeNumber(pf, x, y - 24, TEXT.windowAlpha, { low = 10, high = 100, enabledIf = shown }, setting(def.key, "alpha"))
     makeNumber(pf, x, y - 48, TEXT.backgroundAlpha, { low = 0, high = 100, enabledIf = shown }, setting(def.key, "bgAlpha"))
 
-    local fonts = {}
-    for _, f in ipairs(CRT.NoteWindow.FONTS) do
-        fonts[#fonts + 1] = { key = f.name, label = f.name }
+    -- Read each time the menu opens, so fonts shared by other addons appear.
+    local function fonts()
+        local out = { { key = "default", label = "Game default" } }
+        for _, f in ipairs(CRT:FontList()) do
+            out[#out + 1] = { key = f.name, label = f.name }
+        end
+        return out
     end
     local font = UI.Dropdown(pf, TEXT.font, {
         options = fonts,

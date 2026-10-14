@@ -168,7 +168,8 @@ local function copyDefaults(src, dst)
 end
 
 -- The fonts the addon offers: on the Addon Settings page for all its text, and for each note window.
--- All four ship with the game.
+-- These four ship with the game. CRT:FontList adds the fonts other addons share through
+-- LibSharedMedia-3.0, when one of them has loaded it. Cowfee Raid Tools does not ship the library.
 CRT.FONTS = {
     { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
     { name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
@@ -176,8 +177,52 @@ CRT.FONTS = {
     { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
 }
 
-function CRT:FontPath(name)
+-- LibSharedMedia-3.0, if another addon loaded it. Its documented calls are List(mediatype) and
+-- Fetch(mediatype, key, noDefault), with the media type "font".
+local function sharedMedia()
+    if not LibStub then
+        return nil
+    end
+    local ok, lib = pcall(LibStub.GetLibrary, LibStub, "LibSharedMedia-3.0", true)
+    return ok and lib or nil
+end
+
+local function samePath(path)
+    return ((path or ""):lower():gsub("/", "\\"))
+end
+
+-- Every font to choose from: { name, path, shared }. The game's four first, then the shared ones in
+-- LibSharedMedia's sorted order, leaving out any that is the same file as one already listed.
+function CRT:FontList()
+    local out, seen, names = {}, {}, {}
     for _, font in ipairs(self.FONTS) do
+        out[#out + 1] = { name = font.name, path = font.path }
+        seen[samePath(font.path)] = true
+        names[font.name] = true
+    end
+    local lib = sharedMedia()
+    if lib then
+        local ok, list = pcall(lib.List, lib, "font")
+        if ok and type(list) == "table" then
+            for _, name in ipairs(list) do
+                local okPath, path = pcall(lib.Fetch, lib, "font", name, true)
+                if okPath and type(path) == "string" and not seen[samePath(path)] and not names[name] then
+                    out[#out + 1] = { name = name, path = path, shared = true }
+                    seen[samePath(path)] = true
+                    names[name] = true
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- The file for a font name, or nil for "default" or a shared font that is no longer loaded.
+function CRT:FontPath(name)
+    if not name or name == "default" then
+        return nil
+    end
+    for _, font in ipairs(self:FontList()) do
         if font.name == name then
             return font.path
         end
@@ -190,11 +235,11 @@ end
 CRT.FONT_SCALE = 1.2
 local fonts = {} -- { object, path, size, flags }: each font object and the game font it started as
 
-local function makeFont(name, source)
+local function makeFont(name, source, scale)
     local font = CreateFont(name)
     font:CopyFontObject(source)
     local path, size, flags = font:GetFont()
-    size = math.floor(size * CRT.FONT_SCALE + 0.5)
+    size = math.floor(size * (scale or CRT.FONT_SCALE) + 0.5)
     -- SetFont's third argument is no longer optional (12.0.5), so pass "" when there are no flags.
     font:SetFont(path, size, flags or "")
     fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "" }
@@ -217,6 +262,23 @@ function CRT:ApplyFonts()
         end
         f.object:SetFont(path, math.floor(f.size * factor + 0.5), flags)
     end
+    -- The note windows keep their own font objects, so they redraw with the new font and outline.
+    if self.Notes and self.Notes.Fire and self.ready then
+        self.Notes:Fire()
+    end
+end
+
+-- Sets the font for everything the addon draws, the note windows included, from the Addon Settings
+-- page after its confirmation box. Each note window can still be given its own font afterwards.
+function CRT:SetAddonFont(name)
+    self.db.ui.font = name
+    local notes = self.db.notes
+    for _, key in ipairs({ "window", "assignments", "personal" }) do
+        if type(notes[key]) == "table" then
+            notes[key].font = name
+        end
+    end
+    self:ApplyFonts()
 end
 
 makeFont("CRTFontNormal", GameFontNormal)
@@ -225,6 +287,15 @@ makeFont("CRTFontDisable", GameFontDisable)
 makeFont("CRTFontSmall", GameFontHighlightSmall)
 makeFont("CRTFontDisableSmall", GameFontDisableSmall)
 makeFont("CRTFontLarge", GameFontNormalLarge)
+-- The game's own sizes, unscaled, for the small title-bar and page buttons, the standard buttons,
+-- the dropdown and slider text, and the edit boxes. They follow the Addon Settings font too.
+makeFont("CRTFontButtonSmall", GameFontNormalSmall, 1)
+makeFont("CRTFontButtonSmallHighlight", GameFontHighlightSmall, 1)
+makeFont("CRTFontButtonSmallDisable", GameFontDisableSmall, 1)
+makeFont("CRTFontStandard", GameFontNormal, 1)
+makeFont("CRTFontStandardHighlight", GameFontHighlight, 1)
+makeFont("CRTFontStandardDisable", GameFontDisable, 1)
+makeFont("CRTFontEdit", ChatFontNormal, 1)
 
 function CRT:Print(msg)
     print("|cffc8a050Cowfee Raid Tools|r: " .. tostring(msg))
@@ -239,5 +310,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         CRT.db = CRTDB
         CRT:ApplyFonts()
         self:UnregisterEvent("ADDON_LOADED")
+        self:RegisterEvent("PLAYER_LOGIN")
+    elseif event == "PLAYER_LOGIN" then
+        -- Every addon has loaded by now, so a font shared through LibSharedMedia can be found.
+        CRT.ready = true
+        CRT:ApplyFonts()
     end
 end)

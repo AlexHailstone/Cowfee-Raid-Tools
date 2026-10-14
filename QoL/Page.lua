@@ -56,9 +56,9 @@ end
 -- A small button in the game's small font, the size of the Previews button's text.
 local function smallButton(pf, text)
     local b = makeButton(pf, text, 110, 20)
-    b:SetNormalFontObject(GameFontNormalSmall)
-    b:SetHighlightFontObject(GameFontHighlightSmall)
-    b:SetDisabledFontObject(GameFontDisableSmall)
+    b:SetNormalFontObject(CRTFontButtonSmall)
+    b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
+    b:SetDisabledFontObject(CRTFontButtonSmallDisable)
     return b
 end
 
