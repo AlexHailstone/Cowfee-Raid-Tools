@@ -111,7 +111,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 
 ## Late Tracker
 
-`/crt late`. Tick your raid days and the start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in it who is not in your group gets a running clock until they join, or until the group disbands. **Start raid now** starts a night by hand when invites go out off schedule. Every night is saved to a history with join times, and Totals shows how often each player was late.
+`/crt late`. Tick your raid days and the start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in it who is not in your group gets a running clock until they join, or until the group disbands. **Start raid now** starts a night by hand when invites go out off schedule. Every night is saved to a history with join times, and Totals shows how often each player was late. **Export for Discord** opens the selected totals or night as text to copy and paste into Discord, where the columns line up in a code block.
 
 ## Commands
 
@@ -127,6 +127,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 | `/crt notes` | Raid Notes. `/crt notes settings` opens its Settings tab |
 | `/crt note test`, `/crt note next`, `/crt note stop` | Start the note in use now, start the next phase, stop |
 | `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |
+| `/crt late export` | The late totals as text to paste into Discord |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt help` | Lists the commands |
 

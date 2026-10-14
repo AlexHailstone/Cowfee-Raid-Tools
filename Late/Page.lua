@@ -197,6 +197,88 @@ local function setText(fs, child, s)
     child:SetHeight(fs:GetStringHeight() + 8)
 end
 
+-- Discord export ----------------------------------------------------------------------------
+-- Plain text for pasting into Discord: a bold title, then a code block so the columns line up in
+-- Discord's fixed-width font. No color codes and no pipe characters, which the game's text box treats
+-- as escape codes. Discord's message limit is 2000 characters, so a full 40-player list may need two
+-- pastes.
+
+local function pad(s, width)
+    s = tostring(s)
+    if #s >= width then
+        return s:sub(1, width - 1) .. " "
+    end
+    return s .. string.rep(" ", width - #s)
+end
+
+local function plain(key)
+    return Groups.Display(key)
+end
+
+local function totalsExport()
+    local history = Late:History()
+    if #history == 0 then
+        return "No finished raid nights yet."
+    end
+    local first, last = history[1].startedAt, history[1].startedAt
+    for _, night in ipairs(history) do
+        first, last = math.min(first, night.startedAt), math.max(last, night.startedAt)
+    end
+    local lines = {
+        format("**Late tracker totals**: %d nights, %s to %s", #history, day(first), day(last)),
+        "```",
+        pad("Player", 26) .. pad("Late", 9) .. pad("Time late", 13) .. "Never",
+    }
+    for _, t in ipairs(Late:Totals()) do
+        lines[#lines + 1] = pad(plain(t.key), 26) .. pad(t.late .. " of " .. t.nights, 9) .. pad(t.late > 0 and minutes(t.seconds) or "-", 13) .. (t.never > 0 and t.never or "-")
+    end
+    lines[#lines + 1] = "```"
+    return table.concat(lines, "\n")
+end
+
+local function nightExport(night)
+    local lines = {
+        format("**Raid night %s**, start %s, roster \"%s\", ended %s when %s", day(night.startedAt), clock(night.startedAt), night.layout or "?", clock(night.endedAt), ENDED[night.endReason] or "it ended"),
+    }
+    local late, onTime = {}, {}
+    for _, p in ipairs(sortedPlayers(night)) do
+        if Late.IsLate(night, p) then
+            late[#late + 1] = p
+        else
+            onTime[#onTime + 1] = plain(p.key)
+        end
+    end
+    if #late > 0 then
+        lines[#lines + 1] = "```"
+        lines[#lines + 1] = pad("Player", 26) .. pad("Joined", 10) .. "Late"
+        for _, p in ipairs(late) do
+            lines[#lines + 1] = pad(plain(p.key), 26) .. pad(p.never and "never" or clock(p.joinedAt), 10) .. minutes(Late.Seconds(night, p))
+        end
+        lines[#lines + 1] = "```"
+    else
+        lines[#lines + 1] = "Nobody was late."
+    end
+    if #onTime > 0 then
+        lines[#lines + 1] = "On time: " .. table.concat(onTime, ", ")
+    end
+    return table.concat(lines, "\n")
+end
+
+-- Opens the copy window with what is selected in History: the totals or one night.
+local function export()
+    local text, title
+    if selected == TOTALS then
+        text, title = totalsExport(), "Late tracker totals for Discord (Ctrl+C to copy)"
+    else
+        local night = Late:Find(selected)
+        if not night then
+            return
+        end
+        text, title = nightExport(night), "Raid night for Discord (Ctrl+C to copy)"
+    end
+    CRT.ConsumablesTools:ShowText(title, text)
+end
+
 -- Totals table rows: four text columns per row, made as needed under the intro line.
 local TOTAL_ROW_H = 18
 local totalRows = {}
@@ -561,6 +643,11 @@ local function build(pf)
     detailBox:SetPoint("TOPLEFT", listBox, "TOPRIGHT", 8, 0)
     detailBox:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 38)
 
+    local exportButton = makeButton(pf, "Export for Discord", 190)
+    exportButton:SetPoint("BOTTOMLEFT", detailBox, "BOTTOMLEFT", 0, -30)
+    exportButton:SetScript("OnClick", export)
+    tooltip(exportButton, "Export for Discord", "Opens a window with the selected totals or night as text, already selected. Press Ctrl+C, then paste it into Discord. The columns line up in Discord's code block.")
+
     deleteButton = makeButton(pf, "Delete this night", 190)
     deleteButton:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 8)
     local armToken = 0
@@ -604,3 +691,10 @@ local function build(pf)
 end
 
 UI:RegisterPage("late", "Late Tracker", build)
+
+-- For /crt late export: the totals, ready to paste into Discord.
+CRT.LatePage = {
+    ExportTotals = function()
+        CRT.ConsumablesTools:ShowText("Late tracker totals for Discord (Ctrl+C to copy)", totalsExport())
+    end,
+}

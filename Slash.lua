@@ -14,6 +14,7 @@ local function printHelp()
     print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
     print("  |cffffd100/crt late|r - open the Late Tracker page")
     print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
+    print("  |cffffd100/crt late export|r - the late totals as text to paste into Discord")
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
     print("  |cffffd100/crt consumables check|r - test every ID in the built-in consumables list")
@@ -72,6 +73,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.NoteEngine:Stop()
     elseif msg == "late" then
         CRT.UI:Show("late")
+    elseif msg == "late export" then
+        CRT.LatePage.ExportTotals()
     elseif msg == "late start" then
         if CRT.Late:Start("button", time()) then
             CRT:Print("Raid night started.")
