@@ -12,6 +12,9 @@ local ADDON, CRT = ...
 -- buff  The spell ID of the buff it gives you. If left out, the item's use spell is tried, which
 --       works for many flasks and runes but usually not for food.
 -- name  Only a label for people reading this file. The game's own name is shown in the addon.
+-- best  Optional, food only: true for the top-tier food. "Best food only" in the raid report counts
+--       only these, once at least one is marked.
+-- low   Optional, flask only: true for a lower quality flask, which the raid report can flag.
 --
 -- Players can reorder which item is used first and the order of the icons, but not edit this list.
 -- To find IDs, buff up in the game and run `/crt consumables scan`, which prints your buffs and

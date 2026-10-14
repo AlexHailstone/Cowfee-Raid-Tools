@@ -4,8 +4,9 @@ local function printHelp()
     CRT:Print("v" .. CRT.version .. " commands:")
     print("  |cffffd100/crt|r - open or close the main panel")
     print("  |cffffd100/crt groups|r - open the Raid Groups page")
-    print("  |cffffd100/crt consumables|r - open the Consumables page")
-    print("  |cffffd100/crt readycheck|r - preview the ready check consumables row")
+    print("  |cffffd100/crt readycheck|r - open the Ready Check page (|cffffd100/crt consumables|r opens its Your bar tab)")
+    print("  |cffffd100/crt check food|r, |cffffd100flask|r, |cffffd100rune|r, |cffffd100vantus|r, |cffffd100buffs|r or |cffffd100all|r - check the group, add |cffffd100chat|r to post it")
+    print("  |cffffd100/crt rc|r - preview your ready check bar")
     print("  |cffffd100/crt debuffs|r - open the Debuffs page")
     print("  |cffffd100/crt debuffs info|r - diagnostics for the debuff panel")
     print("  |cffffd100/crt notes|r - open the Raid Notes page")
@@ -25,8 +26,23 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.UI:Toggle()
     elseif msg == "groups" then
         CRT.UI:Show("groups")
+    elseif msg == "readycheck" or msg == "ready" then
+        CRT.ReadyCheckPage.Open("report")
     elseif msg == "consumables" then
-        CRT.UI:Show("consumables")
+        CRT.ReadyCheckPage.Open("bar")
+    elseif msg:match("^check") then
+        local what, chat = msg:match("^check%s*(%a*)%s*(%a*)$")
+        local keys = {}
+        for _, check in ipairs(CRT.RaidReport.CHECKS) do
+            if what == "all" or what == check.key or (what == "buff" and check.key == "buffs") then
+                keys[#keys + 1] = check.key
+            end
+        end
+        if #keys == 0 then
+            CRT:Print("Use /crt check food, flask, rune, vantus, buffs or all, and add chat to post it.")
+        else
+            CRT.RaidReport:Check(keys, chat == "chat")
+        end
     elseif msg == "consumables scan" then
         CRT.ConsumablesTools:Scan()
     elseif msg == "consumables check" then
@@ -64,7 +80,7 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         end
     elseif msg == "previews" then
         CRT.UI:TogglePreviews()
-    elseif msg == "readycheck" or msg == "rc" then
+    elseif msg == "rc" then
         CRT.ConsumablesDisplay:Preview()
     elseif msg == "help" or msg == "?" then
         printHelp()

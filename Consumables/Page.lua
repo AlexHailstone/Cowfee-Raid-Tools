@@ -1,6 +1,7 @@
 local ADDON, CRT = ...
 
--- The Consumables tab. The list of consumables ships with the addon, and here you can:
+-- The Your bar tab of the Ready Check page (ReadyCheck/Page.lua builds it into its tab). The list of
+-- consumables ships with the addon, and here you can:
 --   * see the same bar that shows on the ready check, with live status,
 --   * drag an item from your bags onto an icon to add it to that category (optional),
 --   * set the icon order, and which item is used first when you click an icon.
@@ -282,15 +283,11 @@ end
 local function build(pf)
     page = pf
 
-    local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    title:SetPoint("TOPLEFT", 8, -8)
-    title:SetText("Consumables")
-
     local hint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -34)
+    hint:SetPoint("TOPLEFT", 8, -24)
     hint:SetWidth(660)
     hint:SetJustifyH("LEFT")
-    hint:SetText("The ready check bar uses a built-in list of consumables that is kept up to date with the addon. You can add your own, and choose the order.")
+    hint:SetText("Your own bar of consumable icons that appears during a ready check. It uses a built-in list of consumables kept up to date with the addon. You can add your own, and choose the order.")
 
     enabledCheck = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     enabledCheck:SetSize(26, 26)
@@ -401,4 +398,5 @@ local function build(pf)
     Consumables:OnChange(refresh)
 end
 
-UI:RegisterPage("consumables", "Consumables", build)
+-- Built into the Your bar tab by ReadyCheck/Page.lua.
+CRT.ConsumablesPage = { Build = build }

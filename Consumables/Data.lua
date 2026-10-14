@@ -145,12 +145,12 @@ function Consumables:MoveCategory(key, delta)
 end
 
 -- Entries for a category: the shipped ones, then the player's own, rearranged by the player's
--- saved order. Each is a fresh table { item, buff, name, user, category }.
+-- saved order. Each is a fresh table { item, buff, name, best, low, user, category }.
 function Consumables:Entries(key)
     local byItem, base = {}, {}
     local function add(entry, user)
         if entry.item and not byItem[entry.item] then
-            local e = { item = entry.item, buff = entry.buff, name = entry.name, user = user, category = key }
+            local e = { item = entry.item, buff = entry.buff, name = entry.name, best = entry.best, low = entry.low, user = user, category = key }
             byItem[entry.item] = e
             base[#base + 1] = e
         end
@@ -228,6 +228,18 @@ local function buffId(entry)
         end
     end
     return nil
+end
+
+-- The buff spell IDs listed or learned for a category, for checking other players: { [spellId] = entry }.
+function Consumables:BuffIds(key)
+    local out = {}
+    for _, entry in ipairs(self:Entries(key)) do
+        local id = buffId(entry)
+        if id then
+            out[id] = entry
+        end
+    end
+    return out
 end
 
 -- Names of items in your bags, keyed by item ID. The game's own name is what /use needs.

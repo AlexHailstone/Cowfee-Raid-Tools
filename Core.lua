@@ -30,6 +30,20 @@ local defaults = {
         -- position = { point, relativePoint, x, y } is added when the bar is moved. Without it the
         -- bar sits above the ready check dialog.
     },
+    -- The Ready Check page: the raid report of everyone's consumables and raid buffs. output is
+    -- "self", "raid" or "officer". food is "any" or "best". flaskWarn is minutes, 0 for off.
+    readycheck = {
+        tab = "report",
+        auto = true,
+        onPull = false,
+        output = "self",
+        raidsOnly = true,
+        notLFR = true,
+        include = { food = true, flask = true, rune = true, vantus = false, buffs = true },
+        food = "any",
+        flaskWarn = 5,
+        lowFlask = true,
+    },
     -- The in-combat debuff panel. Every player has their own copy of these in their own saved
     -- variables, so nothing here is shared between players. position is added when it is moved.
     debuffs = {
