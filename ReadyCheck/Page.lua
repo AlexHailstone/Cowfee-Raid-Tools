@@ -138,7 +138,7 @@ local function buildAuto(f)
     local counts = label(f, "What counts")
     counts:SetPoint("TOPLEFT", 8, -224)
     UI.Help(f, "What counts", "Food: any food buff counts, whatever was eaten.\n\nLower quality flasks need those marked in the built-in consumables list. Until they are, no flask is flagged.\n\nNot available: potions and healthstones used in the last fight (the combat log is closed to addons during boss fights in Midnight), and other players' weapon oils and armor kits (they aren't buffs, so the game doesn't show them to addons)."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
-    makeDropdown(f, 8, -240, "Flask expiring warning", "flaskWarn", WARNS, nil, 170, 170)
+    makeDropdown(f, 8, -240, "Flask and oil expiring warning", "flaskWarn", WARNS, nil, 200, 170)
     makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.
@@ -245,7 +245,7 @@ local function buildWindow(f)
     local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
     cols:SetPoint("TOPLEFT", 8, -148)
     cols:SetWordWrap(false)
-    UI.Help(f, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check, or any time with /crt check, and closes after the time set here or on a right-click. Shift-click a heading in it to post who is missing that to raid chat. Drag it to move it, or use Previews to place it.\n\nIn the table: an icon means they have it, a gold number is minutes left on an expiring flask, x is missing, and ? means the game hid their buffs. Durability only shows for players who run Cowfee Raid Tools, since each one sends their own."):SetPoint("LEFT", cols, "RIGHT", 6, 0)
+    UI.Help(f, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check, or any time with /crt check, and closes after the time set here or on a right-click. Shift-click a heading in it to post who is missing that to raid chat. Drag it to move it, or use Previews to place it.\n\nIn the table: an icon means they have it, a gold number is minutes left on an expiring flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils only show for players who run Cowfee Raid Tools, since each one sends their own. The game never shows addons another player's weapon oil."):SetPoint("LEFT", cols, "RIGHT", 6, 0)
 
     -- The same table the window draws, with sample players, in edit mode.
     local box = CreateFrame("Frame", nil, f, "BackdropTemplate")

@@ -9,6 +9,11 @@ local ADDON, CRT = ...
 -- addon sends their own over an addon message when a ready check starts: "D:<percent>" under the
 -- prefix CRTReady. Opening the window by hand sends "Q", which asks everyone to send theirs. Your own
 -- is read live. Players without the addon show a blank.
+--
+-- Weapon oils and stones are the same: they are temporary weapon enchants, not buffs, so the game
+-- never shows another player's to addons. Each player sends theirs with their durability as
+-- "W:<main hand>:<off hand>", each the seconds left, "x" for one with no timer, or "n" for none.
+-- Versions before 0.13.2 ignore it.
 
 local Report = CRT.RaidReport
 local Window = {}
@@ -43,6 +48,7 @@ local READY_ICONS = {
 Window.COLUMNS = {
     { key = "food", short = "Food", label = "Food" },
     { key = "flask", short = "Flask", label = "Flask" },
+    { key = "weapon", short = "Oil", label = "Weapon oil" },
     { key = "rune", short = "Rune", label = "Augment rune" },
     { key = "vantus", short = "Vantus", label = "Vantus rune" },
 }
@@ -58,6 +64,7 @@ local checkActive = false -- a ready check is running, between READY_CHECK and R
 local sampleOn = false -- opened by Show it now: sample players, closes like the real one
 local readyState = {} -- short name -> "ready" | "notready" | "waiting"
 local durability = {} -- short name -> percent
+local weapons = {} -- short name -> { mh, oh, at }: seconds left when received (true: no timer, nil: none)
 
 local function settings()
     return CRT.db.readycheck.window
@@ -105,10 +112,98 @@ local function send(text)
     end
 end
 
+-- Weapon oil ----------------------------------------------------------------------------------
+
+-- The temporary enchant on one weapon slot: seconds left, true for one with no timer, or nil for none.
+-- C_PaperDollInfo.GetTemporaryEnchantmentInfo replaces GetWeaponEnchantInfo (deprecated in 12.1.0).
+local function slotEnchant(slot)
+    if C_PaperDollInfo and C_PaperDollInfo.GetTemporaryEnchantmentInfo then
+        local ok, info = pcall(C_PaperDollInfo.GetTemporaryEnchantmentInfo, slot)
+        if ok and type(info) == "table" then
+            local ms = info.remainingTimeMs
+            if info.hasExpirationTime ~= false and type(ms) == "number" then
+                return ms / 1000
+            end
+            return true
+        end
+        return nil
+    end
+    if GetWeaponEnchantInfo then
+        local hasMain, mainMs, _, _, hasOff, offMs = GetWeaponEnchantInfo()
+        if slot == (INVSLOT_MAINHAND or 16) and hasMain then
+            return type(mainMs) == "number" and mainMs / 1000 or true
+        elseif slot == (INVSLOT_OFFHAND or 17) and hasOff then
+            return type(offMs) == "number" and offMs / 1000 or true
+        end
+    end
+    return nil
+end
+
+local function myWeapons()
+    return { mh = slotEnchant(INVSLOT_MAINHAND or 16), oh = slotEnchant(INVSLOT_OFFHAND or 17), at = GetTime() }
+end
+
+local function encodeHand(left)
+    if left == true then
+        return "x"
+    elseif type(left) == "number" then
+        return tostring(math.floor(left))
+    end
+    return "n"
+end
+
+local function decodeHand(text)
+    if text == "x" then
+        return true
+    end
+    return tonumber(text)
+end
+
+-- The oil icon for other players: the first oil or stone in the consumables list.
+local function oilIcon()
+    local first = CRT.Consumables:Entries("weapon")[1]
+    return first and CRT.Consumables:ItemIcon(first.item) or CRT.Consumables.QUESTION_MARK
+end
+
+-- A Weapon oil cell from what a player has: { mh, oh, at } or nil when they don't run the addon.
+local function weaponCell(w, icon)
+    if not w then
+        return { state = "none" }
+    end
+    local function left(v)
+        if type(v) == "number" then
+            return math.max(0, v - (GetTime() - w.at))
+        end
+        return v
+    end
+    local mh, oh = left(w.mh), left(w.oh)
+    if not mh and not oh then
+        return { state = "missing" }
+    end
+    local best, name = mh, "Main hand"
+    if not mh then
+        best, name = oh, "Off hand"
+    end
+    local cell = { state = "ok", icon = icon or oilIcon(), name = name }
+    if type(best) == "number" then
+        cell.left = best
+        local warn = CRT.db.readycheck.flaskWarn or 0
+        if warn > 0 and best < warn * 60 then
+            cell.state = "low"
+        end
+    end
+    if mh and oh then
+        cell.extra = "Off hand: " .. (type(oh) == "number" and (CRT.ConsumablesBar.LongTime(oh) .. " left") or "no time limit")
+    end
+    return cell
+end
+
 local lastSent = 0
 local function sendDurability()
     lastSent = GetTime()
     send("D:" .. myDurability())
+    local w = myWeapons()
+    send("W:" .. encodeHand(w.mh) .. ":" .. encodeHand(w.oh))
 end
 
 -- Answers a request for durability, at most once every 5 seconds so a burst of requests is one reply.
@@ -188,16 +283,19 @@ local function sampleIcon(key)
     if buff then
         return C_Spell.GetSpellTexture(buff.spell)
     end
+    if key == "weapon" then
+        return oilIcon()
+    end
     return CRT.Consumables.QUESTION_MARK
 end
 
 -- Sample players for the previews: { name, class, ready, dur, cells[key] = { state, icon, left } }.
 function Window.SampleMembers()
     local list = {
-        { name = "Solex", class = "PALADIN", role = "HEALER", subgroup = 2, ready = "ready", dur = 90, states = { food = "ok", flask = "low", rune = "ok", vantus = "ok", intellect = "ok", stamina = "ok", attack = "ok", versatility = "ok", mastery = "ok", movement = "ok" } },
-        { name = "Rixxy", class = "MAGE", role = "DAMAGER", subgroup = 1, ready = "waiting", dur = 100, states = { food = "ok", flask = "ok", intellect = "ok", stamina = "missing", attack = "ok", versatility = "ok", mastery = "ok", movement = "missing" } },
+        { name = "Solex", class = "PALADIN", role = "HEALER", subgroup = 2, ready = "ready", dur = 90, states = { weapon = "ok", food = "ok", flask = "low", rune = "ok", vantus = "ok", intellect = "ok", stamina = "ok", attack = "ok", versatility = "ok", mastery = "ok", movement = "ok" } },
+        { name = "Rixxy", class = "MAGE", role = "DAMAGER", subgroup = 1, ready = "waiting", dur = 100, states = { weapon = "low", food = "ok", flask = "ok", intellect = "ok", stamina = "missing", attack = "ok", versatility = "ok", mastery = "ok", movement = "missing" } },
         { name = "Gadios", class = "ROGUE", role = "DAMAGER", subgroup = 2, ready = "notready", dur = 42, states = { food = "missing", flask = "ok", rune = "missing", intellect = "ok", stamina = "ok", attack = "ok", versatility = "missing", mastery = "ok", movement = "ok" } },
-        { name = "Abu", class = "DRUID", role = "TANK", subgroup = 1, ready = "ready", states = { food = "unknown", flask = "unknown", rune = "unknown", vantus = "unknown", intellect = "unknown", stamina = "unknown", attack = "unknown", versatility = "unknown", mastery = "unknown", movement = "unknown" } },
+        { name = "Abu", class = "DRUID", role = "TANK", subgroup = 1, ready = "ready", states = { weapon = "none", food = "unknown", flask = "unknown", rune = "unknown", vantus = "unknown", intellect = "unknown", stamina = "unknown", attack = "unknown", versatility = "unknown", mastery = "unknown", movement = "unknown" } },
     }
     for i, m in ipairs(list) do
         m.order = i
@@ -426,6 +524,11 @@ local function cellEnter(cell)
         GameTooltip:AddLine("Missing", 1, 0.3, 0.3)
     elseif c.state == "unknown" then
         GameTooltip:AddLine("Couldn't check" .. (c.why and (": " .. c.why) or ""), 0.6, 0.6, 0.6)
+    elseif c.state == "none" then
+        GameTooltip:AddLine("Weapon oils only show for players who run Cowfee Raid Tools 0.13.2 or later.", 0.6, 0.6, 0.6, true)
+    end
+    if c and c.extra then
+        GameTooltip:AddLine(c.extra, 0.4, 1, 0.4)
     end
     GameTooltip:Show()
 end
@@ -579,14 +682,17 @@ local function liveMembers(members, columns)
         else
             m.ready = readyState[m.name] or "waiting"
         end
-        if UnitIsUnit(m.unit, "player") then
+        local me = UnitIsUnit(m.unit, "player")
+        if me then
             m.dur = myDurability()
         else
             m.dur = durability[m.name]
         end
         m.cells = {}
         for _, col in ipairs(columns) do
-            if col.key ~= "durability" then
+            if col.key == "weapon" then
+                m.cells.weapon = me and weaponCell(myWeapons(), GetInventoryItemTexture("player", INVSLOT_MAINHAND or 16)) or weaponCell(weapons[m.name])
+            elseif col.key ~= "durability" then
                 m.cells[col.key] = Report.Cell(m, col.key)
             end
         end
@@ -851,7 +957,7 @@ events:SetScript("OnEvent", function(_, event, ...)
     end
     if event == "READY_CHECK" then
         local initiator = ...
-        readyState, durability = {}, {}
+        readyState, durability, weapons = {}, {}, {}
         checkActive = true
         if initiator and not isSecret(initiator) then
             readyState[Ambiguate(initiator, "short")] = "ready"
@@ -875,10 +981,14 @@ events:SetScript("OnEvent", function(_, event, ...)
         local prefix, text, _, sender = ...
         if prefix == PREFIX and type(text) == "string" and sender and not isSecret(sender) then
             local percent = tonumber(text:match("^D:(%d+)$"))
+            local mh, oh = text:match("^W:([%dxn]+):([%dxn]+)$")
             if text == "Q" then
                 answerRequest()
             elseif percent then
                 durability[Ambiguate(sender, "short")] = math.min(100, percent)
+                Window:Refresh()
+            elseif mh then
+                weapons[Ambiguate(sender, "short")] = { mh = decodeHand(mh), oh = decodeHand(oh), at = GetTime() }
                 Window:Refresh()
             end
         end

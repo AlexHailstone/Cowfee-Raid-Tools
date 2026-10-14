@@ -741,6 +741,30 @@ function Consumables:ScanText()
         lines[#lines + 1] = "-- (none readable)"
     end
 
+    -- Weapon oils and stones are enchants, not buffs, so they are listed apart.
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "-- Weapon enchants (oils and stones) on you right now."
+    local anyEnchant = false
+    if C_PaperDollInfo and C_PaperDollInfo.GetTemporaryEnchantmentInfo then
+        for _, slot in ipairs({ { INVSLOT_MAINHAND or 16, "Main hand" }, { INVSLOT_OFFHAND or 17, "Off hand" } }) do
+            local ok, info = pcall(C_PaperDollInfo.GetTemporaryEnchantmentInfo, slot[1])
+            if ok and type(info) == "table" then
+                anyEnchant = true
+                local parts = {}
+                for k, v in pairs(info) do
+                    if not isSecret(v) then
+                        parts[#parts + 1] = k .. " = " .. tostring(v)
+                    end
+                end
+                table.sort(parts)
+                lines[#lines + 1] = format("-- %s: %s", slot[2], table.concat(parts, ", "))
+            end
+        end
+    end
+    if not anyEnchant then
+        lines[#lines + 1] = "-- (none)"
+    end
+
     lines[#lines + 1] = ""
     lines[#lines + 1] = "-- Consumable items in your bags. Use the ID as item = <ID>."
     local items, count = {}, 0

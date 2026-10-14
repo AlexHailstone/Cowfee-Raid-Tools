@@ -64,6 +64,7 @@ local defaults = {
                 food = true, flask = true, rune = true, vantus = false,
                 intellect = true, stamina = true, attack = true, versatility = true, mastery = true, movement = true,
                 durability = true,
+                weapon = true, -- weapon oil or stone, for players running the addon (0.13.2)
             },
         },
     },
