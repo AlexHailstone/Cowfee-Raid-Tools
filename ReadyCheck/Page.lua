@@ -194,6 +194,15 @@ local function buildAuto(f)
     local minutes = label(f, "minutes left", "CRTFontSmall")
     minutes:SetPoint("LEFT", lowEdit, "RIGHT", 6, 0)
     UI.Help(f, "Warn under", "An icon gets gold marching ants when its buff or weapon oil has less time left than this, 1 to 240 minutes."):SetPoint("LEFT", minutes, "RIGHT", 6, 0)
+
+    -- Work in progress: shown but greyed out until the cauldron flasks' and an unlimited rune's
+    -- item IDs are in the built-in list (Consumables/Database.lua).
+    local function wip()
+        return false
+    end
+    local cauldron = makeCheck(f, 400, -112, "Flasks from a cauldron only (WIP)", "cauldronOnly", bar, wip)
+    UI.Help(f, "Coming soon", "Flasks from a cauldron only: clicking the flask icon would use only the Fleeting flasks a raid cauldron hands out, so your own flasks are saved.\n\nUnlimited rune only: the rune icon would become clickable, using only an augment rune that is not used up.\n\nBoth wait for the item IDs to be added to the built-in list."):SetPoint("LEFT", cauldron, "RIGHT", 210, 0)
+    makeCheck(f, 400, -136, "Unlimited augment rune only (WIP)", "unlimitedRune", bar, wip)
 end
 
 -- Window tab -------------------------------------------------------------------------------------
