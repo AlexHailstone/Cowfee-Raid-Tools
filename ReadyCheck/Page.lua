@@ -270,21 +270,27 @@ local function buildWindow(f)
     makeNumber(f, 32, -166, "Size % (50 to 150)", "scale", 50, 150)
 
     local Window = CRT.ReadyCheckWindow
-    local cols = label(f, "Columns: drag a heading left or right to move it, click it to show or hide it. Faded columns are hidden.")
+    local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
     cols:SetPoint("TOPLEFT", 8, -200)
     cols:SetWidth(670)
+    cols:SetWordWrap(false)
 
     -- The same table the window draws, with sample players, in edit mode.
     local box = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", 8, -226)
     Window.Dress(box)
     local editor
-    editor = Window.NewTable(box, true, function()
+    -- Draws the copy, then scales it down if it is wider than the tab, so it never runs past the
+    -- panel. Anchor offsets are in the box's own scale, so they are divided by it.
+    local function drawCopy()
         Window:DrawEditor(editor)
-    end)
-    box.refresh = function()
-        Window:DrawEditor(editor)
+        local available = (f:GetWidth() or 0) > 0 and f:GetWidth() - 16 or 670
+        local scale = math.min(1, available / box:GetWidth())
+        box:SetScale(scale)
+        box:ClearAllPoints()
+        box:SetPoint("TOPLEFT", f, "TOPLEFT", 8 / scale, -224 / scale)
     end
+    editor = Window.NewTable(box, true, drawCopy)
+    box.refresh = drawCopy
     controls[#controls + 1] = box
 
     local y = -226 - 150

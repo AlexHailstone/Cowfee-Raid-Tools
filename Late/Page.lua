@@ -192,23 +192,79 @@ local function nightLines(night)
     return table.concat(lines, "\n")
 end
 
-local function totalsLines()
+local function setText(fs, child, s)
+    fs:SetText(s)
+    child:SetHeight(fs:GetStringHeight() + 8)
+end
+
+-- Totals table rows: four text columns per row, made as needed under the intro line.
+local TOTAL_ROW_H = 18
+local totalRows = {}
+
+local function totalRow(i)
+    local row = totalRows[i]
+    if row then
+        return row
+    end
+    row = {}
+    for _, key in ipairs({ "name", "late", "time", "never" }) do
+        local fs = detailChild:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        fs:SetWordWrap(false)
+        row[key] = fs
+    end
+    totalRows[i] = row
+    return row
+end
+
+local function hideTotals()
+    for _, row in pairs(totalRows) do
+        for _, fs in pairs(row) do
+            fs:Hide()
+        end
+    end
+end
+
+local function place(fs, x, y, width, justify, text)
+    fs:ClearAllPoints()
+    fs:SetPoint("TOPLEFT", x, y)
+    fs:SetWidth(width)
+    fs:SetJustifyH(justify)
+    fs:SetText(text)
+    fs:Show()
+end
+
+-- The totals as a table: player, nights late out of nights expected, total time late, and nights
+-- they never joined, or a line saying there are no nights yet.
+local function showTotals()
+    hideTotals()
     local history = Late:History()
     if #history == 0 then
-        return "No finished raid nights yet. Each night is added here when it ends."
+        setText(detailText, detailChild, "No finished raid nights yet. Each night is added here when it ends.")
+        return
     end
-    local lines = { format("All %d saved nights, most often late first.", #history), "" }
-    for _, t in ipairs(Late:Totals()) do
-        local line = format("%s  late %d of %d", name(t.key), t.late, t.nights)
-        if t.late > 0 then
-            line = line .. ", " .. minutes(t.seconds) .. " in total"
-        end
-        if t.never > 0 then
-            line = line .. format(", |cffff6060never joined %d|r", t.never)
-        end
-        lines[#lines + 1] = line
+    setText(detailText, detailChild, format("All %d saved nights, most often late first.", #history))
+    local w = detailChild:GetWidth()
+    if not w or w < 200 then
+        w = 370
     end
-    return table.concat(lines, "\n")
+    local list = Late:Totals()
+    for i = 0, #list do
+        local row = totalRow(i + 1)
+        local y = -24 - i * TOTAL_ROW_H
+        if i == 0 then
+            place(row.name, 2, y, w - 214, "LEFT", "|cff999999Player|r")
+            place(row.late, w - 208, y, 64, "RIGHT", "|cff999999Late|r")
+            place(row.time, w - 140, y, 84, "RIGHT", "|cff999999Time late|r")
+            place(row.never, w - 54, y, 52, "RIGHT", "|cff999999Never|r")
+        else
+            local t = list[i]
+            place(row.name, 2, y, w - 214, "LEFT", name(t.key))
+            place(row.late, w - 208, y, 64, "RIGHT", t.late .. " of " .. t.nights)
+            place(row.time, w - 140, y, 84, "RIGHT", t.late > 0 and minutes(t.seconds) or "-")
+            place(row.never, w - 54, y, 52, "RIGHT", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
+        end
+    end
+    detailChild:SetHeight(24 + (#list + 1) * TOTAL_ROW_H + 8)
 end
 
 -- Scrolling text boxes ---------------------------------------------------
@@ -231,11 +287,6 @@ local function textBox(pf, scrollName)
         text:SetWidth(w - 6)
     end)
     return box, text, child
-end
-
-local function setText(fs, child, s)
-    fs:SetText(s)
-    child:SetHeight(fs:GetStringHeight() + 8)
 end
 
 -- Settings controls ------------------------------------------------------
@@ -390,9 +441,10 @@ refresh = function()
     refreshTonight()
     refreshList()
     if selected == TOTALS then
-        setText(detailText, detailChild, totalsLines())
+        showTotals()
         deleteButton:Hide()
     else
+        hideTotals()
         setText(detailText, detailChild, nightLines(Late:Find(selected)))
         deleteButton:Show()
     end
