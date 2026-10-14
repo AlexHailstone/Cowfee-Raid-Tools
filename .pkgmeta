@@ -4,3 +4,4 @@ ignore:
   - README.md
   - docs
   - "Cowfee Raid Tools - Architecture.md"
+  - Dev

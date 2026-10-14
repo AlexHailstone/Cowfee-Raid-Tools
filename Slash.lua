@@ -94,6 +94,14 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     elseif msg == "lowhp off" or msg == "lowhp on" then
         CRT.LowHealth:SetEnabled(msg == "lowhp on")
         CRT:Print("Low-health alert " .. (msg == "lowhp on" and "on." or "off."))
+    --@do-not-package@
+    elseif msg == "dev" then
+        if CRT.Dev then
+            CRT.Dev:Toggle()
+        else
+            CRT:Print("The dev layout editor is not loaded.")
+        end
+    --@end-do-not-package@
     elseif msg == "qol" then
         CRT.UI:Show("qol")
     elseif msg == "perf" then
