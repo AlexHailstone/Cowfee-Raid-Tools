@@ -547,11 +547,11 @@ local function build(pf)
 
     -- Raid days.
     local daysLabel = label(pf, "Raid days")
-    daysLabel:SetPoint("TOPLEFT", 8, -86)
+    daysLabel:SetPoint("TOPLEFT", 8, -84)
     for i, d in ipairs(DAYS) do
         local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
         check:SetSize(24, 24)
-        check:SetPoint("TOPLEFT", 110 + (i - 1) * 64, -81)
+        check:SetPoint("TOPLEFT", 110 + (i - 1) * 64, -79)
         local text = label(pf, d.label, "CRTFontSmall")
         text:SetPoint("LEFT", check, "RIGHT", 0, 0)
         check:SetScript("OnClick", function(self)
@@ -565,7 +565,7 @@ local function build(pf)
 
     -- Start time and grace.
     local timeLabel = label(pf, "Start time")
-    timeLabel:SetPoint("TOPLEFT", 8, -118)
+    timeLabel:SetPoint("TOPLEFT", 8, -110)
     local hour = makeNumber(pf, timeLabel, 18, 2, function()
         return Late:Settings().hour
     end, function(v)
@@ -600,7 +600,7 @@ local function build(pf)
         end,
     }
     local graceLabel = label(pf, "Grace minutes")
-    graceLabel:SetPoint("TOPLEFT", 440, -118)
+    graceLabel:SetPoint("TOPLEFT", 440, -110)
     makeNumber(pf, graceLabel, 12, 2, function()
         return Late:Settings().grace
     end, function(v)
@@ -609,7 +609,7 @@ local function build(pf)
 
     -- Expected roster, start and end.
     layoutButton = makeButton(pf, "Expected roster", 360)
-    layoutButton:SetPoint("TOPLEFT", 8, -146)
+    layoutButton:SetPoint("TOPLEFT", 8, -134)
     layoutButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     layoutButton:SetScript("OnClick", function(_, button)
         stepLayout(button == "RightButton" and -1 or 1)
@@ -635,18 +635,18 @@ local function build(pf)
 
     -- Tonight.
     local tonightLabel = label(pf, "Tonight")
-    tonightLabel:SetPoint("TOPLEFT", 8, -184)
+    tonightLabel:SetPoint("TOPLEFT", 8, -166)
     local tonightBox
     tonightBox, tonightText, tonightChild = textBox(pf, "CowfeeRaidToolsLateTonightScroll")
-    tonightBox:SetPoint("TOPLEFT", 8, -204)
-    tonightBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -204)
+    tonightBox:SetPoint("TOPLEFT", 8, -186)
+    tonightBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -186)
     tonightBox:SetHeight(220)
 
     -- History: the list of nights on the left, the selected night or the totals on the right.
     local historyLabel = label(pf, "History")
-    historyLabel:SetPoint("TOPLEFT", 8, -436)
+    historyLabel:SetPoint("TOPLEFT", 8, -414)
     local listBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    listBox:SetPoint("TOPLEFT", 8, -456)
+    listBox:SetPoint("TOPLEFT", 8, -434)
     listBox:SetPoint("BOTTOMLEFT", 8, 8)
     listBox:SetWidth(LIST_W)
     skin(listBox, 0.4)

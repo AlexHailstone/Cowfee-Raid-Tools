@@ -19,7 +19,7 @@ local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "
 local FOODS = { { key = "any", label = "Any food buff" }, { key = "best", label = "Best food only" } }
 local WARNS = { { key = 0, label = "Off" }, { key = 5, label = "5 min" }, { key = 10, label = "10 min" } }
 
-local ROW_H = 46
+local ROW_H = 34
 
 local page
 local tabButtons, tabFrames, built = {}, {}, {}
@@ -131,7 +131,7 @@ local function buildReport(f)
     hint:SetWidth(670)
 
     for i, check in ipairs(Report.CHECKS) do
-        local y = -60 - (i - 1) * ROW_H
+        local y = -54 - (i - 1) * ROW_H
         local name = label(f, check.label)
         name:SetPoint("TOPLEFT", 8, y - 4)
         name:SetWidth(130)
@@ -157,7 +157,7 @@ local function buildReport(f)
         resultTexts[check.key] = result
     end
 
-    local y = -60 - #Report.CHECKS * ROW_H - 8
+    local y = -54 - #Report.CHECKS * ROW_H - 6
     local all = makeButton(f, "Check everything", 200)
     all:SetPoint("TOPLEFT", 140, y)
     all:SetScript("OnClick", function()
@@ -176,7 +176,7 @@ local function buildReport(f)
     postHint:SetPoint("TOPLEFT", all, "BOTTOMLEFT", 0, -6)
 
     local listNote = label(f, "", "CRTFontDisableSmall")
-    listNote:SetPoint("TOPLEFT", 8, y - 70)
+    listNote:SetPoint("TOPLEFT", 8, y - 58)
     listNote:SetWidth(670)
     listNote.refresh = function()
         local empty = {}

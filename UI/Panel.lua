@@ -129,8 +129,13 @@ function UI:Create()
     pb:SetNormalFontObject(CRTFontNormal)
     pb:SetHighlightFontObject(CRTFontHighlight)
     pb:SetDisabledFontObject(CRTFontDisable)
-    pb:SetSize(150, 22)
-    pb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -34, -4)
+    pb:SetSize(150, 20)
+    -- Beside the close button, centred on it, so it sits inside the title bar.
+    if f.CloseButton then
+        pb:SetPoint("RIGHT", f.CloseButton, "LEFT", -2, 0)
+    else
+        pb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, -2)
+    end
     pb:SetText("Toggle previews")
     pb:SetScript("OnClick", function()
         UI:TogglePreviews()

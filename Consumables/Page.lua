@@ -12,8 +12,8 @@ local Ants = CRT.Ants
 local Bar = CRT.ConsumablesBar
 local UI = CRT.UI
 
-local CAT_ROW_H = 36
-local ITEM_ROW_H = 40
+local CAT_ROW_H = 32
+local ITEM_ROW_H = 36
 local LEFT_W = 290
 local RIGHT_X = 316
 local REFRESH_SECONDS = 0.5
@@ -89,7 +89,7 @@ end
 
 local function buildBar(pf)
     local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    label:SetPoint("TOPLEFT", 8, -100)
+    label:SetPoint("TOPLEFT", 8, -88)
     label:SetText("Your bar")
     local help = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     help:SetPoint("LEFT", label, "RIGHT", 10, 0)
@@ -98,7 +98,7 @@ local function buildBar(pf)
     local count = #Consumables.CATEGORIES
     barFrame = CreateFrame("Frame", nil, pf, "BackdropTemplate")
     barFrame:SetSize(Bar.Size(count))
-    barFrame:SetPoint("TOPLEFT", pf, "TOPLEFT", 8, -124)
+    barFrame:SetPoint("TOPLEFT", pf, "TOPLEFT", 8, -110)
     barFrame:SetBackdrop(Bar.BACKDROP)
     barFrame:SetBackdropColor(0, 0, 0, 0.45)
     barFrame:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
@@ -125,7 +125,7 @@ end
 -- Icon order: five rows, each with Up and Down. Clicking a row selects its category. -----------
 
 local function buildCategoryRows(pf)
-    local top = -216
+    local top = -200
     for i = 1, #Consumables.CATEGORIES do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(LEFT_W, CAT_ROW_H - 4)
@@ -293,7 +293,7 @@ local function build(pf)
 
     enabledCheck = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     enabledCheck:SetSize(26, 26)
-    enabledCheck:SetPoint("TOPLEFT", 4, -62)
+    enabledCheck:SetPoint("TOPLEFT", 4, -56)
     local enabledLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     enabledLabel:SetPoint("LEFT", enabledCheck, "RIGHT", 2, 0)
     enabledLabel:SetText("Show on ready check")
@@ -329,13 +329,13 @@ local function build(pf)
     minutes:SetText("minutes left")
 
     local resetBar = makeButton(pf, "Reset bar position", 170)
-    resetBar:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -176, -60)
+    resetBar:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -176, -54)
     resetBar:SetScript("OnClick", function()
         CRT.ConsumablesDisplay:ResetPosition()
     end)
 
     local preview = makeButton(pf, "Preview on screen", 160)
-    preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -60)
+    preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -54)
     preview:SetScript("OnClick", function()
         CRT.ConsumablesDisplay:Preview()
     end)
@@ -344,18 +344,18 @@ local function build(pf)
 
     -- Left: icon order.
     local orderTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    orderTitle:SetPoint("TOPLEFT", 8, -190)
+    orderTitle:SetPoint("TOPLEFT", 8, -176)
     orderTitle:SetText("Icon order, left to right")
     buildCategoryRows(pf)
 
     -- Right: items for the selected category.
     itemTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    itemTitle:SetPoint("TOPLEFT", RIGHT_X, -190)
+    itemTitle:SetPoint("TOPLEFT", RIGHT_X, -176)
     itemHint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    itemHint:SetPoint("TOPLEFT", RIGHT_X, -212)
+    itemHint:SetPoint("TOPLEFT", RIGHT_X, -198)
 
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", pf, "TOPLEFT", RIGHT_X, -234)
+    box:SetPoint("TOPLEFT", pf, "TOPLEFT", RIGHT_X, -220)
     box:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 56)
     box:EnableMouse(true)
     skin(box, 0.3)
