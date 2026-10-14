@@ -23,8 +23,8 @@ local ADDON, CRT = ...
 -- Midnight item IDs below were taken on 2026-10-14 from the item links on Method's "List of all
 -- Midnight consumables, enchants and gems" guide
 -- (https://www.method.gg/guides/list-of-all-midnight-consumables-enchants-and-gems), written
--- 2026-09-06 for patch 12.1. It listed no buff IDs, and the augment rune had no link, so the rune is
--- not here yet. Confirm with `/crt consumables check`.
+-- 2026-09-06 for patch 12.1. It listed no buff IDs, and the augment rune had no link, so the rune's
+-- IDs came from the game instead. Confirm with `/crt consumables check`.
 
 CRT.ConsumablesDB = {
     expansion = "Midnight",
@@ -103,7 +103,9 @@ CRT.ConsumablesDB = {
             { item = 257752, name = "Weighted Boomshots" }, -- hunter ammo
         },
         rune = {
-            -- Void-Touched Augment Rune: no item ID yet. Add it from `/crt consumables scan`.
+            -- Item ID and buff ID from Alex in the game on 2026-10-14. The buff is named "Void-Touched",
+            -- without "Augment", so it is matched by its ID, not by the English name fallback.
+            { item = 259085, buff = 1264426, name = "Void-Touched Augment Rune" },
         },
     },
 }
