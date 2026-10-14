@@ -12,9 +12,6 @@
 <p align="center"><img src="docs/raid-groups.png" alt="The Raid Groups page" width="720"></p>
 -->
 
-<img width="1079" height="936" alt="{E25B4934-0893-4D80-8215-5D491909EE3B}" src="https://github.com/user-attachments/assets/c858952a-aef5-4fa2-a6ab-eec86204b1eb" />
-
-
 Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and raiders. Type `/crt` to open one panel with a page for each tool.
 
 > [!NOTE]
