@@ -12,11 +12,13 @@ Consumables.QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
 -- Order here is the order of the icons, left to right.
 -- kind "buff": a buff with a timer, falling back to a bag count when it is missing.
 -- kind "count": only a bag count. kind "weapon": a temporary weapon enchant.
+-- clickable: clicking the icon on the row uses the first assigned item that is in your bags.
+-- Set clickable on potion or rune to make those icons clickable too.
 Consumables.CATEGORIES = {
-    { key = "food", label = "Food", kind = "buff" },
-    { key = "flask", label = "Flask", kind = "buff" },
+    { key = "food", label = "Food", kind = "buff", clickable = true },
+    { key = "flask", label = "Flask", kind = "buff", clickable = true },
     { key = "potion", label = "Potion", kind = "count" },
-    { key = "weapon", label = "Weapon oil or stone", kind = "weapon" },
+    { key = "weapon", label = "Weapon oil or stone", kind = "weapon", clickable = true },
     { key = "rune", label = "Augment rune", kind = "buff" },
 }
 
@@ -170,6 +172,18 @@ local function itemCount(c)
         end
     end
     return total
+end
+
+-- The item a click on this slot should use: the first assigned item (by name) that is in
+-- your bags. Returns { id, name, icon, count } or nil.
+function Consumables:NextItem(key)
+    for _, entry in ipairs(self:List(key, "items")) do
+        local ok, count = pcall(C_Item.GetItemCount, entry.id)
+        if ok and type(count) == "number" and count > 0 then
+            return { id = entry.id, name = entry.name, icon = entry.icon, count = count }
+        end
+    end
+    return nil
 end
 
 local function defaultIcon(c)

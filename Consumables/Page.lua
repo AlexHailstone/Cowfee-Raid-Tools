@@ -10,7 +10,7 @@ local ICON = 28
 local ICON_GAP = 4
 local MAX_PER_ROW = 16
 local BLOCK_H = 104
-local BLOCK_TOP = -112
+local BLOCK_TOP = -130
 local PICK_ROW_H = 26
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -344,11 +344,11 @@ local function build(pf)
     hint:SetPoint("TOPLEFT", 8, -34)
     hint:SetWidth(660)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Choose what counts for each icon on the ready check row. Buff up first, then use Add from my buffs, so you never have to look up an ID. Items come from your bags.")
+    hint:SetText("Choose what counts for each icon on the ready check row. Buff up first, then use Add from my buffs, so you never have to look up an ID. Items come from your bags. On the row, click a food, flask or weapon icon to use the first assigned item in your bags (shift-click applies a weapon oil to the off hand).")
 
     enabledCheck = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     enabledCheck:SetSize(26, 26)
-    enabledCheck:SetPoint("TOPLEFT", 4, -70)
+    enabledCheck:SetPoint("TOPLEFT", 4, -88)
     local enabledLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     enabledLabel:SetPoint("LEFT", enabledCheck, "RIGHT", 2, 0)
     enabledLabel:SetText("Show on ready check")
@@ -384,7 +384,7 @@ local function build(pf)
     minutes:SetText("minutes left")
 
     local preview = makeButton(pf, "Preview row", 130)
-    preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -68)
+    preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -86)
     preview:SetScript("OnClick", function()
         CRT.ConsumablesDisplay:Preview()
     end)

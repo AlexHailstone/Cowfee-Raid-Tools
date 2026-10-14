@@ -2,6 +2,12 @@ local ADDON, CRT = ...
 
 -- The row of consumable icons shown above the ready check: one icon per category with the
 -- time left, or the number in your bags when it is missing. Edited on the Consumables page.
+-- Food, flask and weapon icons are clickable: a click uses the first assigned item in your bags.
+--
+-- Clickable icons are secure buttons, which makes them and their parent frame protected.
+-- While you are in combat the row cannot be shown, hidden or moved, and their click action
+-- cannot be changed, so those changes wait for PLAYER_REGEN_ENABLED. The row is built at login,
+-- out of combat, because secure buttons should be created outside combat.
 
 local Consumables = CRT.Consumables
 local Display = {}
@@ -32,6 +38,7 @@ local slots = {}
 local shownUntil -- time at which a ready check or preview row hides by itself
 local sawReadyCheckFrame -- true once Blizzard's ready check dialog has been seen on screen
 local elapsed = 0
+local pendingHide -- a hide that was blocked by combat
 
 -- 36s under a minute, then whole minutes: 230m.
 local function formatTime(seconds)
@@ -41,8 +48,40 @@ local function formatTime(seconds)
     return format("%dm", math.floor(seconds / 60 + 0.5))
 end
 
-local function createSlot(parent, index)
-    local slot = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+local function showTooltip(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    if self.useItem then
+        GameTooltip:SetText(self.useItem.name, 1, 1, 1)
+        GameTooltip:AddLine("Click to use (" .. self.useItem.count .. " in your bags)", 0.6, 0.9, 0.6)
+        if self.key == "weapon" then
+            GameTooltip:AddLine("Shift-click for the off hand", 0.7, 0.7, 0.7)
+        end
+    else
+        GameTooltip:SetText(self.label or "", 1, 1, 1)
+        GameTooltip:AddLine("None of the assigned items are in your bags.", 0.9, 0.4, 0.4)
+    end
+    GameTooltip:Show()
+end
+
+local function createSlot(parent, index, def)
+    local slot
+    if def.clickable then
+        slot = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate,BackdropTemplate")
+        slot:RegisterForClicks("AnyUp")
+        slot:SetAttribute("useOnKeyDown", false)
+        slot.hl = slot:CreateTexture(nil, "HIGHLIGHT")
+        slot.hl:SetAllPoints()
+        slot.hl:SetColorTexture(1, 1, 1, 0.18)
+        slot:SetScript("OnEnter", showTooltip)
+        slot:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    else
+        slot = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    end
+    slot.key = def.key
+    slot.label = def.label
+    slot.clickable = def.clickable
     slot:SetSize(ICON_SIZE, ICON_SIZE)
     slot:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD + (index - 1) * (ICON_SIZE + GAP), -PAD)
     slot:SetBackdrop(BACKDROP)
@@ -78,8 +117,8 @@ local function build()
     frame:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
     frame:Hide()
 
-    for index in ipairs(Consumables.CATEGORIES) do
-        slots[index] = createSlot(frame, index)
+    for index, def in ipairs(Consumables.CATEGORIES) do
+        slots[index] = createSlot(frame, index, def)
     end
 
     frame:SetScript("OnUpdate", function(_, dt)
@@ -94,6 +133,9 @@ local function build()
 end
 
 local function place()
+    if InCombatLockdown() then
+        return
+    end
     local rc = _G.ReadyCheckFrame
     frame:ClearAllPoints()
     if rc and rc.IsShown and rc:IsShown() then
@@ -101,6 +143,49 @@ local function place()
     else
         frame:SetPoint("TOP", UIParent, "TOP", 0, -200)
     end
+end
+
+-- Points a clickable icon at the item a click should use. Not allowed in combat.
+local function updateClickAction(slot)
+    if InCombatLockdown() then
+        return
+    end
+    local item = Consumables:NextItem(slot.key)
+    slot.useItem = item
+    local name = item and item.name
+    if slot.appliedName == name then
+        return
+    end
+    slot.appliedName = name
+
+    if not name then
+        slot:SetAttribute("type", nil)
+        slot:SetAttribute("macrotext", nil)
+        slot:SetAttribute("shift-type1", nil)
+        slot:SetAttribute("shift-macrotext1", nil)
+    elseif slot.key == "weapon" then
+        -- Use the oil or stone, then apply it to the main hand. Shift-click uses the off hand.
+        slot:SetAttribute("type", "macro")
+        slot:SetAttribute("macrotext", "/use " .. name .. "\n/use " .. (INVSLOT_MAINHAND or 16))
+        slot:SetAttribute("shift-type1", "macro")
+        slot:SetAttribute("shift-macrotext1", "/use " .. name .. "\n/use " .. (INVSLOT_OFFHAND or 17))
+    else
+        slot:SetAttribute("type", "macro")
+        slot:SetAttribute("macrotext", "/use " .. name)
+    end
+end
+
+-- Hiding is blocked in combat on a frame with protected children, so it waits.
+local function hideFrame()
+    if not frame then
+        return
+    end
+    if InCombatLockdown() then
+        pendingHide = true
+        return
+    end
+    pendingHide = false
+    frame:Hide()
 end
 
 function Display:Refresh()
@@ -160,22 +245,32 @@ function Display:Refresh()
             slot.count:SetText("")
         end
         slot.tag:SetText(status.tag or "")
+
+        if slot.clickable then
+            updateClickAction(slot)
+        end
     end
 end
 
 function Display:Hide()
-    if frame then
-        frame:Hide()
-    end
     shownUntil = nil
     self.preview = false
+    hideFrame()
 end
 
 local function show(seconds, preview)
     if not Consumables:Enabled() and not preview then
         return
     end
+    if InCombatLockdown() then
+        -- The row holds protected buttons, so it cannot be shown in combat.
+        if preview then
+            CRT:Print("The row can't be shown while you are in combat.")
+        end
+        return
+    end
     build()
+    pendingHide = false
     Display.preview = preview
     sawReadyCheckFrame = false
     shownUntil = GetTime() + seconds
@@ -188,14 +283,29 @@ end
 -- Shows the row for a few seconds without a real ready check, for testing.
 function Display:Preview()
     show(PREVIEW_SECONDS, true)
-    CRT:Print("Showing the consumables row for " .. PREVIEW_SECONDS .. " seconds.")
+    if frame and frame:IsShown() then
+        CRT:Print("Showing the consumables row for " .. PREVIEW_SECONDS .. " seconds.")
+    end
 end
 
 local events = CreateFrame("Frame")
+events:RegisterEvent("PLAYER_LOGIN")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("READY_CHECK")
 events:RegisterEvent("READY_CHECK_FINISHED")
 events:SetScript("OnEvent", function(_, event, _, timeLeft)
-    if event == "READY_CHECK" then
+    if event == "PLAYER_LOGIN" then
+        -- Create the secure buttons now, out of combat.
+        if not InCombatLockdown() then
+            build()
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if pendingHide then
+            hideFrame()
+        elseif frame and frame:IsShown() then
+            Display:Refresh()
+        end
+    elseif event == "READY_CHECK" then
         local seconds = type(timeLeft) == "number" and timeLeft or 30
         show(seconds + 1, false)
         -- Blizzard's dialog may not be on screen yet when this event arrives, so place it again shortly.
