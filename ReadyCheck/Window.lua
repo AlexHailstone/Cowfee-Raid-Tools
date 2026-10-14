@@ -31,6 +31,7 @@ local COL_W = 46
 local ROW_H = 20
 local TOP_H = 50 -- title and column headings
 local ICON = 16
+local DURABILITY_LOW = 30 -- a shift-clicked Dur heading posts players under this percent
 
 local READY_ICONS = {
     ready = "Interface\\RaidFrame\\ReadyCheck-Ready",
@@ -357,7 +358,11 @@ function Table:Header(j)
         h:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText(self.label, 1, 1, 1)
-            GameTooltip:AddLine("Shift-click to post who is missing this to raid chat.", 0.8, 0.8, 0.8, true)
+            if self.key == "durability" then
+                GameTooltip:AddLine("Shift-click to post who is under " .. DURABILITY_LOW .. "% durability to raid chat.", 0.8, 0.8, 0.8, true)
+            else
+                GameTooltip:AddLine("Shift-click to post who is missing this to raid chat.", 0.8, 0.8, 0.8, true)
+            end
             GameTooltip:Show()
         end)
         h:SetScript("OnLeave", function()
@@ -551,8 +556,6 @@ end
 local windowTable
 
 -- Shift-click posting ------------------------------------------------------------------------------
-
-local DURABILITY_LOW = 80 -- a durability post lists players under this percent
 
 -- One chat line for a column, from what the window shows: who is missing it, whose flask is running
 -- out, and whose buffs the game hid.

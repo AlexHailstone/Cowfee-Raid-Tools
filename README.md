@@ -93,7 +93,7 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 - **Window.** A table that opens on a ready check for the raid leader and assistants: every player's ready answer, consumables, raid buffs and durability, for 30 seconds or until you right-click it. Arrange its columns by dragging the headings in the copy on this tab, and click a heading to hide it. Sort players by group, role or name, with a class color bar behind each row.
 - **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own.
 
-Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own. Shift-clicking the Dur heading posts everyone under 80%.
+Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own. Shift-clicking the Dur heading posts everyone under 30%.
 
 ## Debuffs
 
