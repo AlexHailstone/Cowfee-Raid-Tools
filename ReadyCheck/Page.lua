@@ -17,7 +17,6 @@ local TABS = {
     { key = "auto", label = "Settings" },
 }
 local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "Raid chat" }, { key = "officer", label = "Officer chat" } }
-local FOODS = { { key = "any", label = "Any food buff" }, { key = "best", label = "Best food only" } }
 local WARNS = { { key = 0, label = "Off" }, { key = 5, label = "5 min" }, { key = 10, label = "10 min" } }
 
 local ROW_H = 34
@@ -138,10 +137,9 @@ local function buildAuto(f)
 
     local counts = label(f, "What counts")
     counts:SetPoint("TOPLEFT", 8, -224)
-    UI.Help(f, "What counts", "Best food only and lower quality flasks need those marked in the built-in consumables list. Until they are, all food counts and no flask is flagged.\n\nNot available: potions and healthstones used in the last fight (the combat log is closed to addons during boss fights in Midnight), and other players' weapon oils and armor kits (they aren't buffs, so the game doesn't show them to addons)."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
-    makeDropdown(f, 8, -240, "Food", "food", FOODS, nil, 170, 170)
-    makeDropdown(f, 8, -270, "Flask expiring warning", "flaskWarn", WARNS, nil, 170, 170)
-    makeCheck(f, 4, -304, "Count a lower quality flask as a problem", "lowFlask")
+    UI.Help(f, "What counts", "Food: any food buff counts, whatever was eaten.\n\nLower quality flasks need those marked in the built-in consumables list. Until they are, no flask is flagged.\n\nNot available: potions and healthstones used in the last fight (the combat log is closed to addons during boss fights in Midnight), and other players' weapon oils and armor kits (they aren't buffs, so the game doesn't show them to addons)."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
+    makeDropdown(f, 8, -240, "Flask expiring warning", "flaskWarn", WARNS, nil, 170, 170)
+    makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.
     local Consumables = CRT.Consumables

@@ -46,7 +46,7 @@ local defaults = {
         raidsOnly = true,
         notLFR = true,
         include = { food = true, flask = true, rune = true, vantus = false, buffs = true },
-        food = "any",
+        food = "any", -- before 0.13.2: "best" counted only the best food. Ignored now.
         flaskWarn = 5,
         lowFlask = true,
         -- The ready check window. columns[key] shows that column, order is their left-to-right order.

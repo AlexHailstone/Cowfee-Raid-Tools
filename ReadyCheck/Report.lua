@@ -37,10 +37,11 @@ Report.CHECKS = {
 }
 
 -- Until the consumables list in Consumables/Database.lua is filled in, buffs are also found by their
--- English names. This only works on an English game client.
+-- English names. This only works on an English game client. Food is matched by "Well Fed" anywhere in
+-- the name, since a feast gives "Hearty Well Fed".
 local FALLBACK = {
     food = function(name)
-        return name:find("^Well Fed") ~= nil
+        return CRT.Consumables.IsFoodName(name)
     end,
     flask = function(name)
         return name:find("^Flask") ~= nil or name:find("^Phial") ~= nil
@@ -199,22 +200,10 @@ local function minutesLeft(seconds)
     return math.max(1, math.floor(seconds / 60 + 0.5)) .. " min"
 end
 
--- The food IDs to accept. "Best food only" keeps the entries marked best in the list, if there are any.
+-- Food is one hardcoded check, whatever was eaten: the food buffs in Consumables/Database.lua, or a
+-- buff with "Well Fed" in its name.
 local function foodIds()
-    local ids = Consumables:BuffIds("food")
-    if settings().food ~= "best" then
-        return ids, FALLBACK.food
-    end
-    local best = {}
-    for id, entry in pairs(ids) do
-        if entry.best then
-            best[id] = entry
-        end
-    end
-    if next(best) then
-        return best, nil
-    end
-    return ids, FALLBACK.food
+    return Consumables:FoodBuffIds(), FALLBACK.food
 end
 
 -- One consumable check. Returns { missing = {}, notes = {}, unknown = {}, total }.

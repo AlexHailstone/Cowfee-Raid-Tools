@@ -66,6 +66,23 @@ function Consumables:Def(key)
     return byKey[key]
 end
 
+-- Food ---------------------------------------------------------------------------------
+-- Food is one hardcoded check: a buff from foodBuffs in Database.lua, or, on an English client, any
+-- buff with "Well Fed" in its name (a feast gives "Hearty Well Fed"). The food list is only for
+-- clicking: which food your bar eats.
+
+function Consumables:FoodBuffIds()
+    local out = {}
+    for _, entry in ipairs(CRT.ConsumablesDB.foodBuffs or {}) do
+        out[entry.buff] = entry
+    end
+    return out
+end
+
+function Consumables.IsFoodName(name)
+    return type(name) == "string" and name:find("Well Fed", 1, true) ~= nil
+end
+
 -- Options ---------------------------------------------------------------------
 
 function Consumables:Enabled()
@@ -402,10 +419,10 @@ local function helpfulAuras()
         if not ok or not aura then
             break
         end
-        local id, name, expires = aura.spellId, aura.name, aura.expirationTime
+        local id, name, expires, icon = aura.spellId, aura.name, aura.expirationTime, aura.icon
         if not (isSecret(id) or isSecret(name) or isSecret(expires)) and id then
             local left = (type(expires) == "number" and expires > 0) and (expires - GetTime()) or nil
-            out[#out + 1] = { id = id, name = name, left = left }
+            out[#out + 1] = { id = id, name = name, left = left, icon = (not isSecret(icon)) and icon or nil }
         end
     end
     return out
@@ -435,7 +452,7 @@ end
 local function unknownBuffEntries()
     local out = {}
     for _, def in ipairs(Consumables.CATEGORIES) do
-        if def.kind == "buff" then
+        if def.kind == "buff" and def.key ~= "food" then
             for _, entry in ipairs(Consumables:Entries(def.key)) do
                 if not buffId(entry) then
                     out[#out + 1] = entry
@@ -679,7 +696,20 @@ function Consumables:Status(key)
         status.state = "unknown"
         return status
     end
-    local best, unknown = bestBuff(entries)
+    local best, unknown
+    if key == "food" then
+        -- The longest food buff on you, by the hardcoded food check.
+        local ids = self:FoodBuffIds()
+        for _, aura in ipairs(helpfulAuras()) do
+            if ids[aura.id] or Consumables.IsFoodName(aura.name) then
+                if not best or (aura.left or math.huge) > (best.left or math.huge) then
+                    best = aura
+                end
+            end
+        end
+    else
+        best, unknown = bestBuff(entries)
+    end
     if best then
         status.icon = best.icon or status.icon
         status.left = best.left
@@ -701,7 +731,7 @@ function Consumables:ScanText()
     for _, aura in ipairs(helpfulAuras()) do
         if not seen[aura.id] then
             seen[aura.id] = true
-            lines[#lines + 1] = format("buff = %d, -- %s", aura.id, tostring(aura.name))
+            lines[#lines + 1] = format("buff = %d, -- %s (icon %s)", aura.id, tostring(aura.name), tostring(aura.icon))
         end
     end
     if #lines == 1 then
@@ -748,7 +778,9 @@ function Consumables:CheckText()
             if not itemIcon(entry.item) then
                 notes[#notes + 1] = "ITEM ID NOT FOUND"
             end
-            if def.kind == "buff" then
+            if def.key == "food" then
+                info = "checked by the food buff, whatever was eaten"
+            elseif def.kind == "buff" then
                 local bid = buffId(entry)
                 if not bid then
                     info = "buff is learned the first time you use it"
@@ -765,6 +797,18 @@ function Consumables:CheckText()
             else
                 lines[#lines + 1] = format("  ok       %s%s", label, info and (" (" .. info .. ")") or "")
             end
+        end
+    end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "Food buffs (any of these counts as fed)"
+    for _, entry in ipairs(db.foodBuffs or {}) do
+        total = total + 1
+        local ok, icon = pcall(C_Spell.GetSpellTexture, entry.buff)
+        if ok and icon then
+            lines[#lines + 1] = format("  ok       %s (%d)", tostring(entry.name), entry.buff)
+        else
+            problems = problems + 1
+            lines[#lines + 1] = format("  PROBLEM  %s: BUFF ID %d NOT FOUND", tostring(entry.name), entry.buff)
         end
     end
     lines[#lines + 1] = ""

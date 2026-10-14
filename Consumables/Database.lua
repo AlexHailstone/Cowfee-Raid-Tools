@@ -12,8 +12,8 @@ local ADDON, CRT = ...
 -- buff  The spell ID of the buff it gives you. If left out, the item's use spell is tried, which
 --       works for many flasks and runes but usually not for food.
 -- name  Only a label for people reading this file. The game's own name is shown in the addon.
--- best  Optional, food only: true for the top-tier food. "Best food only" in the raid report counts
---       only these, once at least one is marked.
+-- Food needs no buff: every food gives the same kind of buff, so food is checked against foodBuffs
+-- below. The food list only says which food a click on your bar eats, first one in your bags first.
 -- low   Optional, flask only: true for a lower quality flask, which the raid report can flag.
 --
 -- Players can reorder which item is used first and the order of the icons, but not edit this list.
@@ -29,6 +29,14 @@ local ADDON, CRT = ...
 CRT.ConsumablesDB = {
     expansion = "Midnight",
     updated = "2026-10-14",
+    -- The food buffs the ready check and your bar look for, whatever was eaten. Buffs with "Well Fed"
+    -- anywhere in their name count too, on an English client.
+    foodBuffs = {
+        -- Both from Alex on 2026-10-14: Hearty Well Fed from the game tooltip, and Well Fed, which may be
+        -- the shared buff behind every Well Fed food, from a screenshot of its spell page.
+        { buff = 456410, name = "Well Fed" },
+        { buff = 1233724, name = "Hearty Well Fed" },
+    },
     categories = {
         food = {
             -- Feasts
