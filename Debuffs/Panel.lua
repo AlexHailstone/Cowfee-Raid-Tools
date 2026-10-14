@@ -1,29 +1,37 @@
 local ADDON, CRT = ...
 
--- The in-combat debuff panel: a movable panel that shows your debuffs, shortest first, while you
--- are in combat. The game hides debuff data from addons in combat, so the icons, timers and stack
--- counts are drawn by Blizzard's own AuraContainer and AuraButton frames, added in patch 12.1.0,
--- which fill themselves in even when the data is secret.
+-- The in-combat debuff panel: a movable panel for the short debuffs a boss puts on you. Those are
+-- "private auras". The game hides them from every addon, but it lets an addon choose WHERE Blizzard
+-- draws them, with C_UnitAuras.AddPrivateAuraAnchor, the same call Blizzard's own debuff frame uses.
+-- So the panel is a row of slots, and each slot is an anchor for one private aura: the game draws the
+-- icon, the countdown number and the swipe inside it.
 --
--- The wiki documents only the method names of these frames, not the option formats, so every call
--- is guarded and the result is recorded. `/crt debuffs info` prints what worked and what didn't.
+-- Regular debuffs, which can be long, are optional in a second row, drawn by Blizzard's AuraContainer
+-- (added in patch 12.1.0). They cannot be limited to short ones, so that row is off by default.
 --
--- The panel is faded out with alpha, not hidden, when you are out of combat, because showing
--- and hiding frames can be blocked in combat.
+-- The panel is faded with alpha, not hidden, when you are out of combat, because showing and hiding
+-- frames can be blocked in combat. Positions and settings are saved per player in CRTDB.debuffs.
 
 local Debuffs = CRT.Debuffs
 local Panel = {}
 CRT.DebuffPanel = Panel
 
-local GROUP = "shortDebuffs"
+local GROUP = "regularDebuffs"
 local GAP = 4
+local MAX_SLOTS = 8
+local REGULAR_ROW_OFFSET = 24 -- gap below the private slots, which leaves room for their countdown text
 local REFRESH_SECONDS = 0.5
 
 local frame, container, handle
+local slots = {} -- one frame per private aura slot
+local anchorIds = {} -- the private aura anchors added for those slots
+local tiles = {} -- preview tiles
 local dragging
 local previewOn = false
+local inCombat = false
 local elapsed = 0
 local report = { created = false, error = nil, notes = {} }
+local appliedAnchors, appliedContainer -- the settings each part was last built for
 
 local function isSecret(value)
     return issecretvalue and issecretvalue(value) or false
@@ -50,47 +58,81 @@ local function try(label, object, method, ...)
     return true, a, b
 end
 
--- The container's sort enums, whichever way this client exposes them.
-local function sortEnums()
-    local method = _G.AuraContainerSortMethod or (Enum and Enum.AuraContainerSortMethod)
-    local direction = _G.AuraContainerSortDirection or (Enum and Enum.AuraContainerSortDirection)
-    return method, direction
+local function panelWidth()
+    local size, count = Debuffs:Size(), Debuffs:MaxCount()
+    return count * size + (count - 1) * GAP, size
 end
 
-local function pick(enum, names)
-    if type(enum) ~= "table" then
-        return nil
+-- Private aura slots ---------------------------------------------------------------
+
+local function removeAnchors()
+    for index, id in pairs(anchorIds) do
+        pcall(C_UnitAuras.RemovePrivateAuraAnchor, id)
+        anchorIds[index] = nil
     end
-    for _, name in ipairs(names) do
-        if enum[name] ~= nil then
-            return enum[name], name
+end
+
+-- Adds one private aura anchor per slot, the way Blizzard's debuff frame does. Out of combat only.
+local function addAnchors()
+    if not frame or InCombatLockdown() then
+        return
+    end
+    local size, count = Debuffs:Size(), Debuffs:MaxCount()
+    local signature = size .. ":" .. count .. ":" .. tostring(Debuffs:DispelIcon())
+    if signature == appliedAnchors then
+        return
+    end
+    appliedAnchors = signature
+
+    if not (C_UnitAuras and C_UnitAuras.AddPrivateAuraAnchor) then
+        report.error = "C_UnitAuras.AddPrivateAuraAnchor is not available on this client"
+        return
+    end
+    removeAnchors()
+
+    for index = 1, MAX_SLOTS do
+        local slot = slots[index]
+        if not slot then
+            slot = CreateFrame("Frame", nil, frame)
+            slots[index] = slot
+        end
+        if index <= count then
+            slot:SetSize(size, size)
+            slot:ClearAllPoints()
+            slot:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), 0)
+            slot:Show()
+            local args = {
+                unitToken = "player",
+                auraIndex = index,
+                parent = slot,
+                showCooldownFrame = true,
+                showCooldownEdge = true,
+                showCountdownNumbers = true,
+                showDispelIcon = Debuffs:DispelIcon(),
+                isContainer = false,
+                iconInfo = {
+                    iconAnchor = { point = "CENTER", relativeTo = slot, relativePoint = "CENTER", offsetX = 0, offsetY = 0 },
+                    iconWidth = size,
+                    iconHeight = size,
+                },
+                durationAnchor = { point = "TOP", relativeTo = slot, relativePoint = "BOTTOM", offsetX = 0, offsetY = -2 },
+            }
+            local ok, id = pcall(C_UnitAuras.AddPrivateAuraAnchor, args)
+            if ok and id then
+                anchorIds[index] = id
+            else
+                note("private aura anchor " .. index .. " failed: " .. tostring(id))
+            end
+        else
+            slot:Hide()
         end
     end
-    return nil
 end
 
--- Chosen sort: shortest time left first where the client allows it, else the default order.
-local chosen = {}
+-- Preview tiles ----------------------------------------------------------------------
+-- Sample debuffs drawn by this addon, in the size and spacing of the real panel, so it can be placed
+-- and sized. Private auras only exist during a boss mechanic, so there is nothing real to show.
 
-local function sortOptions()
-    local methods, directions = sortEnums()
-    local method, methodName = pick(methods, { "Expiration", "ExpirationOnly", "TimeLeft", "Duration" })
-    local direction, directionName
-    if Debuffs:Reverse() then
-        direction, directionName = pick(directions, { "Reverse", "Descending" })
-    else
-        direction, directionName = pick(directions, { "Normal", "Ascending" })
-    end
-    chosen.method, chosen.methodName = method, methodName or "Default (no expiration sort found)"
-    chosen.direction, chosen.directionName = direction, directionName or "Default"
-    return method, direction
-end
-
--- Preview tiles: sample debuffs drawn by this addon, in the size and spacing of the real panel, so
--- the panel can be placed and sized. The container's own edit-mode preview showed nothing on this
--- client, so it is not used. Real debuffs are drawn by the container in combat.
-local MAX_TILES = 8
-local tiles = {}
 local SAMPLES = {
     { spell = 589, time = "12s" },
     { spell = 116, time = "8s" },
@@ -120,20 +162,19 @@ local function makeTile()
     tile.icon:SetPoint("BOTTOMRIGHT", -1, 1)
     tile.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     tile.time = tile:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
-    tile.time:SetPoint("BOTTOM", 0, 3)
+    tile.time:SetPoint("TOP", tile, "BOTTOM", 0, -2)
     tile.count = tile:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
     tile.count:SetPoint("BOTTOMRIGHT", -2, 2)
     tile:Hide()
     return tile
 end
 
--- Shows or hides the sample tiles to match the preview and the chosen size and count.
 local function updateTiles()
     if not frame then
         return
     end
     local size, count = Debuffs:Size(), Debuffs:MaxCount()
-    for index = 1, MAX_TILES do
+    for index = 1, MAX_SLOTS do
         local tile = tiles[index]
         if not tile then
             tile = makeTile()
@@ -154,60 +195,43 @@ local function updateTiles()
     end
 end
 
--- The container lays its aura frames out itself. The option names and defaults below come from the
--- tables the game defines (CustomAuraContainerLayoutDefaults and CustomAuraContainerGroupLayoutDefaultOptions),
--- which `/crt debuffs info` prints: a row growing right, with elementSpacing between icons.
-local function panelWidth()
-    local size, count = Debuffs:Size(), Debuffs:MaxCount()
-    return count * size + (count - 1) * GAP, size
+-- Regular debuffs (optional second row) -------------------------------------------------
+
+local function sortEnums()
+    local method = _G.AuraContainerSortMethod or (Enum and Enum.AuraContainerSortMethod)
+    local direction = _G.AuraContainerSortDirection or (Enum and Enum.AuraContainerSortDirection)
+    return method, direction
 end
 
-local appliedLayout -- the settings the container's layout was last set up for
-
-local function applyContainerLayout()
-    if not container or InCombatLockdown() then
-        return
+local function pick(enum, names)
+    if type(enum) ~= "table" then
+        return nil
     end
-    local width = panelWidth()
-    local signature = width .. ":" .. Debuffs:Size()
-    if signature == appliedLayout then
-        return
-    end
-    appliedLayout = signature
-    try("container", container, "SetFlowLayoutAnchorPoint", "TOPLEFT")
-    try("container", container, "SetFlowLayoutAxis", 0)
-    try("container", container, "SetFlowLayoutGrowthDirection", 1, -1)
-    try("container", container, "SetFlowLayoutPadding", 0, 0, 0, 0)
-    try("container", container, "SetFlowLayoutMaximumLineSize", width)
-    try("container", container, "SetAuraGroupLayout", GROUP, { elementSpacing = GAP })
-end
-
--- Sizes the panel and its aura frames. Out of combat only, since the frames may be restricted in combat.
-local function layout()
-    if not frame or InCombatLockdown() then
-        return
-    end
-    local width, size = panelWidth()
-    frame:SetSize(width, size)
-    if not container then
-        return
-    end
-    container:SetSize(width, size)
-    applyContainerLayout()
-
-    local ok, n = pcall(container.GetAuraGroupFrameCount, container, GROUP)
-    if ok and type(n) == "number" and not isSecret(n) then
-        for index = 1, n do
-            local ok2, button = pcall(container.GetAuraGroupFrame, container, GROUP, index)
-            if ok2 and button and not pcall(button.SetSize, button, size, size) then
-                note("SetSize on an aura frame failed")
-            end
+    for _, name in ipairs(names) do
+        if enum[name] ~= nil then
+            return enum[name], name
         end
     end
+    return nil
+end
+
+local chosen = {}
+
+local function sortOptions()
+    local methods, directions = sortEnums()
+    local method, methodName = pick(methods, { "Expiration", "ExpirationOnly" })
+    local direction, directionName
+    if Debuffs:Reverse() then
+        direction, directionName = pick(directions, { "Reverse" })
+    else
+        direction, directionName = pick(directions, { "Normal" })
+    end
+    chosen.methodName = methodName or "Default"
+    chosen.directionName = directionName or "Default"
+    return method, direction
 end
 
 -- Sets up one aura button: an icon, a cooldown spiral with the time, and the stack count.
--- Blizzard fills these in from the aura, including when the aura's data is hidden from addons.
 local function initializeButton(a, b)
     local button = (type(a) == "table" and a.SetIcon and a) or (type(b) == "table" and b.SetIcon and b)
     if not button then
@@ -240,15 +264,34 @@ local function initializeButton(a, b)
     try("button", button, "SetApplicationCount", count)
 end
 
+-- The container's own flow layout, with the values the game lists in CustomAuraContainerLayoutDefaults.
+local function applyContainerLayout()
+    if not container or InCombatLockdown() then
+        return
+    end
+    local width, size = panelWidth()
+    local signature = width .. ":" .. size
+    if signature == appliedContainer then
+        return
+    end
+    appliedContainer = signature
+    container:SetSize(width, size)
+    try("container", container, "SetFlowLayoutAnchorPoint", "TOPLEFT")
+    try("container", container, "SetFlowLayoutAxis", 0)
+    try("container", container, "SetFlowLayoutGrowthDirection", 1, -1)
+    try("container", container, "SetFlowLayoutPadding", 0, 0, 0, 0)
+    try("container", container, "SetFlowLayoutMaximumLineSize", width)
+    try("container", container, "SetAuraGroupLayout", GROUP, { elementSpacing = GAP })
+end
+
 local function createContainer()
     local ok, c = pcall(CreateFrame, "AuraContainer", nil, frame, "CustomAuraContainerTemplate")
     if not ok or not c then
-        report.error = "CreateFrame(\"AuraContainer\") failed: " .. tostring(c)
+        note("CreateFrame(\"AuraContainer\") failed: " .. tostring(c))
         return false
     end
     container = c
-    container:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    container:SetSize(frame:GetWidth(), frame:GetHeight())
+    container:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -REGULAR_ROW_OFFSET)
 
     try("container", container, "SetUnit", "player")
     local method, direction = sortOptions()
@@ -259,14 +302,37 @@ local function createContainer()
         sortDirection = direction,
         layout = { elementSpacing = GAP },
     }
-    local okGroup = try("container", container, "AddAuraGroup", GROUP, "HARMFUL", options)
+    report.created = try("container", container, "AddAuraGroup", GROUP, "HARMFUL", options)
     try("container", container, "SetEnabled", true)
-    appliedLayout = nil
+    appliedContainer = nil
     applyContainerLayout()
     try("container", container, "UpdateAllAuras")
-    report.created = okGroup
-    return okGroup
+    return report.created
 end
+
+-- Sizes the panel, and the regular row's aura frames. Out of combat only.
+local function layout()
+    if not frame or InCombatLockdown() then
+        return
+    end
+    local width, size = panelWidth()
+    frame:SetSize(width, size)
+    addAnchors()
+    applyContainerLayout()
+    if container then
+        local ok, n = pcall(container.GetAuraGroupFrameCount, container, GROUP)
+        if ok and type(n) == "number" and not isSecret(n) then
+            for index = 1, n do
+                local ok2, button = pcall(container.GetAuraGroupFrame, container, GROUP, index)
+                if ok2 and button then
+                    pcall(button.SetSize, button, size, size)
+                end
+            end
+        end
+    end
+end
+
+-- Position and visibility -----------------------------------------------------------
 
 local function applyPosition()
     local saved = Debuffs:Position()
@@ -274,17 +340,33 @@ local function applyPosition()
     frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
 end
 
+-- Whether you are in combat. InCombatLockdown() is false inside the PLAYER_REGEN_DISABLED handler,
+-- because the lockdown only starts after that event fires, so the events set a flag directly and
+-- UnitAffectingCombat backs it up.
+local function playerInCombat()
+    return inCombat or (UnitAffectingCombat("player") and true or false)
+end
+
 -- Shows the panel during combat, or always while previewing. Alpha, not Show, because showing and
--- hiding may be blocked in combat.
+-- hiding may be blocked in combat. It runs every frame, so a missed event cannot leave it stuck.
 local function updateVisibility()
     if not frame then
         return
     end
-    local visible = Debuffs:Enabled() and (InCombatLockdown() or previewOn)
+    local visible = Debuffs:Enabled() and playerInCombat()
     if previewOn then
         visible = true
     end
-    frame:SetAlpha(visible and 1 or 0)
+    local alpha = visible and 1 or 0
+    if frame:GetAlpha() ~= alpha then
+        frame:SetAlpha(alpha)
+    end
+    if container then
+        local regular = Debuffs:IncludeRegular() and 1 or 0
+        if container:GetAlpha() ~= regular then
+            container:SetAlpha(regular)
+        end
+    end
     if handle then
         handle:SetShown(previewOn)
     end
@@ -332,14 +414,13 @@ local function build()
     frame:SetFrameStrata("HIGH")
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
-    -- The container's preview shows more sample icons than the count, so anything outside the panel is clipped.
-    frame:SetClipsChildren(true)
-    local size, count = Debuffs:Size(), Debuffs:MaxCount()
-    frame:SetSize(count * size + (count - 1) * GAP, size)
+    local width, size = panelWidth()
+    frame:SetSize(width, size)
     applyPosition()
     frame:SetAlpha(0)
 
-    -- A drag handle above the panel, shown during a preview.
+    -- A drag handle above the panel, shown during a preview. It is a separate frame, not a child,
+    -- so it keeps its own visibility.
     handle = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     handle:SetFrameStrata("HIGH")
     handle:SetHeight(20)
@@ -372,6 +453,7 @@ local function build()
     layout()
 
     frame:SetScript("OnUpdate", function(_, dt)
+        updateVisibility()
         elapsed = elapsed + dt
         if elapsed < REFRESH_SECONDS then
             return
@@ -385,7 +467,7 @@ end
 -- Diagnostics: what was built, what failed, and what the game offers. --------------------
 
 -- Text for any value. A secret value is printed as "(secret)", because joining one into text is an
--- error, and the size and position of the container's aura frames are secret.
+-- error, and the size and position of some frames are secret.
 local function safe(value)
     if isSecret(value) then
         return "(secret)"
@@ -393,7 +475,6 @@ local function safe(value)
     return tostring(value)
 end
 
--- A short description of a value, with tables shown a few levels deep.
 local function describe(value, depth)
     if isSecret(value) then
         return "(secret)"
@@ -419,27 +500,6 @@ local function describe(value, depth)
     return safe(value)
 end
 
--- What can be said about one aura frame without reading anything that is secret.
-local function describeFrame(button)
-    local function ask(method, ...)
-        local fn = button[method]
-        if type(fn) ~= "function" then
-            return "n/a"
-        end
-        local ok, a, b, c, d, e = pcall(fn, button, ...)
-        if not ok then
-            return "error"
-        end
-        return safe(a) .. (b ~= nil and (", " .. safe(b)) or "") .. (c ~= nil and (", " .. safe(c)) or "")
-            .. (d ~= nil and (", " .. safe(d)) or "") .. (e ~= nil and (", " .. safe(e)) or "")
-    end
-    return "shown " .. ask("IsShown")
-        .. " | size " .. ask("GetSize")
-        .. " | anchor " .. ask("GetPoint")
-        .. " | anchoring secret " .. ask("IsAnchoringSecret")
-        .. " | anchoring restricted " .. ask("IsAnchoringRestricted")
-end
-
 function Panel:InfoText()
     local lines = {}
     local function add(text)
@@ -448,74 +508,48 @@ function Panel:InfoText()
 
     add("Debuff panel diagnostics")
     add("Game build: " .. tostring(select(4, GetBuildInfo())))
-    add("AuraContainer created: " .. tostring(report.created))
+    add("In combat: lockdown " .. tostring(InCombatLockdown()) .. ", flag " .. tostring(inCombat) .. ", UnitAffectingCombat " .. tostring(UnitAffectingCombat("player")) .. "; preview on: " .. tostring(previewOn) .. ", enabled: " .. tostring(Debuffs:Enabled()))
+    add(format("Settings: size %d, max %d, dispel icon %s, regular row %s, reverse %s", Debuffs:Size(), Debuffs:MaxCount(), tostring(Debuffs:DispelIcon()), tostring(Debuffs:IncludeRegular()), tostring(Debuffs:Reverse())))
+    if frame then
+        local point, _, relativePoint, x, y = frame:GetPoint()
+        add(format("Panel: alpha %s, shown %s, effective alpha %s, size %s x %s, at %s %s %s,%s",
+            safe(frame:GetAlpha()), tostring(frame:IsShown()), safe(frame:GetEffectiveAlpha()),
+            safe(frame:GetWidth()), safe(frame:GetHeight()), tostring(point), tostring(relativePoint), safe(x), safe(y)))
+    else
+        add("Panel: not built")
+    end
     if report.error then
         add("Error: " .. report.error)
     end
-    add("In combat: " .. tostring(InCombatLockdown()) .. ", preview on: " .. tostring(previewOn) .. ", enabled: " .. tostring(Debuffs:Enabled()))
-    add(format("Settings: size %d, max %d, reverse %s", Debuffs:Size(), Debuffs:MaxCount(), tostring(Debuffs:Reverse())))
-    add("Sort chosen: method " .. tostring(chosen.methodName) .. ", direction " .. tostring(chosen.directionName))
 
-    local methods, directions = sortEnums()
-    local function dumpEnum(title, enum)
-        if type(enum) ~= "table" then
-            add(title .. ": not found")
-            return
-        end
-        local parts = {}
-        for key, value in pairs(enum) do
-            parts[#parts + 1] = tostring(key) .. "=" .. tostring(value)
-        end
-        table.sort(parts)
-        add(title .. ": " .. table.concat(parts, ", "))
-    end
-    dumpEnum("AuraContainerSortMethod", methods)
-    dumpEnum("AuraContainerSortDirection", directions)
-
-    -- Anything else that looks related, so undocumented options can be found.
-    local found = {}
-    for key in pairs(Enum or {}) do
-        if type(key) == "string" and (key:find("AuraContainer") or key:find("CandidateFilter")) then
-            found[#found + 1] = "Enum." .. key
-        end
-    end
-    for key in pairs(_G) do
-        if type(key) == "string" and (key:find("AuraContainer") or key:find("AuraCandidate")) and not key:find("^CRT") then
-            found[#found + 1] = key
-        end
-    end
-    table.sort(found)
-    add("Related names: " .. (#found > 0 and table.concat(found, ", ") or "none found"))
-
-    -- The option tables Blizzard defines for the container, which the wiki does not document.
+    -- Private aura slots.
     add("")
-    add("Option tables the game defines (these show the real field names and values):")
-    local dumped = {}
-    for key, value in pairs(_G) do
-        if type(key) == "string" and key:find("AuraContainer") and type(value) == "table"
-            and not key:find("Mixin$") and not key:find("^C_") and not key:find("^CRT") then
-            dumped[#dumped + 1] = key
+    add("Private aura slots (these draw boss mechanic debuffs):")
+    add("  C_UnitAuras.AddPrivateAuraAnchor available: " .. tostring(C_UnitAuras and C_UnitAuras.AddPrivateAuraAnchor ~= nil))
+    local made = 0
+    for _ in pairs(anchorIds) do
+        made = made + 1
+    end
+    add("  anchors added: " .. made .. " of " .. Debuffs:MaxCount())
+    for index = 1, Debuffs:MaxCount() do
+        local slot = slots[index]
+        if slot then
+            local point, _, _, x, y = slot:GetPoint()
+            add(format("  slot %d: anchor id %s, size %s x %s, at %s %s,%s", index, tostring(anchorIds[index]), safe(slot:GetWidth()), safe(slot:GetHeight()), tostring(point), safe(x), safe(y)))
         end
     end
-    table.sort(dumped)
-    for _, key in ipairs(dumped) do
-        add("  " .. key .. " = " .. describe(_G[key], 3))
-    end
 
+    -- The regular row.
+    add("")
+    add("Regular debuff row (Blizzard AuraContainer):")
+    add("  created: " .. tostring(report.created) .. ", sort: " .. tostring(chosen.methodName) .. " " .. tostring(chosen.directionName))
     if container then
         local count = 0
         local ok, n = pcall(container.GetAuraGroupFrameCount, container, GROUP)
         if ok and not isSecret(n) and type(n) == "number" then
             count = n
         end
-        add("")
-        add("Aura frames in the group: " .. count)
-        for index = 1, count do
-            local ok2, button = pcall(container.GetAuraGroupFrame, container, GROUP, index)
-            if ok2 and button then
-                add("  frame " .. index .. ": " .. describeFrame(button))
-            end
-        end
+        add("  aura frames: " .. count .. ", container alpha " .. safe(container:GetAlpha()))
     end
 
     add("")
@@ -547,7 +581,13 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        inCombat = true
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        inCombat = false
+    end
     if event == "PLAYER_LOGIN" then
+        inCombat = UnitAffectingCombat("player") and true or false
         if not InCombatLockdown() then
             build()
         end

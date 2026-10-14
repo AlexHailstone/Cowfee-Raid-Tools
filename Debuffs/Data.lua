@@ -57,6 +57,26 @@ function Debuffs:SetMaxCount(count)
     self:Fire()
 end
 
+-- Show the dispel type icon on a mechanic debuff.
+function Debuffs:DispelIcon()
+    return ddb().dispelIcon and true or false
+end
+
+function Debuffs:SetDispelIcon(value)
+    ddb().dispelIcon = value and true or false
+    self:Fire()
+end
+
+-- Also show regular debuffs, in a second row. Off by default: they cannot be limited to short ones.
+function Debuffs:IncludeRegular()
+    return ddb().includeRegular and true or false
+end
+
+function Debuffs:SetIncludeRegular(value)
+    ddb().includeRegular = value and true or false
+    self:Fire()
+end
+
 function Debuffs:Reverse()
     return ddb().reverse and true or false
 end

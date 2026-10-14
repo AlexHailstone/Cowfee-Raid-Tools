@@ -36,6 +36,8 @@ local defaults = {
         enabled = true,
         size = 44, -- icon size in pixels
         maxCount = 4, -- how many to show at once
+        dispelIcon = false, -- show the dispel type icon on mechanic debuffs
+        includeRegular = false, -- also show regular (not boss mechanic) debuffs in a second row
     },
 }
 
