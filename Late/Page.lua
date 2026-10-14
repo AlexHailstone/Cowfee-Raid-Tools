@@ -168,7 +168,7 @@ local function nightLines(night)
     for _, p in ipairs(sortedPlayers(night)) do
         if Late.IsLate(night, p) then
             if p.never then
-                late[#late + 1] = format("  %s  |cffff6060never joined|r, %s until the end", name(p.key), minutes(Late.Seconds(night, p)))
+                late[#late + 1] = format("  %s  |cffff6060no-show|r, %s until the end", name(p.key), minutes(Late.Seconds(night, p)))
             else
                 late[#late + 1] = format("  %s  joined %s, %s late", name(p.key), clock(p.joinedAt), minutes(Late.Seconds(night, p)))
             end
@@ -227,7 +227,7 @@ local function totalsExport()
     local lines = {
         format("**Late tracker totals**: %d nights, %s to %s", #history, day(first), day(last)),
         "```",
-        pad("Player", 26) .. pad("Late", 9) .. pad("Time late", 13) .. "Never",
+        pad("Player", 26) .. pad("Late", 9) .. pad("Time late", 13) .. "No-Show",
     }
     for _, t in ipairs(Late:Totals()) do
         lines[#lines + 1] = pad(plain(t.key), 26) .. pad(t.late .. " of " .. t.nights, 9) .. pad(t.late > 0 and minutes(t.seconds) or "-", 13) .. (t.never > 0 and t.never or "-")
@@ -252,7 +252,7 @@ local function nightExport(night)
         lines[#lines + 1] = "```"
         lines[#lines + 1] = pad("Player", 26) .. pad("Joined", 10) .. "Late"
         for _, p in ipairs(late) do
-            lines[#lines + 1] = pad(plain(p.key), 26) .. pad(p.never and "never" or clock(p.joinedAt), 10) .. minutes(Late.Seconds(night, p))
+            lines[#lines + 1] = pad(plain(p.key), 26) .. pad(p.never and "no-show" or clock(p.joinedAt), 10) .. minutes(Late.Seconds(night, p))
         end
         lines[#lines + 1] = "```"
     else
@@ -316,7 +316,7 @@ local function place(fs, x, y, width, justify, text)
 end
 
 -- The totals as a table: player, nights late out of nights expected, total time late, and nights
--- they never joined, or a line saying there are no nights yet.
+-- they never joined (no-shows), or a line saying there are no nights yet.
 local function showTotals()
     hideTotals()
     local history = Late:History()
@@ -337,13 +337,13 @@ local function showTotals()
             place(row.name, 2, y, w - 214, "LEFT", "|cff999999Player|r")
             place(row.late, w - 208, y, 64, "RIGHT", "|cff999999Late|r")
             place(row.time, w - 140, y, 84, "RIGHT", "|cff999999Time late|r")
-            place(row.never, w - 54, y, 52, "RIGHT", "|cff999999Never|r")
+            place(row.never, w - 62, y, 60, "RIGHT", "|cff999999No-Show|r")
         else
             local t = list[i]
             place(row.name, 2, y, w - 214, "LEFT", name(t.key))
             place(row.late, w - 208, y, 64, "RIGHT", t.late .. " of " .. t.nights)
             place(row.time, w - 140, y, 84, "RIGHT", t.late > 0 and minutes(t.seconds) or "-")
-            place(row.never, w - 54, y, 52, "RIGHT", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
+            place(row.never, w - 62, y, 60, "RIGHT", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
         end
     end
     detailChild:SetHeight(24 + (#list + 1) * TOTAL_ROW_H + 8)
