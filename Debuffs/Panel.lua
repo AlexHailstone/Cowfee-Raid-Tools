@@ -86,6 +86,74 @@ local function sortOptions()
     return method, direction
 end
 
+-- Preview tiles: sample debuffs drawn by this addon, in the size and spacing of the real panel, so
+-- the panel can be placed and sized. The container's own edit-mode preview showed nothing on this
+-- client, so it is not used. Real debuffs are drawn by the container in combat.
+local MAX_TILES = 8
+local tiles = {}
+local SAMPLES = {
+    { spell = 589, time = "12s" },
+    { spell = 116, time = "8s" },
+    { spell = 172, time = "21s", stacks = 3 },
+    { spell = 703, time = "27s" },
+    { spell = 348, time = "5s" },
+    { spell = 686, time = "17s", stacks = 2 },
+    { spell = 980, time = "24s" },
+    { spell = 1022, time = "9s" },
+}
+
+local function sampleIcon(spellId)
+    local ok, icon = pcall(C_Spell.GetSpellTexture, spellId)
+    if ok and icon then
+        return icon
+    end
+    return "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+local function makeTile()
+    local tile = CreateFrame("Frame", nil, frame)
+    tile.back = tile:CreateTexture(nil, "BACKGROUND")
+    tile.back:SetAllPoints()
+    tile.back:SetColorTexture(0, 0, 0, 0.7)
+    tile.icon = tile:CreateTexture(nil, "ARTWORK")
+    tile.icon:SetPoint("TOPLEFT", 1, -1)
+    tile.icon:SetPoint("BOTTOMRIGHT", -1, 1)
+    tile.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    tile.time = tile:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    tile.time:SetPoint("BOTTOM", 0, 3)
+    tile.count = tile:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+    tile.count:SetPoint("BOTTOMRIGHT", -2, 2)
+    tile:Hide()
+    return tile
+end
+
+-- Shows or hides the sample tiles to match the preview and the chosen size and count.
+local function updateTiles()
+    if not frame then
+        return
+    end
+    local size, count = Debuffs:Size(), Debuffs:MaxCount()
+    for index = 1, MAX_TILES do
+        local tile = tiles[index]
+        if not tile then
+            tile = makeTile()
+            tiles[index] = tile
+        end
+        if previewOn and index <= count then
+            local sample = SAMPLES[index]
+            tile:SetSize(size, size)
+            tile:ClearAllPoints()
+            tile:SetPoint("TOPLEFT", frame, "TOPLEFT", (index - 1) * (size + GAP), 0)
+            tile.icon:SetTexture(sampleIcon(sample.spell))
+            tile.time:SetText(sample.time)
+            tile.count:SetText(sample.stacks or "")
+            tile:Show()
+        else
+            tile:Hide()
+        end
+    end
+end
+
 -- The container lays its aura frames out itself. The option names and defaults below come from the
 -- tables the game defines (CustomAuraContainerLayoutDefaults and CustomAuraContainerGroupLayoutDefaultOptions),
 -- which `/crt debuffs info` prints: a row growing right, with elementSpacing between icons.
@@ -116,11 +184,14 @@ end
 
 -- Sizes the panel and its aura frames. Out of combat only, since the frames may be restricted in combat.
 local function layout()
-    if not container or InCombatLockdown() then
+    if not frame or InCombatLockdown() then
         return
     end
     local width, size = panelWidth()
     frame:SetSize(width, size)
+    if not container then
+        return
+    end
     container:SetSize(width, size)
     applyContainerLayout()
 
@@ -235,15 +306,13 @@ function Panel:Apply()
         try("container", container, "UpdateAllAuras")
     end
     layout()
+    updateTiles()
     updateVisibility()
 end
 
 function Panel:SetPreview(on)
     previewOn = on and true or false
-    if container then
-        try("container", container, "SetEditModePreviewEnabled", previewOn)
-        try("container", container, "UpdateAllAuras")
-    end
+    updateTiles()
     layout()
     updateVisibility()
 end
