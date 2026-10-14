@@ -37,6 +37,20 @@ function Notes:Window()
     return ndb().window
 end
 
+-- Settings for one of the three windows: "window" (timers), "assignments" or "personal".
+function Notes:WindowSettings(key)
+    return ndb()[key]
+end
+
+function Notes:Personal()
+    return ndb().personalText or ""
+end
+
+function Notes:SetPersonal(text)
+    ndb().personalText = text or ""
+    self:Fire()
+end
+
 function Notes:Alert()
     return ndb().alert
 end

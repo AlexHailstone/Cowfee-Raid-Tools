@@ -88,6 +88,18 @@ function Engine:IsMine(item)
     return false
 end
 
+-- Words that also appear in ordinary sentences, so they never mark a line of free text as yours.
+local NOT_IN_TEXT = { all = true, everyone = true, raid = true, range = true, heal = true, damager = true }
+
+-- Whether a word of a note's free text is your name or your role, such as "Tanks" or "Melee".
+function Engine:WordIsMe(word)
+    local w = word:lower():gsub("%-.*$", "")
+    if NOT_IN_TEXT[w] then
+        return false
+    end
+    return tokens()[w] and true or false
+end
+
 function Engine:Note()
     return note
 end

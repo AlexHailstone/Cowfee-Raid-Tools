@@ -1,42 +1,33 @@
 local ADDON, CRT = ...
 
--- The note window: the active note on screen. Before a pull it lists every timer by phase. During a fight
--- each line counts down, lines for you are marked, and lines whose time has passed disappear. The free
--- text of the note sits underneath. Font, size, transparency and position are per player.
+-- The three note windows, built from one shared design:
+--   window       the timers of the note in use. Before the pull it lists every timer by phase. During the
+--                fight each line counts down and disappears once its time has passed.
+--   assignments  the note's text that is not a timer, such as "Kick order" and the names under it.
+--   personal     your own personal note, typed on the Raid Notes page. Only you see it.
+-- Each window has its own font, size, transparency, position and size, saved per player in CRTDB.notes.
+-- Unlocked, a window can be dragged to move it and resized from its bottom-right corner. Locked, it lets
+-- clicks through. Names are class colored, and a line for you (your name or your role) is marked.
 
 local Notes = CRT.Notes
 local Engine = CRT.NoteEngine
-local Window = {}
-CRT.NoteWindow = Window
+local NoteWindow = { windows = {} }
+CRT.NoteWindow = NoteWindow
 
 local REFRESH_SECONDS = 0.1
+local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
+local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 
-Window.FONTS = {
+NoteWindow.FONTS = {
     { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
     { name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
     { name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
     { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
 }
 
-local frame, handle, title, body
 local previewOn = false
-local elapsed = 0
-local lastText
-local noteFont
 
-local function settings()
-    return Notes:Window()
-end
-
-local function fontPath()
-    local wanted = settings().font
-    for _, font in ipairs(Window.FONTS) do
-        if font.name == wanted then
-            return font.path
-        end
-    end
-    return Window.FONTS[1].path
-end
+-- Text helpers --------------------------------------------------------------------------
 
 local function fmtTime(seconds)
     if seconds < 0 then
@@ -67,16 +58,19 @@ local function classOf(word)
     return shortClass[(word:lower():gsub("%-.*$", ""))]
 end
 
+local function colorName(word)
+    local class = classOf(word)
+    local color = class and RAID_CLASS_COLORS[class]
+    if color and color.colorStr then
+        return "|c" .. color.colorStr .. word .. "|r"
+    end
+    return word
+end
+
 local function names(item)
     local parts = {}
     for _, tag in ipairs(item.tags) do
-        local class = classOf(tag)
-        local color = class and RAID_CLASS_COLORS[class]
-        if color and color.colorStr then
-            parts[#parts + 1] = "|c" .. color.colorStr .. tag .. "|r"
-        else
-            parts[#parts + 1] = tag
-        end
+        parts[#parts + 1] = colorName(tag)
     end
     return table.concat(parts, " ")
 end
@@ -90,35 +84,83 @@ local function describe(item)
     return "|cff" .. hex(item.color) .. (item.text or "") .. "|r"
 end
 
-local function line(item, seconds)
-    local mine = Engine:IsMine(item)
+local function timerLine(item, seconds)
     local time = fmtTime(seconds)
-    if mine then
+    if Engine:IsMine(item) then
         return "|cffffd100> " .. time .. "|r  " .. describe(item) .. "  " .. names(item)
     end
     return "|cffaaaaaa" .. time .. "|r  " .. describe(item) .. "  " .. names(item)
 end
 
-local SAMPLE = "|cffffd100> 0:03|r  Avenging Wrath  Crazyoio\n|cffaaaaaa0:06|r  Sample spell  Cheoeqar\n|cffaaaaaa0:34|r  |cff00ffffGroup 1 go in|r  Cheoeqar Djaztech\n\nRealm Group 1: Cheoeqar Djaztech Gadios"
+-- A line of free text: names class colored, your own name in gold, and the line marked with ">" when it
+-- names you or your role. A line with no colon is treated as a heading.
+local function textLine(line)
+    if line == "" then
+        return ""
+    end
+    local mine = false
+    local myName = (UnitName("player") or ""):lower()
+    local colored = line:gsub("[%w\128-\255]+", function(word)
+        if Engine:WordIsMe(word) then
+            mine = true
+        end
+        if word:lower() == myName then
+            return "|cffffd100" .. word .. "|r"
+        end
+        return colorName(word)
+    end)
+    if not line:find(":", 1, true) then
+        colored = "|cffffd100" .. colored .. "|r"
+    end
+    if mine then
+        return "|cffffd100> |r" .. colored
+    end
+    return colored
+end
 
-local function buildText()
+local function textBlock(lines)
+    local out = {}
+    for _, line in ipairs(lines) do
+        out[#out + 1] = textLine(line)
+    end
+    return table.concat(out, "\n")
+end
+
+-- Formats lines of free text the way the assignments and personal windows show them.
+NoteWindow.FormatText = textBlock
+
+local function splitLines(text)
+    local lines = {}
+    for line in ((text or "") .. "\n"):gmatch("(.-)\r?\n") do
+        lines[#lines + 1] = line
+    end
+    while #lines > 0 and lines[#lines] == "" do
+        lines[#lines] = nil
+    end
+    return lines
+end
+
+-- What each window shows: returns text, heading, hasContent ------------------------------------
+
+local function timersText()
     local _, record, note = Notes:Active()
     if not note then
-        return previewOn and SAMPLE or "No note loaded.", previewOn and "Raid note (sample)" or "Raid note"
+        if previewOn then
+            return "|cffffd100> 0:03|r  Avenging Wrath  Crazyoio\n|cffaaaaaa0:06|r  Sample spell  Cheoeqar\n|cffaaaaaa0:48|r  |cff00ffffGroup 1 go in|r  Cheoeqar Djaztech", "Raid note (sample)", true
+        end
+        return "No note loaded.", "Raid note", false
     end
     local lines = {}
     local heading = record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "")
-
     if Engine.running and Engine:Note() == note then
-        local phase = Engine:CurrentPhase()
-        heading = heading .. "   Phase " .. tostring(phase) .. "   " .. fmtTime(Engine:Elapsed() or 0)
+        heading = heading .. "   Phase " .. tostring(Engine:CurrentPhase()) .. "   " .. fmtTime(Engine:Elapsed() or 0)
         local waiting = {}
         for _, item in ipairs(note.timers) do
             local remaining = Engine:Remaining(item)
             if remaining == nil then
                 waiting[item.ph] = true
-            elseif not (settings().hidePassed and remaining < -(item.dur or 0)) then
-                lines[#lines + 1] = line(item, remaining)
+            elseif not (Notes:WindowSettings("window").hidePassed and remaining < -(item.dur or 0)) then
+                lines[#lines + 1] = timerLine(item, remaining)
             end
         end
         for _, ph in ipairs(note.phases) do
@@ -133,85 +175,85 @@ local function buildText()
                 lines[#lines + 1] = "|cffffd100Phase " .. item.ph .. "|r"
                 lastPhase = item.ph
             end
-            lines[#lines + 1] = line(item, item.time)
+            lines[#lines + 1] = timerLine(item, item.time)
         end
     end
+    return table.concat(lines, "\n"), heading, #note.timers > 0
+end
 
-    if #note.lines > 0 then
-        lines[#lines + 1] = ""
-        for _, text in ipairs(note.lines) do
-            lines[#lines + 1] = text
+local SAMPLE_ASSIGNMENTS = {
+    "Soulcoil Well Realm Groups",
+    "Realm Group 1: Cheoeqar Djaztech Gadios",
+    "",
+    "Kick order",
+    "Kicks G1: Teronhorefnd Gadios",
+}
+
+local function assignmentsText()
+    local _, record, note = Notes:Active()
+    if note and #note.lines > 0 then
+        return textBlock(note.lines), "Assignments: " .. record.name, true
+    end
+    if previewOn then
+        return textBlock(SAMPLE_ASSIGNMENTS), "Assignments (sample)", true
+    end
+    return "", "Assignments", false
+end
+
+local function personalText()
+    local lines = splitLines(Notes:Personal())
+    if #lines > 0 then
+        return textBlock(lines), "Personal note", true
+    end
+    if previewOn then
+        return "Your personal note shows here.\nWrite it on the Raid Notes page.", "Personal note (sample)", true
+    end
+    return "", "Personal note", false
+end
+
+-- One window --------------------------------------------------------------------------------
+
+local function fontPath(name)
+    for _, font in ipairs(NoteWindow.FONTS) do
+        if font.name == name then
+            return font.path
         end
     end
-    return table.concat(lines, "\n"), heading
+    return NoteWindow.FONTS[1].path
 end
 
--- Font, size and transparency from the settings.
-function Window:ApplyStyle()
-    if not frame then
-        return
+local function createWindow(key, defaultPosition, build)
+    local w = { key = key }
+    local function s()
+        return Notes:WindowSettings(key)
     end
-    local s = settings()
-    noteFont:SetFont(fontPath(), s.fontSize or 14, "")
-    frame:SetSize(s.width or 420, s.height or 300)
-    frame:SetAlpha((s.alpha or 100) / 100)
-    frame:SetBackdropColor(0, 0, 0, (s.bgAlpha or 50) / 100)
-    frame:SetBackdropBorderColor(0.3, 0.3, 0.3, (s.bgAlpha or 50) / 100)
-    lastText = nil
-end
 
-function Window:Refresh()
-    if not frame then
-        return
-    end
-    local _, record = Notes:Active()
-    local visible = previewOn or (settings().shown and record ~= nil)
-    frame:SetShown(visible)
-    handle:SetShown(previewOn)
-    if not visible then
-        return
-    end
-    local text, heading = buildText()
-    title:SetText(heading)
-    if text ~= lastText then
-        body:SetText(text)
-        lastText = text
-    end
-end
-
-local function applyPosition()
-    local p = settings().position or { point = "LEFT", relativePoint = "LEFT", x = 40, y = 80 }
-    frame:ClearAllPoints()
-    frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
-end
-
-function Window:ResetPosition()
-    settings().position = nil
-    if frame then
-        applyPosition()
-    end
-end
-
-local function build()
-    if frame then
-        return
-    end
-    noteFont = CreateFont("CRTNoteFont")
-    noteFont:CopyFontObject(GameFontHighlight)
-
-    frame = CreateFrame("Frame", "CowfeeRaidToolsNoteWindow", UIParent, "BackdropTemplate")
+    local frame = CreateFrame("Frame", "CowfeeRaidToolsNote_" .. key, UIParent, "BackdropTemplate")
     frame:SetFrameStrata("MEDIUM")
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
-    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    frame:SetResizable(true)
+    if frame.SetResizeBounds then
+        frame:SetResizeBounds(160, 60, 1400, 1100)
+    end
+    if frame.SetDontSavePosition then
+        pcall(frame.SetDontSavePosition, frame, true)
+    end
+    frame:SetBackdrop(BACKDROP)
+    frame:RegisterForDrag("LeftButton")
+    w.frame = frame
 
-    title = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    local font = CreateFont("CRTNoteFont_" .. key)
+    font:CopyFontObject(GameFontHighlight)
+
+    local title = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     title:SetPoint("TOPLEFT", 8, -6)
     title:SetPoint("TOPRIGHT", -8, -6)
     title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
 
-    body = frame:CreateFontString(nil, "OVERLAY")
-    body:SetFontObject(noteFont)
+    local body = frame:CreateFontString(nil, "OVERLAY")
+    body:SetFontObject(font)
     body:SetPoint("TOPLEFT", 8, -28)
     body:SetPoint("BOTTOMRIGHT", -8, 8)
     body:SetJustifyH("LEFT")
@@ -219,72 +261,165 @@ local function build()
     body:SetWordWrap(true)
     body:SetShadowOffset(1, -1)
 
-    handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    handle:SetHeight(20)
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
-    handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    handle:SetBackdropColor(0.1, 0.25, 0.1, 0.9)
-    handle:SetBackdropBorderColor(0.3, 0.9, 0.3, 1)
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
-    local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("CENTER")
-    text:SetText("Raid note: drag to move")
-    handle:SetScript("OnDragStart", function()
-        frame:StartMoving()
-    end)
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        local point, _, relativePoint, x, y = frame:GetPoint()
-        settings().position = { point = point, relativePoint = relativePoint, x = x, y = y }
-    end)
-    handle:Hide()
+    local hint = frame:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    hint:SetPoint("BOTTOMLEFT", 8, 6)
+    hint:SetText("Unlocked: drag to move, drag the corner to resize")
 
-    applyPosition()
-    Window:ApplyStyle()
-    frame:SetScript("OnUpdate", function(_, dt)
-        elapsed = elapsed + dt
-        if elapsed < REFRESH_SECONDS then
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    grip:SetNormalTexture(GRIP .. "-Up")
+    grip:SetHighlightTexture(GRIP .. "-Highlight")
+    grip:SetPushedTexture(GRIP .. "-Down")
+
+    local function save()
+        local point, _, relativePoint, x, y = frame:GetPoint()
+        local settings = s()
+        settings.position = { point = point, relativePoint = relativePoint, x = x, y = y }
+        settings.width = math.floor(frame:GetWidth() + 0.5)
+        settings.height = math.floor(frame:GetHeight() + 0.5)
+    end
+
+    local function unlocked()
+        return previewOn or not s().locked
+    end
+
+    frame:SetScript("OnDragStart", function()
+        if unlocked() then
+            frame:StartMoving()
+        end
+    end)
+    frame:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        save()
+    end)
+    grip:SetScript("OnMouseDown", function()
+        if unlocked() then
+            frame:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    grip:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        save()
+        w.lastText = nil
+    end)
+
+    function w:ApplyPosition()
+        local p = s().position or defaultPosition
+        frame:ClearAllPoints()
+        frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
+    end
+
+    function w:ApplyStyle()
+        local settings = s()
+        font:SetFont(fontPath(settings.font), settings.fontSize or 14, "")
+        frame:SetSize(settings.width or 360, settings.height or 240)
+        frame:SetAlpha((settings.alpha or 100) / 100)
+        local bg = (settings.bgAlpha or 50) / 100
+        frame:SetBackdropColor(0, 0, 0, bg)
+        local open = unlocked()
+        if open then
+            frame:SetBackdropBorderColor(0.3, 0.9, 0.3, 1)
+        else
+            frame:SetBackdropBorderColor(0.3, 0.3, 0.3, bg)
+        end
+        -- Locked windows let clicks through to the game.
+        frame:EnableMouse(open)
+        grip:SetShown(open)
+        hint:SetShown(open)
+        self.lastText = nil
+    end
+
+    function w:Refresh()
+        local text, heading, hasContent = build()
+        local visible = previewOn or (s().shown and hasContent)
+        frame:SetShown(visible and true or false)
+        if not visible then
             return
         end
-        elapsed = 0
-        Window:Refresh()
-    end)
+        title:SetText(heading)
+        if text ~= self.lastText then
+            body:SetText(text)
+            self.lastText = text
+        end
+    end
+
+    function w:ResetPosition()
+        s().position = nil
+        self:ApplyPosition()
+    end
+
+    w:ApplyPosition()
+    w:ApplyStyle()
     frame:Hide()
+    return w
 end
 
--- The window has its own updater, but it is hidden when there is nothing to show, so this frame keeps
--- checking whether it should appear.
-local watcher = CreateFrame("Frame")
-local watchElapsed = 0
-watcher:SetScript("OnUpdate", function(_, dt)
-    watchElapsed = watchElapsed + dt
-    if watchElapsed < 0.5 then
+-- Public -------------------------------------------------------------------------------------
+
+function NoteWindow:Get(key)
+    return self.windows[key]
+end
+
+function NoteWindow:ResetPosition(key)
+    local w = self.windows[key]
+    if w then
+        w:ResetPosition()
+    end
+end
+
+function NoteWindow:RefreshAll()
+    for _, w in pairs(self.windows) do
+        w:Refresh()
+    end
+end
+
+local function styleAll()
+    for _, w in pairs(NoteWindow.windows) do
+        w:ApplyStyle()
+        w:Refresh()
+    end
+end
+
+local built = false
+local function build()
+    if built then
         return
     end
-    watchElapsed = 0
-    if frame and not frame:IsShown() then
-        Window:Refresh()
-    end
-end)
+    built = true
+    NoteWindow.windows.window = createWindow("window", { point = "LEFT", relativePoint = "LEFT", x = 40, y = 120 }, timersText)
+    NoteWindow.windows.assignments = createWindow("assignments", { point = "LEFT", relativePoint = "LEFT", x = 40, y = -170 }, assignmentsText)
+    NoteWindow.windows.personal = createWindow("personal", { point = "RIGHT", relativePoint = "RIGHT", x = -60, y = -60 }, personalText)
+end
 
-watcher:RegisterEvent("PLAYER_LOGIN")
-watcher:SetScript("OnEvent", function()
+-- One updater for all three. Timers need a quick refresh, and the others are cheap.
+local driver = CreateFrame("Frame")
+local elapsed = 0
+driver:SetScript("OnUpdate", function(_, dt)
+    if not built then
+        return
+    end
+    elapsed = elapsed + dt
+    if elapsed < REFRESH_SECONDS then
+        return
+    end
+    elapsed = 0
+    NoteWindow:RefreshAll()
+end)
+driver:RegisterEvent("PLAYER_LOGIN")
+driver:SetScript("OnEvent", function()
     build()
-    Window:Refresh()
+    styleAll()
 end)
 
 Notes:OnChange(function()
-    if frame then
-        Window:ApplyStyle()
-        Window:Refresh()
+    if built then
+        styleAll()
     end
 end)
 
 CRT.UI:RegisterPreview("note", function(on)
     build()
     previewOn = on and true or false
-    lastText = nil
-    Window:Refresh()
+    styleAll()
 end)

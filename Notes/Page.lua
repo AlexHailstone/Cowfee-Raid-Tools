@@ -228,7 +228,7 @@ local function build(pf)
     hint:SetPoint("TOPLEFT", 8, -32)
     hint:SetWidth(660)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. Use Toggle previews (top right) to place the note window and your alert.")
+    hint:SetText("Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window. Use Toggle previews (top right) to place the windows and your alert.")
 
     -- Left: the notes.
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
@@ -331,42 +331,46 @@ local function build(pf)
     status:SetPoint("RIGHT", save, "LEFT", -8, 0)
     status:SetJustifyH("LEFT")
 
-    -- Settings: the note window (left) and your alert (right).
+    -- Bottom left: your personal note, shown in its own window. Window settings have their own page.
     local top = -440
-    local windowLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    windowLabel:SetPoint("TOPLEFT", 8, top)
-    windowLabel:SetText("Note window")
-    local function win(key)
-        return function()
-            return Notes:Window()[key]
-        end, function(value)
-            Notes:Set("window", key, value)
-        end
-    end
-    makeCheck(pf, 4, top - 20, "Show the note window", win("shown"))
-    makeCheck(pf, 4, top - 44, "Hide lines once their time has passed", win("hidePassed"))
-    makeNumber(pf, 4, top - 70, "Font size (8 to 32)", win("fontSize"), 8, 32)
-    makeNumber(pf, 4, top - 94, "Window alpha % (10 to 100)", win("alpha"), 10, 100)
-    makeNumber(pf, 4, top - 118, "Background alpha % (0 to 100)", win("bgAlpha"), 0, 100)
-    makeNumber(pf, 4, top - 142, "Width (200 to 900)", win("width"), 200, 900)
-    makeNumber(pf, 4, top - 166, "Height (100 to 800)", win("height"), 100, 800)
-    local font = makeButton(pf, "Font: ", 250)
-    font:SetPoint("TOPLEFT", 8, top - 194)
-    font:SetScript("OnClick", function()
-        local current = Notes:Window().font
-        local fonts = CRT.NoteWindow.FONTS
-        local nextIndex = 1
-        for i, f in ipairs(fonts) do
-            if f.name == current then
-                nextIndex = i % #fonts + 1
-            end
-        end
-        Notes:Set("window", "font", fonts[nextIndex].name)
+    local personalLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    personalLabel:SetPoint("TOPLEFT", 8, top)
+    personalLabel:SetText("Personal note (only you see it)")
+    local pbox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
+    pbox:SetPoint("TOPLEFT", 8, top - 22)
+    pbox:SetSize(330, 168)
+    skin(pbox, 0.4)
+    local pscroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsPersonalNoteScroll", pbox, "UIPanelScrollFrameTemplate")
+    pscroll:SetPoint("TOPLEFT", 6, -6)
+    pscroll:SetPoint("BOTTOMRIGHT", -28, 6)
+    local personal = CreateFrame("EditBox", nil, pscroll)
+    personal:SetMultiLine(true)
+    personal:SetAutoFocus(false)
+    personal:SetFontObject(ChatFontNormal)
+    personal:SetWidth(290)
+    personal:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
     end)
-    font.refresh = function()
-        font:SetText("Font: " .. (Notes:Window().font or "Friz Quadrata"))
+    pscroll:SetScrollChild(personal)
+    personal.refresh = function()
+        if not personal:HasFocus() then
+            personal:SetText(Notes:Personal())
+        end
     end
-    controls[#controls + 1] = font
+    controls[#controls + 1] = personal
+
+    local psave = makeButton(pf, "Save personal note", 170)
+    psave:SetPoint("TOPLEFT", pbox, "BOTTOMLEFT", 0, -6)
+    psave:SetScript("OnClick", function()
+        personal:ClearFocus()
+        Notes:SetPersonal(personal:GetText())
+        CRT:Print("Personal note saved.")
+    end)
+    local windowSettings = makeButton(pf, "Window settings", 154)
+    windowSettings:SetPoint("LEFT", psave, "RIGHT", 6, 0)
+    windowSettings:SetScript("OnClick", function()
+        UI:Show("notewindows")
+    end)
 
     local alertLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     alertLabel:SetPoint("TOPLEFT", 360, top)
