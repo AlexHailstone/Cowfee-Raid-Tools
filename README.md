@@ -1,11 +1,11 @@
 <h1 align="center">Cowfee Raid Tools</h1>
 
 <p align="center">
-  <strong>Plan your raid groups once, save them, and apply them with one click.</strong>
+  <strong>Raid groups, ready checks, raid notes, debuffs and a late tracker, in one panel.</strong>
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.0+</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.12.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -15,19 +15,21 @@
 <img width="1079" height="936" alt="{E25B4934-0893-4D80-8215-5D491909EE3B}" src="https://github.com/user-attachments/assets/c858952a-aef5-4fa2-a6ab-eec86204b1eb" />
 
 
-Cowfee Raid Tools is a World of Warcraft addon for raid leaders and officers. It gives you a panel where you build a layout of 8 groups with 5 slots each, save it under a name, edit it whenever you like, and move your raid into it when you are ready.
+Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and raiders. Type `/crt` to open one panel with a page for each tool.
 
 > [!NOTE]
-> **Beta.** This is an early version and has had little testing outside its author's own raids. Applying a layout moves real players, so try it on a small group first and report anything odd.
+> **Beta.** Raid Groups has been used in its author's raids. The other pages (Ready Check, Debuffs, Raid Notes, Late Tracker) are new and have not been tested in a live raid yet. Applying a layout moves real players, so try it on a small group first, and please report anything odd.
 
 ## Contents
 
 - [Features](#features)
 - [Installation](#installation)
 - [Quick start](#quick-start)
-- [The Raid Groups page](#the-raid-groups-page)
-- [Import and export](#import-and-export)
-- [How Apply works](#how-apply-works)
+- [Raid Groups](#raid-groups)
+- [Ready Check](#ready-check)
+- [Debuffs](#debuffs)
+- [Raid Notes](#raid-notes)
+- [Late Tracker](#late-tracker)
 - [Commands](#commands)
 - [FAQ](#faq)
 - [Known limitations](#known-limitations)
@@ -37,47 +39,34 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders and officers. It
 
 ## Features
 
-- **Save as many layouts as you like.** "Heroic main", "Alt night", "Mythic 4/2". Load any of them from the Quick Load list.
-- **Edit any time.** Click a slot to pick a name, drag to move or swap, right-click to clear. You do not need to be in a raid to edit.
-- **Auto-save.** With *Keep changes* on, every edit is saved to the layout you have loaded.
-- **Rename in place.** With a layout loaded, its name at the top is an edit box.
-- **See who is here.** Names in your group are bright and class colored. Names that are not are dark grey with a muted red border.
-- **Role icons.** Tank, healer and damage icons next to each name, remembered for players who are not in the group right now.
-- **Pick from your raid or your guild**, or type any name.
-- **Apply to the live raid** with one button, one safe move at a time.
-- **Import and export.** Share a layout as a text string, or paste a column of names straight from a spreadsheet.
-- **Readable.** All text is scaled up 20 percent.
+| Page | What it does |
+|---|---|
+| **Raid Groups** | Save raid layouts of 8 groups, edit them any time, and move the live raid into one with a click. Import a layout string or a pasted column of names |
+| **Ready Check** | Your own consumables bar on every ready check. A raid report of everyone's food, flask, augment rune, Vantus rune and the raid buffs your group can give, shown to you or posted to chat. A ready check window for leaders with every player's answer, consumables, buffs and durability |
+| **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
+| **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
+| **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
+
+**Toggle previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
 
 ## Installation
 
-1. Download the latest release and unzip it.
+1. Download `CowfeeRaidTools-<version>.zip` from the [latest release](../../releases/latest) and unzip it.
 2. Copy the `CowfeeRaidTools` folder into `World of Warcraft\_retail_\Interface\AddOns\`.
 3. Start the game, or type `/reload` if you are already in it.
 4. Type `/crt` to open the panel.
 
-The folder name must be exactly `CowfeeRaidTools`, with the `.toc` file directly inside it.
+The folder name must be exactly `CowfeeRaidTools`, with the `.toc` file directly inside it. Do not use GitHub's green Code button or the "Source code" downloads, which give a folder with the wrong name.
 
 ## Quick start
 
-1. Type `/crt groups` to open the Raid Groups page.
-2. Fill the grid. Pick names from the list, press **Set current roster** to copy your live group, or press **Import** to paste a list.
-3. Press **Save current roster as new** and give the layout a name. It appears under **Quick Load**.
-4. On raid night, load the layout, check who is dimmed, then press **Apply groups**. You need to be the raid leader or an assistant.
+1. Type `/crt` and press **Toggle previews** to place the windows you want.
+2. Raid leaders: build and save your layouts on **Raid Groups**, and import the night's notes on **Raid Notes**, then press **Share to raid** before the pull.
+3. Everyone: the Ready Check bar, the debuff panel and the raid note windows work on their own once placed.
 
-## The Raid Groups page
+## Raid Groups
 
-```
-  Group 1               Group 2                 Quick Load
-  [tank]  Name-Realm    [heal]  Name-Realm      > Mythic Roster
-  [dps]   Name-Realm    [dps]   Name-Realm        Heroic Main
-  [dps]   Name-Realm    [dps]   Name-Realm        Alt Night
-  ...                   ...
-  Group 3               Group 4                 [x] Keep changes
-  ...                   ...                     [ Save current roster as new ]
-                                                [ Delete layout ]
-  [ Set current roster ] [ Clear grid ]         [ Export current groups ]
-  [        Apply groups          ]              [ Import ]
-```
+Build a layout of 8 groups with 5 slots each, save it under a name, edit it whenever you like, and move your raid into it when you are ready.
 
 | You do this | What happens |
 |---|---|
@@ -86,81 +75,83 @@ The folder name must be exactly `CowfeeRaidTools`, with the `.toc` file directly
 | Right-click a slot | The slot is cleared |
 | Click a layout in Quick Load | It loads into the grid |
 | Edit the name at the top | The layout is renamed when you press Enter or click away |
-| Press **Set current roster** | The grid fills from your live group, in its current subgroups |
+| Press **Set current roster** | The grid fills from your live group, in its current subgroups, after asking if the grid has names |
 | Press **Clear grid** | The grid empties |
+| Press **Apply groups** | The raid is moved into the layout, one move at a time. Leader or assistant only, out of combat |
 
-**Bright and dim names.** A name in your current group shows in its class color with a role icon. A name that is not in your group shows dark grey, with a dimmed icon if the addon has seen that player's role before, and a muted red border. If you are solo, you count as a group of one.
+**Bright and dim names.** A name in your current group shows in its class color with a role icon. A name that is not shows dark grey with a muted red border.
 
-**Roles.** Icons come from the roles assigned in your group. Your own role falls back to your current specialization. The addon remembers the last role it saw for each player.
+**Import and export.** Export gives a `CRT1;` string to share with anyone using the addon. Import also takes plain names, one per line, such as a column copied from a spreadsheet: rows 1 to 5 fill Group 1, rows 6 to 10 Group 2, and a blank row leaves a slot empty.
 
-**Pick names from.** The *Raid* and *Guild* switch at the top chooses which list the picker shows. Raid means your current group, and Guild means your guild roster.
+**How Apply works.** It moves one player at a time and waits for the game to confirm each move. Players not in the layout keep their group if there is room. Players in combat are skipped and listed, and so are names in the layout who are not in the raid. It stops if combat starts.
 
-## Import and export
+## Ready Check
 
-**Export** gives you a text string starting with `CRT1;`. Copy it from the box and share it with anyone using the addon. They press **Import** and paste it to add the layout.
+`/crt readycheck` opens the page, which has four tabs.
 
-**Paste a name list.** You can also paste plain names, one per line. Row 1 becomes slot 1, so rows 1 to 5 fill Group 1, rows 6 to 10 fill Group 2, and so on. This works with a column copied straight from a spreadsheet:
+- **Raid report.** Check the group's food, flask, augment rune, Vantus rune and raid buffs. **Check** shows the result only to you, **Post to chat** sends it to the raid. Raid buffs are only checked when someone in the group can give them. Players whose buffs the game hides are listed as "couldn't check", never as missing.
+- **On ready check.** Run the report automatically on a ready check or a pull timer, choose where it goes, and what counts (best food only, flask expiring warning). The automatic report only goes to chat from whoever started the ready check, so it is posted once.
+- **Window.** A table that opens on a ready check for the raid leader and assistants: every player's ready answer, consumables, raid buffs and durability, for 30 seconds or until you right-click it. Arrange its columns by dragging the headings in the copy on this tab, and click a heading to hide it.
+- **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own.
 
-```
-Mesmerism
-Whitecrow
-Rixxie
-Cheoeqar
-Abu
-Crazyio
-Dots
-```
+Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own.
 
-- A blank row leaves that slot empty, so you can leave gaps for benched players.
-- If you copy several columns, the first non-empty cell on each row is used as the name.
-- Names with no realm are treated as your own realm. A raid member with that name from another realm is still matched if there is only one.
-- Up to 40 rows are accepted, and a repeated name is only used once.
+## Debuffs
 
-## How Apply works
+`/crt debuffs`. A movable panel that shows the boss mechanic debuffs on you during combat, using the slots the game provides for them. Choose the icon size and how many to show, and place it with Toggle previews.
 
-Apply works out where everyone should go and moves one player at a time, waiting for the game to confirm each move. It always finishes in a bounded number of moves, and never moves a player who is already in the right place.
+## Raid Notes
 
-- It only runs for the raid leader or an assistant, in a raid, and out of combat.
-- Players who are not in the layout keep their group if there is room, and otherwise take the first free seat.
-- Players in combat are left where they are, and you are told who could not be moved.
-- Names in the layout who are not in the raid are listed.
-- It stops if combat starts, or if the game stops accepting moves.
+`/crt notes` opens the page, with a **Notes** tab and a **Settings** tab.
+
+**The note format.** Lines of `key:value;` pairs. A timer line looks like `time:34;ph:1;tag:Name;spellid:64843;` or `time:48;ph:1;tag:G1;text:Group 1 go in;dur:8;`. A tag can be a player name, a role (`tank`, `healer`, `dps`, `melee`, `ranged`), a raid group (`G1`, `Group 1`), or `everyone`. A line starting `EncounterID:` names the boss, and an `invitelist:` line becomes a Raid Groups layout. Every other line is assignment text.
+
+- **Share to raid** sends the note to everyone with the addon. Only the leader or an assistant can share, and only before the pull, since the game blocks addon messages during a boss fight.
+- **Three windows:** the timers, counting down from the pull; the assignments, with your lines marked and names class colored; and your own personal note. Each can be locked so clicks pass through, or unlocked to drag and resize.
+- **Show only me** keeps only the timers for your name, role, raid group or everyone.
+- **Your alert** shows your next spell or callout before it is due, and can read it out with text to speech.
+- **Phases.** The first phase starts on the pull. The game gives addons no phase-change signal, so later phases start when someone presses **Next phase** or types `/crt note next`.
+
+## Late Tracker
+
+`/crt late`. Tick your raid days and the start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in it who is not in your group gets a running clock until they join, or until the group disbands. **Start raid now** starts a night by hand when invites go out off schedule. Every night is saved to a history with join times, and Totals shows how often each player was late.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/crt` | Opens or closes the panel |
-| `/crt groups` | Opens the Raid Groups page |
+| `/crt groups` | Raid Groups |
+| `/crt readycheck` | Ready Check. `/crt consumables` opens its Your bar tab |
+| `/crt check food` (or `flask`, `rune`, `vantus`, `buffs`, `all`) | Checks the group and shows it to you. Add `chat` to post it, such as `/crt check all chat` |
+| `/crt rc` | Shows your ready check bar for 20 seconds, for testing |
+| `/crt debuffs` | Debuffs |
+| `/crt notes` | Raid Notes. `/crt notes settings` opens its Settings tab |
+| `/crt note test`, `/crt note next`, `/crt note stop` | Start the note in use now, start the next phase, stop |
+| `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |
+| `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt help` | Lists the commands |
 
 ## FAQ
 
 <details>
-<summary><strong>Where are my layouts saved?</strong></summary>
+<summary><strong>Where are my settings saved?</strong></summary>
 
-In the game's saved variables: `WTF\Account\<account>\SavedVariables\CowfeeRaidTools.lua`. Back that file up if you want to keep your layouts.
+In the game's saved variables: `WTF\Account\<account>\SavedVariables\CowfeeRaidTools.lua`. Back that file up if you want to keep your layouts, notes and late history.
 
 </details>
 
 <details>
 <summary><strong>Do other raid members need the addon?</strong></summary>
 
-No. Only the person who applies a layout needs it, and it does not talk to other players' addons.
+Not for Raid Groups, the raid report or the Late Tracker. Raiders need it to receive shared raid notes, to get the note windows and alert, and for their durability to show in the ready check window.
 
 </details>
 
 <details>
 <summary><strong>Does it work with my other raid addons?</strong></summary>
 
-It is standalone and keeps its own data, so it can sit next to them. It does not read their settings.
-
-</details>
-
-<details>
-<summary><strong>Why are some names dimmed?</strong></summary>
-
-They are in your layout but not in your current group.
+It is standalone, keeps its own data and has no bundled libraries, so it can sit next to them.
 
 </details>
 
@@ -173,14 +164,15 @@ Close the game and delete `CowfeeRaidTools.lua` from your SavedVariables folder.
 
 ## Known limitations
 
-- A role icon only shows for players the group has assigned a role to. Names picked from the guild list have no icon until you have seen that player in a group.
+- During combat and boss fights the game hides many values from addons. The raid report and ready check window list players they cannot read as "couldn't check", and it is not yet confirmed whether other players' buffs can be read inside a raid instance.
+- The built-in consumables list is still being filled in. Until it is, food, flasks and runes on other players are recognized by their English buff names, so the raid report needs an English game client.
+- Raid note phases after the first need **Next phase**, and notes must be shared before the pull.
+- Potions and healthstones used in a fight, and other players' weapon oils and armor kits, cannot be checked.
 - Apply cannot move a player who is in combat.
-- Export strings only work with this addon.
-- There is no Split roster feature yet.
 
 ## Reporting a problem
 
-Please open an issue and include what you did, what you expected, and the exact error text if there is one. To see Lua errors, type `/console scriptErrors 1` and `/reload`. Include your game version, from `/dump select(4, GetBuildInfo())`.
+Please open an issue and include what you did, what you expected, and the exact error text if there is one. To see Lua errors, type `/console scriptErrors 1` and `/reload`. Include your game version, from `/dump select(4, GetBuildInfo())`, and the addon version from `/crt help`.
 
 ## Development
 
@@ -191,16 +183,18 @@ CowfeeRaidTools/
   CowfeeRaidTools.toc    title, version, interface number, saved variable
   Core.lua               namespace, saved data defaults, scaled fonts
   Slash.lua              the /crt command
-  UI/Panel.lua           main window, left menu, page registry
-  Groups/Data.lua        names, rosters, roles, layouts, import and export
-  Groups/Apply.lua       moves the live raid into a layout
-  Groups/Page.lua        the Raid Groups page
+  UI/Panel.lua           main window, left menu, page registry, previews
+  Groups/                Raid Groups: data, Apply, page
+  Consumables/           your ready check bar and the consumables list
+  ReadyCheck/            the Ready Check page, raid report and ready check window
+  Debuffs/               the debuff panel
+  Notes/                 raid notes: parser, timers, windows, alert, sharing, page
+  Late/                  the Late Tracker
 ```
 
-- **Adding a page.** Create a file that builds its frame and calls `CRT.UI:RegisterPage(key, title, builder)`, then add it to the `.toc`. The panel adds the menu entry for you.
+- **Releases.** Pushing a tag such as `v0.12.0` runs the GitHub Actions workflow in `.github/workflows/release.yml`, which builds `CowfeeRaidTools-v0.12.0.zip` with the BigWigs packager (`BigWigsMods/packager`) and attaches it to a GitHub release.
 - **Saved data.** Everything lives in the `CRTDB` saved variable. New settings are added as defaults in `Core.lua` so existing saved data keeps loading.
-- **Syntax check.** There is no Lua runtime outside the game, so a syntax check with the `luaparse` package catches typos before a `/reload`. Runtime errors still need the game, with `/console scriptErrors 1`.
-- **After a patch.** Update `## Interface:` in the `.toc` to the new number from `/dump select(4, GetBuildInfo())`, then test the page and Apply on a small group.
+- **After a patch.** Update `## Interface:` in the `.toc` to the new number from `/dump select(4, GetBuildInfo())`.
 
 ## License
 
