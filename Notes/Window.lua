@@ -18,12 +18,8 @@ local REFRESH_SECONDS = 0.1
 local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 
-NoteWindow.FONTS = {
-    { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
-    { name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
-    { name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
-    { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
-}
+-- The same list as the Addon Settings page's font choice, in Core.lua.
+NoteWindow.FONTS = CRT.FONTS
 
 local previewOn = false
 
@@ -252,7 +248,7 @@ local function createWindow(key, defaultPosition, build)
     end
 
     local frame = CreateFrame("Frame", "CowfeeRaidToolsNote_" .. key, UIParent, "BackdropTemplate")
-    frame:SetFrameStrata("MEDIUM")
+    CRT.UI:RegisterLayer("notes", frame)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:SetResizable(true)

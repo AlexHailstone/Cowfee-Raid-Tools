@@ -504,7 +504,7 @@ local function build()
         return
     end
     frame = CreateFrame("Frame", "CowfeeRaidToolsDebuffPanel", UIParent)
-    frame:SetFrameStrata("HIGH")
+    CRT.UI:RegisterLayer("debuffs", frame)
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
     local width, size = panelWidth()
@@ -515,7 +515,7 @@ local function build()
     -- A drag handle above the panel, shown during a preview. It is a separate frame, not a child,
     -- so it keeps its own visibility.
     handle = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    handle:SetFrameStrata("HIGH")
+    CRT.UI:RegisterLayer("debuffs", handle)
     handle:SetHeight(20)
     handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
     handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)

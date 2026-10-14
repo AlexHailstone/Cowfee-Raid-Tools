@@ -16,6 +16,7 @@ local function printHelp()
     print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
     print("  |cffffd100/crt late export|r - the late totals as text to paste into Discord")
     print("  |cffffd100/crt qol|r - open the Quality of Life page")
+    print("  |cffffd100/crt settings|r - open Addon Settings: window scale and style, fonts, layers")
     print("  |cffffd100/crt lowhp off|r, |cffffd100on|r, |cffffd100info|r - turn the experimental low-health alert off or on, or print its diagnostics")
     print("  |cffffd100/crt perf|r - this addon's CPU use since the last /reload, from the game's profiler")
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
@@ -108,6 +109,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     --@end-do-not-package@
     elseif msg == "qol" then
         CRT.UI:Show("qol")
+    elseif msg == "settings" then
+        CRT.UI:Show("settings")
     elseif msg == "perf" then
         CRT.Perf:Report()
     elseif msg == "previews" then

@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- The Quality of Life page: a home for small conveniences and their settings, in CRTDB.qol with
--- defaults in Core.lua. The panel's size (CRTDB.window.scale, applied by UI/Panel.lua), and the
--- experimental low-health alert (QoL/LowHealth.lua).
+-- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua). The window scale moved
+-- to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
 
 local UI = CRT.UI
 local LowHealth = CRT.LowHealth
@@ -11,11 +11,6 @@ local LowHealth = CRT.LowHealth
 local TEXT = {
     title = "Quality of Life",
     hint = "Small conveniences for raid nights.",
-
-    panelSize = "Panel size",
-    panelSizeLabel = "Window Scale: (50% to 200%)",
-    panelSizeNote = "The new size applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.",
-    panelSizeReset = "Reset to 100%",
 
     lowHealth = "Low-health alert",
     lowHealthTag = "(experimental)",
@@ -65,41 +60,6 @@ local function smallButton(pf, text)
     b:SetHighlightFontObject(GameFontHighlightSmall)
     b:SetDisabledFontObject(GameFontDisableSmall)
     return b
-end
-
--- Panel size ----------------------------------------------------------------------------------
-
-local function buildPanelSize(pf, top)
-    local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    heading:SetPoint("TOPLEFT", 8, top)
-    heading:SetText(TEXT.panelSize)
-    UI.Help(pf, TEXT.panelSize, TEXT.panelSizeNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
-    -- The slider sits inside the window it resizes, so the size is applied when the mouse lets go,
-    -- not on every step, or the slider would move under the mouse while dragging.
-    local slider = UI.Slider(pf, TEXT.panelSizeLabel, {
-        min = UI.MIN_SCALE,
-        max = UI.MAX_SCALE,
-        step = 5,
-        labelWidth = SLIDER_LABEL_W,
-        width = 200,
-        format = percent,
-        onRelease = true,
-        get = function()
-            return UI:Scale()
-        end,
-        set = function(v)
-            UI:SetScale(v)
-        end,
-    })
-    slider:SetPoint("TOPLEFT", 10, top - 16)
-    controls[#controls + 1] = slider
-
-    local reset = smallButton(pf, TEXT.panelSizeReset)
-    reset:SetPoint("LEFT", slider, "RIGHT", 12, 0)
-    reset:SetScript("OnClick", function()
-        UI:SetScale(100)
-    end)
-
 end
 
 -- Low-health alert ----------------------------------------------------------------------------
@@ -163,12 +123,9 @@ local function build(pf)
 
     UI.Help(pf, TEXT.title, TEXT.hint):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
-    buildPanelSize(pf, -42)
-    buildLowHealth(pf, -98)
+    buildLowHealth(pf, -42)
 
     pf:SetScript("OnShow", refresh)
-    -- Ctrl + mouse wheel changes the size too, so the slider follows it.
-    UI.onScale = refresh
 end
 
 UI:RegisterPage("qol", TEXT.title, build)

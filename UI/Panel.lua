@@ -62,6 +62,106 @@ function UI:SetScale(percent)
     end
 end
 
+-- Layers -----------------------------------------------------------------------------------------
+-- Each kind of window registers its frames with RegisterLayer, which draws them in the frame strata
+-- chosen on the Addon Settings page, or in the window's default. The choice is saved per kind in
+-- CRTDB.ui.layers, and only while it differs from the default.
+
+UI.STRATA = {
+    { key = "BACKGROUND", label = "Background" },
+    { key = "LOW", label = "Low" },
+    { key = "MEDIUM", label = "Medium" },
+    { key = "HIGH", label = "High" },
+    { key = "DIALOG", label = "Dialog" },
+    { key = "FULLSCREEN", label = "Fullscreen" },
+    { key = "FULLSCREEN_DIALOG", label = "Fullscreen dialog" },
+    { key = "TOOLTIP", label = "Tooltip" },
+}
+
+UI.LAYERS = {
+    { key = "panel", label = "Main window", default = "HIGH" },
+    { key = "notes", label = "Note windows", default = "MEDIUM" },
+    { key = "alert", label = "Your next spell", default = "HIGH" },
+    { key = "readycheck", label = "Ready check window", default = "HIGH" },
+    { key = "bar", label = "Your consumables bar", default = "HIGH" },
+    { key = "debuffs", label = "Debuff panel", default = "HIGH" },
+    { key = "lowhealth", label = "Low-health banner", default = "DIALOG" },
+}
+
+local layerDefaults, layerFrames = {}, {}
+for _, layer in ipairs(UI.LAYERS) do
+    layerDefaults[layer.key] = layer.default
+    layerFrames[layer.key] = {}
+end
+local layersWaiting = false -- a change blocked by combat, applied when combat ends
+
+function UI:Layer(key)
+    local saved = CRT.db and CRT.db.ui and CRT.db.ui.layers[key]
+    return saved or layerDefaults[key] or "MEDIUM"
+end
+
+-- A protected frame (one holding secure buttons) can't change strata in combat, so that waits.
+local function applyLayer(key)
+    for _, frame in ipairs(layerFrames[key]) do
+        if InCombatLockdown() and frame:IsProtected() then
+            layersWaiting = true
+        else
+            frame:SetFrameStrata(UI:Layer(key))
+        end
+    end
+end
+
+function UI:RegisterLayer(key, frame)
+    local list = layerFrames[key]
+    list[#list + 1] = frame
+    frame:SetFrameStrata(self:Layer(key))
+end
+
+function UI:SetLayer(key, strata)
+    CRT.db.ui.layers[key] = (strata ~= layerDefaults[key]) and strata or nil
+    applyLayer(key)
+    if layersWaiting then
+        CRT:Print("That window can't change layer during combat. It will change when combat ends.")
+    end
+end
+
+local layerEvents = CreateFrame("Frame")
+layerEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+layerEvents:SetScript("OnEvent", function()
+    if layersWaiting then
+        layersWaiting = false
+        for _, layer in ipairs(UI.LAYERS) do
+            applyLayer(layer.key)
+        end
+    end
+end)
+
+-- Window style ------------------------------------------------------------------------------------
+-- "game" shows the window template's own art, "minimal" hides it for a flat black background with a
+-- thin border. bgAlpha fades whichever background is showing, never the text or buttons.
+
+function UI:ApplyStyle()
+    local f = self.frame
+    if not f then
+        return
+    end
+    local s = CRT.db.ui
+    local minimal = s.style == "minimal"
+    local alpha = (s.bgAlpha or 100) / 100
+    for _, texture in ipairs(f.art) do
+        texture:SetShown(not minimal)
+        texture:SetAlpha(alpha)
+    end
+    for _, texture in ipairs(f.flat) do
+        texture:SetShown(minimal)
+    end
+    f.flatBg:SetColorTexture(0, 0, 0, 0.92 * alpha)
+    f.flatTitle:SetColorTexture(0.12, 0.12, 0.12, alpha)
+    for _, edge in ipairs(f.flatEdges) do
+        edge:SetColorTexture(0.3, 0.3, 0.3, alpha)
+    end
+end
+
 -- A small blue (?) that shows an explanation as a tooltip, used for every bit of extra context so the
 -- pages stay compact. text is a string, with paragraphs split on blank lines, or a function returning
 -- one, for text that changes. Anchor the returned button beside the heading or control it explains.
@@ -130,7 +230,38 @@ function UI:Create()
 
     local f = CreateFrame("Frame", "CowfeeRaidToolsFrame", UIParent, "BasicFrameTemplateWithInset")
     f:SetSize(FRAME_W, FRAME_H)
-    f:SetFrameStrata("HIGH")
+    UI:RegisterLayer("panel", f)
+
+    -- The template's art, for the Addon Settings page's style and opacity: every texture it made.
+    f.art = {}
+    for _, region in ipairs({ f:GetRegions() }) do
+        if region:GetObjectType() == "Texture" then
+            f.art[#f.art + 1] = region
+        end
+    end
+    -- The minimal style: a flat background, a darker title strip and a thin border.
+    f.flatBg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+    f.flatBg:SetAllPoints()
+    f.flatTitle = f:CreateTexture(nil, "BACKGROUND", nil, -7)
+    f.flatTitle:SetPoint("TOPLEFT", 1, -1)
+    f.flatTitle:SetPoint("TOPRIGHT", -1, -1)
+    f.flatTitle:SetHeight(23)
+    f.flatEdges = {}
+    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true }, { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
+        local edge = f:CreateTexture(nil, "BORDER")
+        edge:SetPoint(side[1])
+        edge:SetPoint(side[2])
+        if side[3] then
+            edge:SetHeight(1)
+        else
+            edge:SetWidth(1)
+        end
+        f.flatEdges[#f.flatEdges + 1] = edge
+    end
+    f.flat = { f.flatBg, f.flatTitle }
+    for _, edge in ipairs(f.flatEdges) do
+        f.flat[#f.flat + 1] = edge
+    end
     f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -208,6 +339,7 @@ function UI:Create()
     end
 
     self.frame = f
+    self:ApplyStyle()
     f:Hide()
     return f
 end

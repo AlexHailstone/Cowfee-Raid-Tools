@@ -34,6 +34,7 @@ local TEXT = {
     tts = "Text to Speech",
     ttsSeconds = "Count down seconds",
     ttsVolume = "Speech volume",
+    alertIcon = "Spell icon",
     testSpeech = "Test speech",
     testPhrase = "Cowfee Raid Tools. Avenging Wrath in three.",
 
@@ -43,6 +44,12 @@ local TEXT = {
 }
 
 local COLUMN_W = 226
+local ICON_POSITIONS = {
+    { key = "left", label = "Left" },
+    { key = "right", label = "Right" },
+    { key = "above", label = "Above" },
+    { key = "below", label = "Below" },
+}
 local WINDOWS = {
     { key = "window", title = TEXT.timers },
     { key = "assignments", title = TEXT.assignments },
@@ -250,8 +257,12 @@ local function build(pf)
     local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = 100, width = 150, get = volumeGet, set = volumeSet, enabledIf = speechOn })
     volume:SetPoint("TOPLEFT", 8, top - 116)
     controls[#controls + 1] = volume
+    local iconGet, iconSet = alert("iconPosition")
+    local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = 100, width = 150, get = iconGet, set = iconSet, enabledIf = alertsOn })
+    iconRow:SetPoint("TOPLEFT", 8, top - 148)
+    controls[#controls + 1] = iconRow
     local speak = makeButton(pf, TEXT.testSpeech, 140)
-    speak:SetPoint("TOPLEFT", 8, top - 164)
+    speak:SetPoint("TOPLEFT", 8, top - 188)
     speak:SetScript("OnClick", function()
         CRT.NoteAlert:Speak(TEXT.testPhrase)
     end)

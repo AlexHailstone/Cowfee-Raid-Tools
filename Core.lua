@@ -6,6 +6,11 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 
 local defaults = {
     window = { point = "CENTER", x = 0, y = 0, scale = 100 }, -- the main panel; scale is a percent, 50 to 200
+    -- The Addon Settings page. font is "default" (the game's own) or a name from CRT.FONTS, outline is
+    -- "", "OUTLINE" or "THICKOUTLINE", textSize a percent. style is "game" (the game's window art) or
+    -- "minimal" (flat black), bgAlpha the main window background's opacity in percent. layers holds a
+    -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
+    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {} },
     lastPage = "groups",
     classCache = {},
     roleCache = {},
@@ -127,6 +132,7 @@ local defaults = {
             ttsSeconds = 3, -- read it out at this many seconds left
             ttsVolume = 100,
             ttsRate = 0,
+            iconPosition = "left", -- the spell icon: left, right, above or below the text
         },
     },
     -- Quality of Life options. lowHealth is the experimental low-health alert: threshold is the health
@@ -161,16 +167,56 @@ local function copyDefaults(src, dst)
     end
 end
 
+-- The fonts the addon offers: on the Addon Settings page for all its text, and for each note window.
+-- All four ship with the game.
+CRT.FONTS = {
+    { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
+    { name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
+    { name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
+    { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
+}
+
+function CRT:FontPath(name)
+    for _, font in ipairs(self.FONTS) do
+        if font.name == name then
+            return font.path
+        end
+    end
+    return nil
+end
+
 -- Shared font objects: Blizzard's fonts scaled up so every label, button and list is easier to read.
+-- Every text the addon draws uses one of these, so CRT:ApplyFonts changes all of it at once.
 CRT.FONT_SCALE = 1.2
+local fonts = {} -- { object, path, size, flags }: each font object and the game font it started as
 
 local function makeFont(name, source)
     local font = CreateFont(name)
     font:CopyFontObject(source)
     local path, size, flags = font:GetFont()
+    size = math.floor(size * CRT.FONT_SCALE + 0.5)
     -- SetFont's third argument is no longer optional (12.0.5), so pass "" when there are no flags.
-    font:SetFont(path, math.floor(size * CRT.FONT_SCALE + 0.5), flags or "")
+    font:SetFont(path, size, flags or "")
+    fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "" }
     return font
+end
+
+-- Applies the Addon Settings page's font, outline and text size to every shared font. Text drawn
+-- with them changes straight away.
+function CRT:ApplyFonts()
+    local s = self.db and self.db.ui
+    if not s then
+        return
+    end
+    local factor = (s.textSize or 100) / 100
+    for _, f in ipairs(fonts) do
+        local path = self:FontPath(s.font) or f.path
+        local flags = s.outline or ""
+        if flags == "" then
+            flags = f.flags
+        end
+        f.object:SetFont(path, math.floor(f.size * factor + 0.5), flags)
+    end
 end
 
 makeFont("CRTFontNormal", GameFontNormal)
@@ -191,6 +237,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         CRTDB = CRTDB or {}
         copyDefaults(defaults, CRTDB)
         CRT.db = CRTDB
+        CRT:ApplyFonts()
         self:UnregisterEvent("ADDON_LOADED")
     end
 end)

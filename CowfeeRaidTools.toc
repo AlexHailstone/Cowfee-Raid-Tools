@@ -39,6 +39,7 @@ Late\Data.lua
 Late\Page.lua
 QoL\LowHealth.lua
 QoL\Page.lua
+UI\SettingsPage.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
 #@end-do-not-package@

@@ -691,7 +691,7 @@ end
 
 local function build()
     frame = CreateFrame("Frame", "CowfeeRaidToolsReadyCheckWindow", UIParent, "BackdropTemplate")
-    frame:SetFrameStrata("HIGH")
+    CRT.UI:RegisterLayer("readycheck", frame)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:EnableMouse(true)

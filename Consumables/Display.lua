@@ -52,7 +52,7 @@ local function build()
     local count = #Consumables.CATEGORIES
     frame = CreateFrame("Frame", "CowfeeRaidToolsReadyCheckRow", UIParent, "BackdropTemplate")
     frame:SetSize(Bar.Size(count))
-    frame:SetFrameStrata("HIGH")
+    CRT.UI:RegisterLayer("bar", frame)
     frame:SetBackdrop(Bar.BACKDROP)
     frame:SetBackdropColor(0, 0, 0, 0.45)
     frame:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)

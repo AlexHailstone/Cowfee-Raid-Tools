@@ -9,8 +9,10 @@ local Alert = {}
 CRT.NoteAlert = Alert
 
 local REFRESH_SECONDS = 0.1
+local ICON_GAP = 8 -- between the icon and the text
+local LINE_GAP = 2 -- between the name and the countdown
 
-local frame, handle, icon, label, countdown
+local frame, handle, icon, block, label, countdown
 local previewOn = false
 local elapsed = 0
 local spoken = {} -- "runId:index" -> true once read out
@@ -57,6 +59,42 @@ end
 
 -- The alert -------------------------------------------------------------------------------
 
+-- Lays the alert out: the name and the countdown centered under each other, and the icon, two text
+-- lines tall, on the side chosen on the Raid Notes Settings tab. The alert is kept centered on its
+-- saved position, so it grows evenly as the name changes.
+local function layout()
+    local nameHeight = select(2, label:GetFont()) or 18
+    local timeHeight = select(2, countdown:GetFont()) or 18
+    local height = math.floor(nameHeight + LINE_GAP + timeHeight + 0.5)
+    local width = math.max(label:GetStringWidth(), countdown:GetStringWidth(), 20)
+    block:SetSize(width, height)
+    icon:SetSize(height, height)
+
+    icon:ClearAllPoints()
+    block:ClearAllPoints()
+    local position = settings().iconPosition or "left"
+    if not icon:IsShown() then
+        block:SetPoint("CENTER")
+        frame:SetSize(width, height)
+    elseif position == "right" then
+        block:SetPoint("LEFT")
+        icon:SetPoint("LEFT", block, "RIGHT", ICON_GAP, 0)
+        frame:SetSize(width + ICON_GAP + height, height)
+    elseif position == "above" then
+        icon:SetPoint("TOP")
+        block:SetPoint("TOP", icon, "BOTTOM", 0, -ICON_GAP / 2)
+        frame:SetSize(math.max(width, height), height * 2 + ICON_GAP / 2)
+    elseif position == "below" then
+        block:SetPoint("TOP")
+        icon:SetPoint("TOP", block, "BOTTOM", 0, -ICON_GAP / 2)
+        frame:SetSize(math.max(width, height), height * 2 + ICON_GAP / 2)
+    else
+        icon:SetPoint("LEFT")
+        block:SetPoint("LEFT", icon, "RIGHT", ICON_GAP, 0)
+        frame:SetSize(height + ICON_GAP + width, height)
+    end
+end
+
 local function show(iconTexture, text, time, color)
     icon:SetShown(iconTexture ~= nil)
     if iconTexture then
@@ -69,6 +107,7 @@ local function show(iconTexture, text, time, color)
         label:SetTextColor(1, 0.82, 0)
     end
     countdown:SetText(time)
+    layout()
     frame:Show()
 end
 
@@ -76,9 +115,9 @@ local function countdownText(remaining)
     if remaining <= 0 then
         return "NOW"
     elseif remaining < 10 then
-        return format("%.1f", remaining)
+        return format("%.1fs", remaining)
     end
-    return tostring(math.floor(remaining))
+    return math.floor(remaining) .. "s"
 end
 
 function Alert:Refresh()
@@ -88,7 +127,7 @@ function Alert:Refresh()
     handle:SetShown(previewOn)
     if previewOn then
         local info = Notes:SpellInfo(31884)
-        show(info and info.icon or 134400, info and info.name or "Your spell", "5.0")
+        show(info and info.icon or 134400, info and info.name or "Your spell", "5.0s")
         return
     end
     local s = settings()
@@ -153,23 +192,24 @@ local function build()
     end
     frame = CreateFrame("Frame", "CowfeeRaidToolsNoteAlert", UIParent)
     frame:SetSize(320, 56)
-    frame:SetFrameStrata("HIGH")
+    CRT.UI:RegisterLayer("alert", frame)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
 
     icon = frame:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(52, 52)
-    icon:SetPoint("LEFT", 0, 0)
     icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
-    label = frame:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    label:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -2)
-    label:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-    label:SetJustifyH("LEFT")
+    -- The two text lines, centered under each other in their own frame.
+    block = CreateFrame("Frame", nil, frame)
+    label = block:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    label:SetPoint("TOP")
+    label:SetJustifyH("CENTER")
+    label:SetWordWrap(false)
     label:SetShadowOffset(1, -1)
 
-    countdown = frame:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    countdown:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", 10, 2)
+    countdown = block:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    countdown:SetPoint("TOP", label, "BOTTOM", 0, -LINE_GAP)
+    countdown:SetJustifyH("CENTER")
     countdown:SetTextColor(1, 1, 1)
     countdown:SetShadowOffset(1, -1)
 
@@ -188,10 +228,13 @@ local function build()
     handle:SetScript("OnDragStart", function()
         frame:StartMoving()
     end)
+    -- Saved by its center, so the alert grows evenly around where you put it.
     handle:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
-        local point, _, relativePoint, x, y = frame:GetPoint()
-        settings().position = { point = point, relativePoint = relativePoint, x = x, y = y }
+        local x, y = frame:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        settings().position = { point = "CENTER", relativePoint = "CENTER", x = x - ux, y = y - uy }
+        applyPosition()
     end)
     handle:Hide()
 

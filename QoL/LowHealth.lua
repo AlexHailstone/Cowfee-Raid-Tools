@@ -139,8 +139,8 @@ local function build()
     end
     frame = CreateFrame("Frame", "CowfeeRaidToolsLowHealth", UIParent, "BackdropTemplate")
     frame:SetSize(300, 56)
-    -- Above the main panel (HIGH), so the panel never covers it.
-    frame:SetFrameStrata("DIALOG")
+    -- By default above the main panel (HIGH), so the panel never covers it.
+    CRT.UI:RegisterLayer("lowhealth", frame)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })

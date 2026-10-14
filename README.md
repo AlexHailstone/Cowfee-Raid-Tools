@@ -42,7 +42,8 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Ready Check** | Your own consumables bar on every ready check. A raid report of everyone's food, flask, augment rune, Vantus rune and the raid buffs your group can give, shown to you or posted to chat. A ready check window for leaders with every player's answer, consumables, buffs and durability |
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
 | **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
-| **Quality of Life** | Small conveniences: the panel's size, 50% to 200% with the text scaled too (also Ctrl + mouse wheel over the panel), and an experimental LOW HEALTH banner at or under a health percent you set with a slider. Off by default |
+| **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider. Off by default |
+| **Addon Settings** | Settings for the whole addon: the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black, background opacity, the font, outline and text size of all the addon's text, and which layer each window is drawn in |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 
 **Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
@@ -108,7 +109,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 - **Share to raid** sends the note to everyone with the addon. Notes are compressed, so most arrive at once. Only the leader or an assistant can share, and only before the pull, since the game blocks addon messages during a boss fight. Raiders need version 0.13.0 or later to receive notes shared from 0.13.0.
 - **Three windows:** the timers, counting down from the pull; the assignments, with your lines marked and names class colored; and your own personal note. Each can be locked so clicks pass through, or unlocked to drag and resize.
 - **Show only me** keeps only the timers for your name, role, raid group or everyone.
-- **Your alert** shows your next spell or callout before it is due, and can read it out with text to speech.
+- **Your alert** shows your next spell or callout before it is due, with the name and countdown centered under each other and the spell icon, two lines tall, to the left, right, above or below. It can read it out with text to speech.
 - **Phases.** The first phase starts on the pull. The game gives addons no phase-change signal, so later phases start when someone presses **Next phase** or types `/crt note next`.
 
 ## Late Tracker
@@ -132,6 +133,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 | `/crt late export` | The late totals as text to paste into Discord |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert |
+| `/crt settings` | Addon Settings: window scale and style, background opacity, fonts and layers |
 | `/crt lowhp off`, `/crt lowhp on` | Turns the experimental low-health alert off or on |
 | `/crt perf` | Shows the addon's CPU use since the last `/reload`, from the game's profiler |
 | `/crt help` | Lists the commands |
@@ -189,6 +191,7 @@ CowfeeRaidTools/
   Slash.lua              the /crt command
   UI/Panel.lua           main window, left menu, page registry, previews
   UI/Controls.lua        Edit Mode style dropdowns and sliders shared by the pages
+  UI/SettingsPage.lua    the Addon Settings page
   Groups/                Raid Groups: data, Apply, page
   Consumables/           your ready check bar and the consumables list
   ReadyCheck/            the Ready Check page, raid report and ready check window
