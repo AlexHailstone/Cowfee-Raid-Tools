@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
--- The Late Tracker page: the raid schedule, the expected roster, Start raid now and End raid, tonight's
--- live list of who is missing with a running clock, and the history of past nights with totals.
+-- The Late Tracker page, with three tabs: Tonight (the live list of who is missing, with a running
+-- clock, and Start raid now and End raid), History (past nights with totals and the Discord export)
+-- and Settings (raid days, start time, grace and the expected roster).
 
 local Late = CRT.Late
 local Groups = CRT.Groups
@@ -534,94 +535,41 @@ end
 
 -- Build ------------------------------------------------------------------
 
-local function build(pf)
-    page = pf
+-- Tabs: Tonight (the live list, Start raid now and End raid), History (past nights, totals and the
+-- Discord export) and Settings (raid days, start time, grace and the expected roster). All three are
+-- built with the page, so refresh can fill them all.
+local TABS = {
+    { key = "tonight", label = "Tonight" },
+    { key = "history", label = "History" },
+    { key = "settings", label = "Settings" },
+}
+local tabButtons, tabFrames = {}, {}
+local currentTab = "tonight"
 
-    local title = label(pf, "Late Tracker", "CRTFontLarge")
-    title:SetPoint("TOPLEFT", 8, -8)
-
-    UI.Help(pf, "The Late Tracker", "Tick your raid days and start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in that layout who is not in your group is late, and their clock runs until they join, or until the group disbands.\n\nStart raid now starts a night by hand when invites go out off schedule."):SetPoint("LEFT", title, "RIGHT", 6, 0)
-
-    -- Raid days.
-    local daysLabel = label(pf, "Raid days")
-    daysLabel:SetPoint("TOPLEFT", 8, -44)
-    for i, d in ipairs(DAYS) do
-        local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
-        check:SetSize(24, 24)
-        check:SetPoint("TOPLEFT", 110 + (i - 1) * 64, -39)
-        local text = label(pf, d.label, "CRTFontSmall")
-        text:SetPoint("LEFT", check, "RIGHT", 0, 0)
-        check:SetScript("OnClick", function(self)
-            Late:SetDay(d.wday, self:GetChecked() and true or false)
-        end)
-        check.refresh = function()
-            check:SetChecked(Late:Settings().days[d.wday] and true or false)
-        end
-        controls[#controls + 1] = check
+local function selectTab(key)
+    if not tabFrames[key] then
+        key = "tonight"
     end
-
-    -- Start time and grace.
-    local timeLabel = label(pf, "Start time")
-    timeLabel:SetPoint("TOPLEFT", 8, -70)
-    local hour = makeNumber(pf, timeLabel, 18, 2, function()
-        return Late:Settings().hour
-    end, function(v)
-        Late:Set("hour", v)
-    end, 0, 23)
-    local colon = label(pf, ":")
-    colon:SetPoint("LEFT", hour, "RIGHT", 2, 0)
-    local minute = makeNumber(pf, colon, 8, 2, function()
-        return Late:Settings().minute
-    end, function(v)
-        Late:Set("minute", v)
-    end, 0, 59)
-    UI.Help(pf, "Start time", "24-hour time, on this computer's clock.\n\nOnly the schedule uses it, so it greys out while no raid day is ticked. Start raid now does not need it."):SetPoint("LEFT", minute, "RIGHT", 6, 0)
-    -- The start time is only used by the schedule, so it greys out while no raid day is ticked.
-    -- Start raid now does not need it.
-    controls[#controls + 1] = {
-        refresh = function()
-            local on = next(Late:Settings().days) ~= nil
-            local c = on and 1 or 0.5
-            for _, edit in ipairs({ hour, minute }) do
-                edit:SetEnabled(on)
-                edit:SetTextColor(c, c, c)
-            end
-            if on then
-                timeLabel:SetTextColor(1, 0.82, 0)
-                colon:SetTextColor(1, 0.82, 0)
-            else
-                timeLabel:SetTextColor(0.5, 0.5, 0.5)
-                colon:SetTextColor(0.5, 0.5, 0.5)
-            end
-        end,
-    }
-    local graceLabel = label(pf, "Grace minutes")
-    graceLabel:SetPoint("TOPLEFT", 440, -70)
-    makeNumber(pf, graceLabel, 12, 2, function()
-        return Late:Settings().grace
-    end, function(v)
-        Late:Set("grace", v)
-    end, 0, 60)
-
-    -- Expected roster, start and end.
-    -- The three buttons use the game's standard button font, a little smaller than the addon's.
-    local function standardFont(b)
-        b:SetNormalFontObject(GameFontNormal)
-        b:SetHighlightFontObject(GameFontHighlight)
-        b:SetDisabledFontObject(GameFontDisable)
+    currentTab = key
+    for _, tab in ipairs(TABS) do
+        local on = tab.key == key
+        tabFrames[tab.key]:SetShown(on)
+        tabButtons[tab.key].sel:SetShown(on)
+        tabButtons[tab.key].text:SetTextColor(on and 1 or 0.75, on and 0.82 or 0.75, on and 0 or 0.75)
     end
-    layoutButton = makeButton(pf, "Expected roster", 250)
-    standardFont(layoutButton)
-    layoutButton:SetPoint("TOPLEFT", 8, -94)
-    layoutButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    layoutButton:SetScript("OnClick", function(_, button)
-        stepLayout(button == "RightButton" and -1 or 1)
-    end)
-    tooltip(layoutButton, "Expected roster", "Click for the next saved Raid Groups layout, right-click for the previous one. Everyone in it is expected. A night already running keeps the roster it started with.")
+end
 
-    startButton = makeButton(pf, "Start raid now", 140)
+-- The three buttons use the game's standard button font, a little smaller than the addon's.
+local function standardFont(b)
+    b:SetNormalFontObject(GameFontNormal)
+    b:SetHighlightFontObject(GameFontHighlight)
+    b:SetDisabledFontObject(GameFontDisable)
+end
+
+local function buildTonight(f)
+    startButton = makeButton(f, "Start raid now", 140)
     standardFont(startButton)
-    startButton:SetPoint("LEFT", layoutButton, "RIGHT", 4, 0)
+    startButton:SetPoint("TOPLEFT", 8, -8)
     startButton:SetScript("OnClick", function()
         local restarting = Late:Current() ~= nil
         if Late:Start("button", time()) then
@@ -630,7 +578,7 @@ local function build(pf)
     end)
     tooltip(startButton, "Start raid now", "Starts tonight's clock now, for when invites go out. On a raid day it replaces the scheduled start. While a night is running, it restarts it from now and the running night is not saved.")
 
-    endButton = makeButton(pf, "End raid", 100)
+    endButton = makeButton(f, "End raid", 100)
     standardFont(endButton)
     endButton:SetPoint("LEFT", startButton, "RIGHT", 4, 0)
     endButton:SetScript("OnClick", function()
@@ -638,20 +586,15 @@ local function build(pf)
     end)
     tooltip(endButton, "End raid", "Ends tonight and saves it to the history. Anyone who never joined is recorded with the time until now. A disbanded group ends the night on its own.")
 
-    -- Tonight.
-    local tonightLabel = label(pf, "Tonight")
-    tonightLabel:SetPoint("TOPLEFT", 8, -126)
     local tonightBox
-    tonightBox, tonightText, tonightChild = textBox(pf, "CowfeeRaidToolsLateTonightScroll")
-    tonightBox:SetPoint("TOPLEFT", 8, -146)
-    tonightBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -146)
-    tonightBox:SetHeight(220)
+    tonightBox, tonightText, tonightChild = textBox(f, "CowfeeRaidToolsLateTonightScroll")
+    tonightBox:SetPoint("TOPLEFT", 8, -40)
+    tonightBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+end
 
-    -- History: the list of nights on the left, the selected night or the totals on the right.
-    local historyLabel = label(pf, "History")
-    historyLabel:SetPoint("TOPLEFT", 8, -374)
-    local listBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    listBox:SetPoint("TOPLEFT", 8, -394)
+local function buildHistory(f)
+    local listBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    listBox:SetPoint("TOPLEFT", 8, -8)
     listBox:SetPoint("BOTTOMLEFT", 8, 8)
     listBox:SetWidth(LIST_W)
     skin(listBox, 0.4)
@@ -663,17 +606,17 @@ local function build(pf)
     listScroll:SetScrollChild(listChild)
 
     local detailBox
-    detailBox, detailText, detailChild = textBox(pf, "CowfeeRaidToolsLateDetailScroll")
+    detailBox, detailText, detailChild = textBox(f, "CowfeeRaidToolsLateDetailScroll")
     detailBox:SetPoint("TOPLEFT", listBox, "TOPRIGHT", 8, 0)
-    detailBox:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 38)
+    detailBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 38)
 
-    local exportButton = makeButton(pf, "Export for Discord", 190)
+    local exportButton = makeButton(f, "Export for Discord", 190)
     exportButton:SetPoint("BOTTOMLEFT", detailBox, "BOTTOMLEFT", 0, -30)
     exportButton:SetScript("OnClick", export)
     tooltip(exportButton, "Export for Discord", "Opens a window with the selected totals or night as text, already selected. Press Ctrl+C, then paste it into Discord. The columns line up in Discord's code block.")
 
-    deleteButton = makeButton(pf, "Delete this night", 190)
-    deleteButton:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 8)
+    deleteButton = makeButton(f, "Delete this night", 190)
+    deleteButton:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
     local armToken = 0
     deleteButton:SetScript("OnClick", function(self)
         if selected == TOTALS then
@@ -697,6 +640,118 @@ local function build(pf)
         self:SetText("Delete this night")
         Late:Delete(selected)
     end)
+end
+
+local function buildSettings(f)
+    -- Raid days.
+    local daysLabel = label(f, "Raid days")
+    daysLabel:SetPoint("TOPLEFT", 8, -12)
+    for i, d in ipairs(DAYS) do
+        local check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+        check:SetSize(24, 24)
+        check:SetPoint("TOPLEFT", 110 + (i - 1) * 64, -7)
+        local text = label(f, d.label, "CRTFontSmall")
+        text:SetPoint("LEFT", check, "RIGHT", 0, 0)
+        check:SetScript("OnClick", function(self)
+            Late:SetDay(d.wday, self:GetChecked() and true or false)
+        end)
+        check.refresh = function()
+            check:SetChecked(Late:Settings().days[d.wday] and true or false)
+        end
+        controls[#controls + 1] = check
+    end
+
+    -- Start time and grace.
+    local timeLabel = label(f, "Start time")
+    timeLabel:SetPoint("TOPLEFT", 8, -40)
+    local hour = makeNumber(f, timeLabel, 18, 2, function()
+        return Late:Settings().hour
+    end, function(v)
+        Late:Set("hour", v)
+    end, 0, 23)
+    local colon = label(f, ":")
+    colon:SetPoint("LEFT", hour, "RIGHT", 2, 0)
+    local minute = makeNumber(f, colon, 8, 2, function()
+        return Late:Settings().minute
+    end, function(v)
+        Late:Set("minute", v)
+    end, 0, 59)
+    UI.Help(f, "Start time", "24-hour time, on this computer's clock.\n\nOnly the schedule uses it, so it greys out while no raid day is ticked. Start raid now does not need it."):SetPoint("LEFT", minute, "RIGHT", 6, 0)
+    -- The start time is only used by the schedule, so it greys out while no raid day is ticked.
+    controls[#controls + 1] = {
+        refresh = function()
+            local on = next(Late:Settings().days) ~= nil
+            local c = on and 1 or 0.5
+            for _, edit in ipairs({ hour, minute }) do
+                edit:SetEnabled(on)
+                edit:SetTextColor(c, c, c)
+            end
+            if on then
+                timeLabel:SetTextColor(1, 0.82, 0)
+                colon:SetTextColor(1, 0.82, 0)
+            else
+                timeLabel:SetTextColor(0.5, 0.5, 0.5)
+                colon:SetTextColor(0.5, 0.5, 0.5)
+            end
+        end,
+    }
+    local graceLabel = label(f, "Grace minutes")
+    graceLabel:SetPoint("TOPLEFT", 440, -40)
+    makeNumber(f, graceLabel, 12, 2, function()
+        return Late:Settings().grace
+    end, function(v)
+        Late:Set("grace", v)
+    end, 0, 60)
+
+    -- Expected roster.
+    layoutButton = makeButton(f, "Expected roster", 250)
+    standardFont(layoutButton)
+    layoutButton:SetPoint("TOPLEFT", 8, -66)
+    layoutButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    layoutButton:SetScript("OnClick", function(_, button)
+        stepLayout(button == "RightButton" and -1 or 1)
+    end)
+    tooltip(layoutButton, "Expected roster", "Click for the next saved Raid Groups layout, right-click for the previous one. Everyone in it is expected. A night already running keeps the roster it started with.")
+end
+
+local function build(pf)
+    page = pf
+
+    local title = label(pf, "Late Tracker", "CRTFontLarge")
+    title:SetPoint("TOPLEFT", 8, -8)
+    UI.Help(pf, "The Late Tracker", "On the Settings tab, tick your raid days and start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in that layout who is not in your group is late, and their clock runs until they join, or until the group disbands.\n\nTonight shows the night as it happens. Start raid now starts a night by hand when invites go out off schedule.\n\nHistory keeps every night, with totals and an export for Discord."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+
+    for i, tab in ipairs(TABS) do
+        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
+        b:SetSize(160, 26)
+        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
+        skin(b, 0.4)
+        b.sel = b:CreateTexture(nil, "ARTWORK")
+        b.sel:SetAllPoints()
+        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(tab.label)
+        b:SetScript("OnClick", function()
+            selectTab(tab.key)
+        end)
+        tabButtons[tab.key] = b
+
+        local f = CreateFrame("Frame", nil, pf)
+        f:SetPoint("TOPLEFT", 0, -66)
+        f:SetPoint("BOTTOMRIGHT", 0, 0)
+        f:Hide()
+        tabFrames[tab.key] = f
+    end
+    local line = pf:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(0.35, 0.35, 0.35, 1)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", 8, -62)
+    line:SetPoint("TOPRIGHT", -8, -62)
+
+    buildTonight(tabFrames.tonight)
+    buildHistory(tabFrames.history)
+    buildSettings(tabFrames.settings)
 
     -- The running clocks update once a second while the page is open.
     local elapsed = 0
@@ -709,7 +764,10 @@ local function build(pf)
             end
         end
     end)
-    pf:SetScript("OnShow", refresh)
+    pf:SetScript("OnShow", function()
+        selectTab(currentTab)
+        refresh()
+    end)
     Late:OnChange(refresh)
     Groups:OnChange(refresh)
 end

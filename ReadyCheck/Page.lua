@@ -2,17 +2,18 @@ local ADDON, CRT = ...
 
 -- The Ready Check page. Checking the group is done in the ready check window (/crt check), where a
 -- shift-click on a heading posts that column to chat. The page's tabs:
---   On ready check  the automatic report (printed to you, or posted) and what counts
 --   Window          the ready check window: when it opens and which columns it shows
 --   Your bar        your own consumables bar (Consumables/Page.lua)
+--   Settings        the automatic report (printed to you, or posted) and what counts
+-- Like every page, its general settings are on a Settings tab, last.
 
 local Report = CRT.RaidReport
 local UI = CRT.UI
 
 local TABS = {
-    { key = "auto", label = "On ready check" },
     { key = "window", label = "Window" },
     { key = "bar", label = "Your bar" },
+    { key = "auto", label = "Settings" },
 }
 local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "Raid chat" }, { key = "officer", label = "Officer chat" } }
 local FOODS = { { key = "any", label = "Any food buff" }, { key = "best", label = "Best food only" } }
@@ -122,7 +123,7 @@ local function makeCycle(parent, x, y, width, prefix, field, choices, holder)
     return b
 end
 
--- On ready check tab ------------------------------------------------------------------------
+-- Settings tab (the automatic report) ------------------------------------------------------------
 
 local function buildAuto(f)
     makeCheck(f, 4, -8, "Report automatically on a ready check", "auto")

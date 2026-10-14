@@ -87,11 +87,11 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 
 `/crt check` opens the ready check window for your group at any time. **Shift-click a column heading** in it to post who is missing that consumable or buff to raid chat, such as "Mark of the Wild missing: Solex". Raid buffs only get a column when someone in the group can give them, and players whose buffs the game hides are listed as "couldn't check", never as missing.
 
-`/crt readycheck` opens the settings page, which has three tabs.
+`/crt readycheck` opens the page, which has three tabs.
 
-- **On ready check.** Run the report automatically on a ready check or a pull timer, choose where it goes, and what counts (best food only, flask expiring warning). The automatic report only goes to chat from whoever started the ready check, so it is posted once.
 - **Window.** A table that opens on a ready check for the raid leader and assistants: every player's ready answer, consumables, raid buffs and durability, for 30 seconds or until you right-click it. Arrange its columns by dragging the headings in the copy on this tab, and click a heading to hide it. Sort players by group, role or name, with a class color bar behind each row.
 - **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own.
+- **Settings.** Run the report automatically on a ready check or a pull timer, choose where it goes, and what counts (best food only, flask expiring warning). The automatic report only goes to chat from whoever started the ready check, so it is posted once.
 
 Durability in the window only shows for players running Cowfee Raid Tools, since each one sends their own. Shift-clicking the Dur heading posts everyone under 30%.
 
@@ -113,7 +113,7 @@ Durability in the window only shows for players running Cowfee Raid Tools, since
 
 ## Late Tracker
 
-`/crt late`. Tick your raid days and the start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in it who is not in your group gets a running clock until they join, or until the group disbands. **Start raid now** starts a night by hand when invites go out off schedule. Every night is saved to a history with join times, and Totals shows how often each player was late. **Export for Discord** opens the selected totals or night as text to copy and paste into Discord, where the columns line up in a code block.
+`/crt late`. The page has three tabs: **Tonight**, **History** and **Settings**. On Settings, tick your raid days and the start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in it who is not in your group gets a running clock until they join, or until the group disbands. **Start raid now** starts a night by hand when invites go out off schedule. Every night is saved to a history with join times, and Totals shows how often each player was late. **Export for Discord** opens the selected totals or night as text to copy and paste into Discord, where the columns line up in a code block.
 
 ## Commands
 
