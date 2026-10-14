@@ -87,24 +87,40 @@ local function isDead()
     return ok and not isSecret(dead) and dead and true or false
 end
 
+-- How the last update went, for /crt lowhp info: "preview", "off", "dead", "curve" or "plain",
+-- and the last error from the curve route, if any.
+local lastPath, lastError
+
 function LowHealth:Update()
     if not frame then
         return
     end
     if previewOn then
+        lastPath = "preview"
         frame:SetAlpha(1)
         return
     end
     if not settings().enabled or isDead() then
+        lastPath = settings().enabled and "dead" or "off"
         frame:SetAlpha(0)
         return
     end
     if curve then
         local ok, alpha = pcall(UnitHealthPercent, "player", true, curve)
-        if ok and alpha ~= nil and pcall(frame.SetAlpha, frame, alpha) then
-            return
+        if not ok then
+            lastError = "UnitHealthPercent with the curve failed: " .. tostring(alpha)
+        elseif alpha == nil then
+            lastError = "UnitHealthPercent with the curve returned nothing"
+        else
+            local set, err = pcall(frame.SetAlpha, frame, alpha)
+            if set then
+                lastPath = "curve"
+                return
+            end
+            lastError = "SetAlpha refused the curve result: " .. tostring(err)
         end
     end
+    lastPath = "plain"
     if InCombatLockdown() and not warned then
         warned = true
         CRT:Print("The low-health alert can't read your health in combat on this client. Turn it off with /crt lowhp off.")
@@ -135,7 +151,8 @@ local function build()
     end
     frame = CreateFrame("Frame", "CowfeeRaidToolsLowHealth", UIParent, "BackdropTemplate")
     frame:SetSize(300, 56)
-    frame:SetFrameStrata("HIGH")
+    -- Above the main panel (HIGH), so the panel never covers it.
+    frame:SetFrameStrata("DIALOG")
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
@@ -169,6 +186,55 @@ function LowHealth:SetEnabled(on)
     settings().enabled = on and true or false
     warned = false
     self:Apply()
+end
+
+-- /crt lowhp info: every step of the check, so a report shows where it stops.
+function LowHealth:Info()
+    build()
+    local lines = {}
+    local function add(s)
+        lines[#lines + 1] = s
+    end
+    local function show(v)
+        if isSecret(v) then
+            return "(secret)"
+        end
+        return tostring(v)
+    end
+    local s = settings()
+    add(format("enabled %s, threshold %s%%, in combat %s", tostring(s.enabled), tostring(s.threshold), tostring(InCombatLockdown())))
+    add(format("game has: UnitHealthPercent %s, C_CurveUtil.CreateCurve %s, Enum.LuaCurveType %s", tostring(UnitHealthPercent ~= nil), tostring(C_CurveUtil and C_CurveUtil.CreateCurve ~= nil), tostring(Enum and Enum.LuaCurveType ~= nil)))
+    if Enum and Enum.LuaCurveType then
+        local names = {}
+        for name, value in pairs(Enum.LuaCurveType) do
+            names[#names + 1] = name .. "=" .. tostring(value)
+        end
+        add("curve types: " .. table.concat(names, ", "))
+    end
+    add(format("measured scale %s, curve built %s", tostring(scale), tostring(curve ~= nil)))
+    if UnitHealthPercent then
+        local ok, raw = pcall(UnitHealthPercent, "player", false)
+        add("UnitHealthPercent(player): " .. (ok and show(raw) or ("error " .. tostring(raw))))
+        if curve then
+            local okc, result = pcall(UnitHealthPercent, "player", true, curve)
+            add("with the curve: " .. (okc and show(result) or ("error " .. tostring(result))))
+            if ok and type(raw) == "number" and not isSecret(raw) then
+                local okv, expected = pcall(curve.Evaluate, curve, raw)
+                add("curve at that health, worked out by the addon: " .. (okv and show(expected) or ("error " .. tostring(expected))))
+            end
+        end
+    end
+    local health, maximum = UnitHealth("player"), UnitHealthMax("player")
+    add(format("UnitHealth %s, UnitHealthMax %s", show(health), show(maximum)))
+    add(format("last update path: %s%s", tostring(lastPath), lastError and (", last error: " .. lastError) or ""))
+    local point, _, _, x, y = frame:GetPoint()
+    add(format("banner shown %s, visible %s, layer %s, at %s %s %s", tostring(frame:IsShown() and true or false), tostring(frame:IsVisible() and true or false), tostring((frame:GetFrameStrata())), tostring(point), show(x), show(y)))
+    local okAlpha, alpha = pcall(frame.GetAlpha, frame)
+    add("banner alpha: " .. (okAlpha and show(alpha) or "unreadable"))
+    CRT:Print("Low-health alert diagnostics:")
+    for _, line in ipairs(lines) do
+        print("  " .. line)
+    end
 end
 
 function LowHealth:ResetPosition()

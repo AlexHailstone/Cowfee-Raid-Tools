@@ -16,7 +16,7 @@ local function printHelp()
     print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
     print("  |cffffd100/crt late export|r - the late totals as text to paste into Discord")
     print("  |cffffd100/crt qol|r - open the Quality of Life page")
-    print("  |cffffd100/crt lowhp off|r, |cffffd100on|r - turn the experimental low-health alert off or on")
+    print("  |cffffd100/crt lowhp off|r, |cffffd100on|r, |cffffd100info|r - turn the experimental low-health alert off or on, or print its diagnostics")
     print("  |cffffd100/crt perf|r - this addon's CPU use since the last /reload, from the game's profiler")
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
@@ -89,6 +89,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("No raid night is running.")
         end
+    elseif msg == "lowhp info" then
+        CRT.LowHealth:Info()
     elseif msg == "lowhp off" or msg == "lowhp on" then
         CRT.LowHealth:SetEnabled(msg == "lowhp on")
         CRT:Print("Low-health alert " .. (msg == "lowhp on" and "on." or "off."))
