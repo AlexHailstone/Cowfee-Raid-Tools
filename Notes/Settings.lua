@@ -1,11 +1,11 @@
 local ADDON, CRT = ...
 
--- The Note Windows page: one column of settings for each of the three note windows (timers,
--- assignments, personal note). Unlocked windows can be dragged and resized by hand, and their position
--- and size are saved per player.
+-- The Settings tab of the Raid Notes page (Notes/Page.lua builds it into its tab): one column for each
+-- of the three note windows (timers, assignments, personal note), your alert and its text to speech,
+-- and who to accept shared notes from. Unlocked windows can be dragged and resized by hand, and their
+-- position and size are saved per player.
 
 local Notes = CRT.Notes
-local UI = CRT.UI
 
 local COLUMN_W = 226
 local WINDOWS = {
@@ -35,6 +35,14 @@ local function setting(key, field)
     end
 end
 
+local function alert(field)
+    return function()
+        return Notes:Alert()[field]
+    end, function(value)
+        Notes:Set("alert", field, value)
+    end
+end
+
 local function makeCheck(parent, x, y, label, getter, setter)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetSize(24, 24)
@@ -51,7 +59,8 @@ local function makeCheck(parent, x, y, label, getter, setter)
     controls[#controls + 1] = check
 end
 
-local function makeNumber(parent, x, y, label, getter, setter, low, high)
+-- valueX is where the box sits, from x.
+local function makeNumber(parent, x, y, label, getter, setter, low, high, valueX)
     local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("TOPLEFT", x + 4, y - 4)
     text:SetText(label)
@@ -61,7 +70,7 @@ local function makeNumber(parent, x, y, label, getter, setter, low, high)
     edit:SetNumeric(true)
     edit:SetMaxLetters(3)
     edit:SetSize(44, 20)
-    edit:SetPoint("TOPLEFT", x + 160, y - 2)
+    edit:SetPoint("TOPLEFT", x + (valueX or 160), y - 2)
     edit:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()
     end)
@@ -84,12 +93,16 @@ local function makeNumber(parent, x, y, label, getter, setter, low, high)
     controls[#controls + 1] = edit
 end
 
-local function buildColumn(pf, index, def)
+local function heading(parent, x, y, text)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    fs:SetPoint("TOPLEFT", x, y)
+    fs:SetText(text)
+    return fs
+end
+
+local function buildColumn(pf, index, def, top)
     local x = 8 + (index - 1) * COLUMN_W
-    local top = -96
-    local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    label:SetPoint("TOPLEFT", x, top)
-    label:SetText(def.title)
+    heading(pf, x, top, def.title)
 
     makeCheck(pf, x - 4, top - 22, "Show this window", setting(def.key, "shown"))
     makeCheck(pf, x - 4, top - 48, "Locked (clicks pass through)", setting(def.key, "locked"))
@@ -140,28 +153,41 @@ end
 local function build(pf)
     page = pf
 
-    local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    title:SetPoint("TOPLEFT", 8, -8)
-    title:SetText("Note Windows")
-
     local hint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -32)
-    hint:SetWidth(660)
+    hint:SetPoint("TOPLEFT", 8, -6)
+    hint:SetWidth(670)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Three windows: the timers, the assignments (a note's text that is not a timer), and your personal note. Untick Locked to drag a window and resize it from its bottom-right corner, then lock it again so clicks pass through. Toggle previews shows all three with sample text. Size and position are saved for you.")
+    hint:SetText("Untick Locked to drag a window and resize it from its bottom-right corner, then lock it again so clicks pass through. Toggle previews shows every window with sample text. Everything here is saved for you.")
 
+    -- The three note windows.
     for index, def in ipairs(WINDOWS) do
-        buildColumn(pf, index, def)
+        buildColumn(pf, index, def, -46)
     end
 
-    local back = makeButton(pf, "Back to Raid Notes", 200)
-    back:SetPoint("TOPLEFT", 8, -400)
-    back:SetScript("OnClick", function()
-        UI:Show("notes")
+    -- Your alert, on the left, and sharing, on the right.
+    local top = -340
+    heading(pf, 8, top, "Your alert")
+    makeCheck(pf, 4, top - 22, "Show your next spell or callout", alert("enabled"))
+    makeNumber(pf, 4, top - 48, "Show it this many seconds early", alert("seconds"), 1, 60, 230)
+    makeCheck(pf, 4, top - 74, "Read it out (text to speech)", alert("tts"))
+    makeNumber(pf, 4, top - 100, "Read it out at seconds left", alert("ttsSeconds"), 0, 30, 230)
+    makeNumber(pf, 4, top - 126, "Speech volume (0 to 100)", alert("ttsVolume"), 0, 100, 230)
+    local speak = makeButton(pf, "Test speech", 140)
+    speak:SetPoint("TOPLEFT", 8, top - 158)
+    speak:SetScript("OnClick", function()
+        CRT.NoteAlert:Speak("Cowfee Raid Tools. Avenging Wrath in three.")
+    end)
+
+    heading(pf, 360, top, "Sharing")
+    makeCheck(pf, 356, top - 22, "Only accept notes from leader or assistants", function()
+        return Notes:TrustedOnly()
+    end, function(value)
+        Notes:Set(nil, "trustedOnly", value)
     end)
 
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)
 end
 
-UI:RegisterPage("notewindows", "Note Windows", build)
+-- Built into the Settings tab by Notes/Page.lua.
+CRT.NoteSettings = { Build = build }

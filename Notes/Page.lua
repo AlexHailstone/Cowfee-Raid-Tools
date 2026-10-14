@@ -1,8 +1,10 @@
 local ADDON, CRT = ...
 
--- The Raid Notes page: the list of notes (one per boss), the text of the selected one, importing,
--- sharing with the group, the roster link to Raid Groups, a test run, and the note window and alert
--- settings. The note window and your alert are moved with "Toggle previews".
+-- The Raid Notes page, with two tabs:
+--   Notes     the list of notes (one per boss), the text of the selected one, importing, sharing with
+--             the group, the roster link to Raid Groups, your personal note, and a test run
+--   Settings  the three note windows, your alert and sharing (Notes/Settings.lua)
+-- The note windows and your alert are moved with "Toggle previews".
 
 local Notes = CRT.Notes
 local Engine = CRT.NoteEngine
@@ -38,58 +40,6 @@ local function makeButton(parent, label, width, height)
     b:SetSize(width, height or 24)
     b:SetText(label)
     return b
-end
-
-local function makeCheck(parent, x, y, label, getter, setter)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    check:SetSize(24, 24)
-    check:SetPoint("TOPLEFT", x, y)
-    local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("LEFT", check, "RIGHT", 2, 0)
-    text:SetText(label)
-    check:SetScript("OnClick", function(self)
-        setter(self:GetChecked() and true or false)
-    end)
-    check.refresh = function()
-        check:SetChecked(getter() and true or false)
-    end
-    controls[#controls + 1] = check
-    return check
-end
-
-local function makeNumber(parent, x, y, label, getter, setter, low, high)
-    local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("TOPLEFT", x + 4, y - 4)
-    text:SetText(label)
-    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(CRTFontHighlight)
-    edit:SetNumeric(true)
-    edit:SetMaxLetters(4)
-    edit:SetSize(48, 20)
-    edit:SetPoint("TOPLEFT", x + 200, y - 2)
-    local function apply(self)
-        local value = tonumber(self:GetText())
-        if value then
-            setter(math.max(low, math.min(high, math.floor(value))))
-        end
-        self:SetText(tostring(getter()))
-    end
-    edit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    edit:SetScript("OnEscapePressed", function(self)
-        self:SetText(tostring(getter()))
-        self:ClearFocus()
-    end)
-    edit:SetScript("OnEditFocusLost", apply)
-    edit.refresh = function()
-        if not edit:HasFocus() then
-            edit:SetText(tostring(getter()))
-        end
-    end
-    controls[#controls + 1] = edit
-    return edit
 end
 
 -- Import dialog: paste a note. -------------------------------------------------------------
@@ -217,27 +167,23 @@ refresh = function()
     end
 end
 
-local function build(pf)
+local function buildNotes(pf)
     page = pf
 
-    local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    title:SetPoint("TOPLEFT", 8, -8)
-    title:SetText("Raid Notes")
-
     local hint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -32)
+    hint:SetPoint("TOPLEFT", 8, -6)
     hint:SetWidth(660)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window. Use Toggle previews (top right) to place the windows and your alert.")
+    hint:SetText("Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window. Window, alert and sharing settings are on the Settings tab.")
 
     -- Left: the notes.
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    listLabel:SetPoint("TOPLEFT", 8, -70)
+    listLabel:SetPoint("TOPLEFT", 8, -42)
     listLabel:SetText("Notes")
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(250, ROW_H - 2)
-        row:SetPoint("TOPLEFT", 8, -92 - (i - 1) * ROW_H)
+        row:SetPoint("TOPLEFT", 8, -64 - (i - 1) * ROW_H)
         skin(row, 0.45)
         row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         row.text:SetPoint("LEFT", 8, 0)
@@ -251,7 +197,7 @@ local function build(pf)
     end
 
     local import = makeButton(pf, "Import", 122)
-    import:SetPoint("TOPLEFT", 8, -92 - MAX_ROWS * ROW_H - 6)
+    import:SetPoint("TOPLEFT", 8, -64 - MAX_ROWS * ROW_H - 6)
     import:SetScript("OnClick", function()
         local d = getImportDialog()
         d.edit:SetText("")
@@ -296,11 +242,11 @@ local function build(pf)
 
     -- Right: the note text, editable.
     local textLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    textLabel:SetPoint("TOPLEFT", 272, -70)
+    textLabel:SetPoint("TOPLEFT", 272, -42)
     textLabel:SetText("Note text")
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", 272, -92)
-    box:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -92)
+    box:SetPoint("TOPLEFT", 272, -64)
+    box:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -64)
     box:SetHeight(MAX_ROWS * ROW_H + 60)
     skin(box, 0.4)
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteTextScroll", box, "UIPanelScrollFrameTemplate")
@@ -331,8 +277,8 @@ local function build(pf)
     status:SetPoint("RIGHT", save, "LEFT", -8, 0)
     status:SetJustifyH("LEFT")
 
-    -- Bottom left: your personal note, shown in its own window. Window settings have their own page.
-    local top = -440
+    -- Bottom left: your personal note, shown in its own window.
+    local top = -412
     local personalLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     personalLabel:SetPoint("TOPLEFT", 8, top)
     personalLabel:SetText("Personal note (only you see it)")
@@ -366,40 +312,18 @@ local function build(pf)
         Notes:SetPersonal(personal:GetText())
         CRT:Print("Personal note saved.")
     end)
-    local windowSettings = makeButton(pf, "Window settings", 154)
-    windowSettings:SetPoint("LEFT", psave, "RIGHT", 6, 0)
-    windowSettings:SetScript("OnClick", function()
-        UI:Show("notewindows")
-    end)
+    -- Bottom right: try the note in use.
+    local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    runLabel:SetPoint("TOPLEFT", 360, top)
+    runLabel:SetText("Try it")
+    local runHint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    runHint:SetPoint("TOPLEFT", 360, top - 22)
+    runHint:SetWidth(310)
+    runHint:SetJustifyH("LEFT")
+    runHint:SetText("Test run starts the selected note now, as if the boss was pulled. Later phases start with Next phase.")
 
-    local alertLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    alertLabel:SetPoint("TOPLEFT", 360, top)
-    alertLabel:SetText("Your alert")
-    local function alert(key)
-        return function()
-            return Notes:Alert()[key]
-        end, function(value)
-            Notes:Set("alert", key, value)
-        end
-    end
-    makeCheck(pf, 356, top - 20, "Show your next spell or callout", alert("enabled"))
-    makeNumber(pf, 356, top - 46, "Show it this many seconds early", alert("seconds"), 1, 60)
-    makeCheck(pf, 356, top - 70, "Read it out (text to speech)", alert("tts"))
-    makeNumber(pf, 356, top - 96, "Read it out at seconds left", alert("ttsSeconds"), 0, 30)
-    makeNumber(pf, 356, top - 120, "Speech volume (0 to 100)", alert("ttsVolume"), 0, 100)
-    makeCheck(pf, 356, top - 144, "Only accept notes from leader or assistants", function()
-        return Notes:TrustedOnly()
-    end, function(value)
-        Notes:Set(nil, "trustedOnly", value)
-    end)
-
-    local speak = makeButton(pf, "Test speech", 100)
-    speak:SetPoint("TOPLEFT", 360, top - 172)
-    speak:SetScript("OnClick", function()
-        CRT.NoteAlert:Speak("Cowfee Raid Tools. Avenging Wrath in three.")
-    end)
     local testRun = makeButton(pf, "Test run", 100)
-    testRun:SetPoint("LEFT", speak, "RIGHT", 6, 0)
+    testRun:SetPoint("TOPLEFT", 360, top - 66)
     testRun:SetScript("OnClick", function()
         local id = selected or Notes:Active()
         if id then
@@ -423,4 +347,84 @@ local function build(pf)
     Notes:OnChange(refresh)
 end
 
+-- Tabs ---------------------------------------------------------------------------------------
+
+local TABS = {
+    { key = "notes", label = "Notes" },
+    { key = "settings", label = "Settings" },
+}
+local tabButtons, tabFrames, built = {}, {}, {}
+local currentTab = "notes"
+
+local function selectTab(key)
+    if not tabFrames[key] then
+        key = "notes"
+    end
+    currentTab = key
+    if not built[key] then
+        built[key] = true
+        if key == "notes" then
+            buildNotes(tabFrames[key])
+        else
+            CRT.NoteSettings.Build(tabFrames[key])
+        end
+    end
+    for _, tab in ipairs(TABS) do
+        local on = tab.key == key
+        tabFrames[tab.key]:SetShown(on)
+        tabButtons[tab.key].sel:SetShown(on)
+        tabButtons[tab.key].text:SetTextColor(on and 1 or 0.75, on and 0.82 or 0.75, on and 0 or 0.75)
+    end
+end
+
+local function build(pf)
+    local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    title:SetPoint("TOPLEFT", 8, -8)
+    title:SetText("Raid Notes")
+
+    for i, tab in ipairs(TABS) do
+        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
+        b:SetSize(160, 26)
+        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
+        skin(b, 0.4)
+        b.sel = b:CreateTexture(nil, "ARTWORK")
+        b.sel:SetAllPoints()
+        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(tab.label)
+        b:SetScript("OnClick", function()
+            selectTab(tab.key)
+        end)
+        tabButtons[tab.key] = b
+
+        local f = CreateFrame("Frame", nil, pf)
+        f:SetPoint("TOPLEFT", 0, -66)
+        f:SetPoint("BOTTOMRIGHT", 0, 0)
+        f:Hide()
+        tabFrames[tab.key] = f
+    end
+
+    local line = pf:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(GRAY[1], GRAY[2], GRAY[3], 1)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", 8, -62)
+    line:SetPoint("TOPRIGHT", -8, -62)
+
+    pf:SetScript("OnShow", function()
+        selectTab(currentTab)
+    end)
+end
+
 UI:RegisterPage("notes", "Raid Notes", build)
+
+-- Opens the Raid Notes page on a tab: "notes" or "settings".
+CRT.NotesPage = {
+    Open = function(tab)
+        currentTab = tab
+        UI:Show("notes")
+        if tabFrames[tab] then
+            selectTab(tab)
+        end
+    end,
+}
