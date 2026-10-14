@@ -540,18 +540,15 @@ local function build(pf)
     local title = label(pf, "Late Tracker", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
 
-    local hint = label(pf, "Tick your raid days and start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in that layout who is not in your group is late, and their clock runs until they join, or until the group disbands. Start raid now starts a night by hand when invites go out off schedule.", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -32)
-    hint:SetWidth(670)
-    hint:SetJustifyH("LEFT")
+    UI.Help(pf, "The Late Tracker", "Tick your raid days and start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in that layout who is not in your group is late, and their clock runs until they join, or until the group disbands.\n\nStart raid now starts a night by hand when invites go out off schedule."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     -- Raid days.
     local daysLabel = label(pf, "Raid days")
-    daysLabel:SetPoint("TOPLEFT", 8, -84)
+    daysLabel:SetPoint("TOPLEFT", 8, -44)
     for i, d in ipairs(DAYS) do
         local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
         check:SetSize(24, 24)
-        check:SetPoint("TOPLEFT", 110 + (i - 1) * 64, -79)
+        check:SetPoint("TOPLEFT", 110 + (i - 1) * 64, -39)
         local text = label(pf, d.label, "CRTFontSmall")
         text:SetPoint("LEFT", check, "RIGHT", 0, 0)
         check:SetScript("OnClick", function(self)
@@ -565,7 +562,7 @@ local function build(pf)
 
     -- Start time and grace.
     local timeLabel = label(pf, "Start time")
-    timeLabel:SetPoint("TOPLEFT", 8, -110)
+    timeLabel:SetPoint("TOPLEFT", 8, -70)
     local hour = makeNumber(pf, timeLabel, 18, 2, function()
         return Late:Settings().hour
     end, function(v)
@@ -578,8 +575,7 @@ local function build(pf)
     end, function(v)
         Late:Set("minute", v)
     end, 0, 59)
-    local clockNote = label(pf, "24-hour, this computer's clock", "CRTFontDisableSmall")
-    clockNote:SetPoint("LEFT", minute, "RIGHT", 8, 0)
+    UI.Help(pf, "Start time", "24-hour time, on this computer's clock.\n\nOnly the schedule uses it, so it greys out while no raid day is ticked. Start raid now does not need it."):SetPoint("LEFT", minute, "RIGHT", 6, 0)
     -- The start time is only used by the schedule, so it greys out while no raid day is ticked.
     -- Start raid now does not need it.
     controls[#controls + 1] = {
@@ -600,7 +596,7 @@ local function build(pf)
         end,
     }
     local graceLabel = label(pf, "Grace minutes")
-    graceLabel:SetPoint("TOPLEFT", 440, -110)
+    graceLabel:SetPoint("TOPLEFT", 440, -70)
     makeNumber(pf, graceLabel, 12, 2, function()
         return Late:Settings().grace
     end, function(v)
@@ -616,7 +612,7 @@ local function build(pf)
     end
     layoutButton = makeButton(pf, "Expected roster", 250)
     standardFont(layoutButton)
-    layoutButton:SetPoint("TOPLEFT", 8, -134)
+    layoutButton:SetPoint("TOPLEFT", 8, -94)
     layoutButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     layoutButton:SetScript("OnClick", function(_, button)
         stepLayout(button == "RightButton" and -1 or 1)
@@ -644,18 +640,18 @@ local function build(pf)
 
     -- Tonight.
     local tonightLabel = label(pf, "Tonight")
-    tonightLabel:SetPoint("TOPLEFT", 8, -166)
+    tonightLabel:SetPoint("TOPLEFT", 8, -126)
     local tonightBox
     tonightBox, tonightText, tonightChild = textBox(pf, "CowfeeRaidToolsLateTonightScroll")
-    tonightBox:SetPoint("TOPLEFT", 8, -186)
-    tonightBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -186)
+    tonightBox:SetPoint("TOPLEFT", 8, -146)
+    tonightBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -146)
     tonightBox:SetHeight(220)
 
     -- History: the list of nights on the left, the selected night or the totals on the right.
     local historyLabel = label(pf, "History")
-    historyLabel:SetPoint("TOPLEFT", 8, -414)
+    historyLabel:SetPoint("TOPLEFT", 8, -374)
     local listBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    listBox:SetPoint("TOPLEFT", 8, -434)
+    listBox:SetPoint("TOPLEFT", 8, -394)
     listBox:SetPoint("BOTTOMLEFT", 8, 8)
     listBox:SetWidth(LIST_W)
     skin(listBox, 0.4)

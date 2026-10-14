@@ -183,20 +183,16 @@ end
 local function buildNotes(pf)
     page = pf
 
-    local hint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -6)
-    hint:SetWidth(660)
-    hint:SetJustifyH("LEFT")
-    hint:SetText("Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window. Window, alert and sharing settings are on the Settings tab.")
 
     -- Left: the notes.
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    listLabel:SetPoint("TOPLEFT", 8, -42)
+    listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
+    UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert and sharing settings are on the Settings tab."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(250, ROW_H - 2)
-        row:SetPoint("TOPLEFT", 8, -64 - (i - 1) * ROW_H)
+        row:SetPoint("TOPLEFT", 8, -36 - (i - 1) * ROW_H)
         skin(row, 0.45)
         row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         row.text:SetPoint("LEFT", 8, 0)
@@ -210,7 +206,7 @@ local function buildNotes(pf)
     end
 
     local import = makeButton(pf, "Import", 122)
-    import:SetPoint("TOPLEFT", 8, -64 - MAX_ROWS * ROW_H - 6)
+    import:SetPoint("TOPLEFT", 8, -36 - MAX_ROWS * ROW_H - 6)
     import:SetScript("OnClick", function()
         local d = getImportDialog()
         d.edit:SetText("")
@@ -255,11 +251,11 @@ local function buildNotes(pf)
 
     -- Right: the note text, editable.
     local textLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    textLabel:SetPoint("TOPLEFT", 272, -42)
+    textLabel:SetPoint("TOPLEFT", 272, -14)
     textLabel:SetText("Note text")
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", 272, -64)
-    box:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -64)
+    box:SetPoint("TOPLEFT", 272, -36)
+    box:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -36)
     box:SetHeight(MAX_ROWS * ROW_H + 60)
     skin(box, 0.4)
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteTextScroll", box, "UIPanelScrollFrameTemplate")
@@ -292,7 +288,7 @@ local function buildNotes(pf)
     status:SetJustifyH("LEFT")
 
     -- Bottom left: your personal note, shown in its own window.
-    local top = -412
+    local top = -384
     local personalLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     personalLabel:SetPoint("TOPLEFT", 8, top)
     personalLabel:SetText("Personal note (only you see it)")
@@ -331,14 +327,10 @@ local function buildNotes(pf)
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     runLabel:SetPoint("TOPLEFT", 360, top)
     runLabel:SetText("Try it")
-    local runHint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    runHint:SetPoint("TOPLEFT", 360, top - 22)
-    runHint:SetWidth(310)
-    runHint:SetJustifyH("LEFT")
-    runHint:SetText("Test run starts the selected note now, as if the boss was pulled. Later phases start with Next phase.")
+    UI.Help(pf, "Try it", "Test run starts the selected note now, as if the boss was pulled. Later phases start with Next phase. Stop ends it."):SetPoint("LEFT", runLabel, "RIGHT", 6, 0)
 
     local testRun = makeButton(pf, "Test run", 100)
-    testRun:SetPoint("TOPLEFT", 360, top - 66)
+    testRun:SetPoint("TOPLEFT", 360, top - 24)
     testRun:SetScript("OnClick", function()
         local id = selected or Notes:Active()
         if id then

@@ -6,6 +6,7 @@ local ADDON, CRT = ...
 -- position and size are saved per player.
 
 local Notes = CRT.Notes
+local UI = CRT.UI
 
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
@@ -214,7 +215,10 @@ end
 
 local function buildColumn(pf, index, def, top)
     local x = 8 + (index - 1) * COLUMN_W
-    heading(pf, x, top, def.title)
+    local title = heading(pf, x, top, def.title)
+    if index == 1 then
+        UI.Help(pf, "Note windows", TEXT.hint):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    end
 
     -- Everything below Show this window greys out while the window is hidden.
     local function shown()
@@ -274,15 +278,9 @@ end
 local function build(pf)
     page = pf
 
-    local hint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -6)
-    hint:SetWidth(670)
-    hint:SetJustifyH("LEFT")
-    hint:SetText(TEXT.hint)
-
     -- The three note windows.
     for index, def in ipairs(WINDOWS) do
-        buildColumn(pf, index, def, -46)
+        buildColumn(pf, index, def, -14)
     end
 
     -- Alerts, on the left, and sharing, on the right. The seconds row greys out while alerts are off,
@@ -293,7 +291,7 @@ local function build(pf)
     local function speechOn()
         return Notes:Alert().tts and true or false
     end
-    local top = -312
+    local top = -280
     heading(pf, 8, top, TEXT.alerts)
     makeCheck(pf, 4, top - 20, TEXT.alertShow, nil, alert("enabled"))
     makeNumber(pf, 4, top - 44, TEXT.alertSeconds, { low = 1, high = 60, valueX = 200, enabledIf = alertsOn }, alert("seconds"))

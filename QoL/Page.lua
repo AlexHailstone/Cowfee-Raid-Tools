@@ -99,6 +99,7 @@ local function buildPanelSize(pf, top)
     local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.panelSize)
+    UI.Help(pf, TEXT.panelSize, TEXT.panelSizeNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
     local sliderLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     sliderLabel:SetPoint("TOPLEFT", 10, top - 16)
     sliderLabel:SetText(TEXT.panelSizeLabel)
@@ -129,11 +130,6 @@ local function buildPanelSize(pf, top)
         UI:SetScale(100)
     end)
 
-    local note = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    note:SetPoint("TOPLEFT", 10, top - 54)
-    note:SetWidth(650)
-    note:SetJustifyH("LEFT")
-    note:SetText(TEXT.panelSizeNote)
 end
 
 -- Low-health alert ----------------------------------------------------------------------------
@@ -142,6 +138,7 @@ local function buildLowHealth(pf, top)
     local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.lowHealth .. "  |cff999999" .. TEXT.lowHealthTag .. "|r")
+    UI.Help(pf, TEXT.lowHealth, TEXT.lowHealthNote):SetPoint("LEFT", heading, "RIGHT", 6, 0)
 
     local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     check:SetSize(24, 24)
@@ -192,11 +189,6 @@ local function buildLowHealth(pf, top)
         LowHealth:ResetPosition()
     end)
 
-    local note = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    note:SetPoint("TOPLEFT", 10, top - 82)
-    note:SetWidth(630)
-    note:SetJustifyH("LEFT")
-    note:SetText(TEXT.lowHealthNote)
 end
 
 local function build(pf)
@@ -206,14 +198,10 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
 
-    local hint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    hint:SetPoint("TOPLEFT", 8, -34)
-    hint:SetWidth(670)
-    hint:SetJustifyH("LEFT")
-    hint:SetText(TEXT.hint)
+    UI.Help(pf, TEXT.title, TEXT.hint):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
-    buildPanelSize(pf, -50)
-    buildLowHealth(pf, -132)
+    buildPanelSize(pf, -42)
+    buildLowHealth(pf, -98)
 
     pf:SetScript("OnShow", refresh)
     -- Ctrl + mouse wheel changes the size too, so the slider follows it.

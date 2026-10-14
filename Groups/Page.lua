@@ -649,9 +649,7 @@ local function buildPage(pf)
         end
     end
 
-    local hint = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    hint:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 84)
-    hint:SetText("Click a slot to choose a name, drag to move or swap, right-click to clear.")
+    UI.Help(pf, "Editing the groups", "Click a slot to choose a name, drag to move or swap, right-click to clear."):SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 4, 84)
 
     -- Bottom left buttons
     local setRoster = makeButton(pf, "Set current roster", SLOT_W)

@@ -62,6 +62,32 @@ function UI:SetScale(percent)
     end
 end
 
+-- A small blue (?) that shows an explanation as a tooltip, used for every bit of extra context so the
+-- pages stay compact. text is a string, with paragraphs split on blank lines, or a function returning
+-- one, for text that changes. Anchor the returned button beside the heading or control it explains.
+function UI.Help(parent, title, text)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(24, 16)
+    local fs = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    fs:SetPoint("CENTER")
+    fs:SetText("|cff80c0ff(?)|r")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title, 1, 1, 1)
+        local body = type(text) == "function" and text() or text or ""
+        for paragraph in (body .. "\n\n"):gmatch("(.-)\n\n") do
+            if paragraph ~= "" then
+                GameTooltip:AddLine(paragraph, 0.85, 0.85, 0.85, true)
+            end
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    return b
+end
+
 function UI.SetFrameTitle(frame, text)
     if frame.SetTitle then
         frame:SetTitle(text)
