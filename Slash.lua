@@ -9,7 +9,7 @@ local function printHelp()
     print("  |cffffd100/crt rc|r - preview your ready check bar")
     print("  |cffffd100/crt debuffs|r - open the Debuffs page")
     print("  |cffffd100/crt debuffs info|r - diagnostics for the debuff panel")
-    print("  |cffffd100/crt notes|r - open the Raid Notes page")
+    print("  |cffffd100/crt notes|r - open the Raid Notes page (|cffffd100/crt notes settings|r opens its Settings tab)")
     print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
     print("  |cffffd100/crt late|r - open the Late Tracker page")
     print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
@@ -52,7 +52,9 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     elseif msg == "debuffs info" then
         CRT.DebuffPanel:ShowInfo()
     elseif msg == "notes" then
-        CRT.UI:Show("notes")
+        CRT.NotesPage.Open("notes")
+    elseif msg == "notes settings" then
+        CRT.NotesPage.Open("settings")
     elseif msg == "note test" then
         local id = CRT.Notes:Active()
         if id then
