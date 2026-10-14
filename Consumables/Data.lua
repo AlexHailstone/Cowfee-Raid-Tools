@@ -84,6 +84,20 @@ function Consumables:SetLowMinutes(minutes)
     self:Fire()
 end
 
+-- Where the ready check bar sits. Without a saved position it goes above the ready check dialog.
+function Consumables:Position()
+    return cdb().position
+end
+
+function Consumables:SavePosition(point, relativePoint, x, y)
+    cdb().position = { point = point, relativePoint = relativePoint, x = x, y = y }
+end
+
+function Consumables:ResetPosition()
+    cdb().position = nil
+    self:Fire()
+end
+
 -- The shipped list ------------------------------------------------------------
 
 function Consumables:Database()

@@ -6,6 +6,9 @@ local function printHelp()
     print("  |cffffd100/crt groups|r - open the Raid Groups page")
     print("  |cffffd100/crt consumables|r - open the Consumables page")
     print("  |cffffd100/crt readycheck|r - preview the ready check consumables row")
+    print("  |cffffd100/crt debuffs|r - open the Debuffs page")
+    print("  |cffffd100/crt debuffs info|r - diagnostics for the debuff panel")
+    print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
     print("  |cffffd100/crt consumables check|r - test every ID in the built-in consumables list")
     print("  |cffffd100/crt help|r - show this list")
@@ -24,6 +27,12 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.ConsumablesTools:Scan()
     elseif msg == "consumables check" then
         CRT.ConsumablesTools:Check()
+    elseif msg == "debuffs" then
+        CRT.UI:Show("debuffs")
+    elseif msg == "debuffs info" then
+        CRT.DebuffPanel:ShowInfo()
+    elseif msg == "previews" then
+        CRT.UI:TogglePreviews()
     elseif msg == "readycheck" or msg == "rc" then
         CRT.ConsumablesDisplay:Preview()
     elseif msg == "help" or msg == "?" then

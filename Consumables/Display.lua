@@ -19,9 +19,10 @@ CRT.ConsumablesDisplay = Display
 local REFRESH_SECONDS = 0.5
 local PREVIEW_SECONDS = 20
 
-local frame
+local frame, handle
 local slots = {}
-local shownUntil -- time at which a ready check or preview row hides by itself
+local dragging -- true while the row is being dragged, so it is not re-anchored under the cursor
+local shownUntil -- time at which a ready check or preview row hides by itself, nil for no limit
 local sawReadyCheckFrame -- true once Blizzard's ready check dialog has been seen on screen
 local elapsed = 0
 local pendingHide -- a hide that was blocked by combat
@@ -55,7 +56,37 @@ local function build()
     frame:SetBackdrop(Bar.BACKDROP)
     frame:SetBackdropColor(0, 0, 0, 0.45)
     frame:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
+    frame:SetMovable(true)
+    frame:SetClampedToScreen(true)
     frame:Hide()
+
+    -- A drag handle above the row, shown during a preview so the row can be moved.
+    handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    handle:SetHeight(20)
+    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
+    handle:SetBackdrop(Bar.BACKDROP)
+    handle:SetBackdropColor(0.1, 0.3, 0.35, 0.9)
+    handle:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
+    handle:EnableMouse(true)
+    handle:RegisterForDrag("LeftButton")
+    local handleText = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    handleText:SetPoint("CENTER")
+    handleText:SetText("Consumables: drag to move")
+    handle:SetScript("OnDragStart", function()
+        if InCombatLockdown() then
+            return
+        end
+        dragging = true
+        frame:StartMoving()
+    end)
+    handle:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        dragging = false
+        local point, _, relativePoint, x, y = frame:GetPoint()
+        Consumables:SavePosition(point, relativePoint, x, y)
+    end)
+    handle:Hide()
 
     for index = 1, count do
         local slot = Bar.CreateSlot(frame, index, true)
@@ -82,12 +113,16 @@ local function build()
 end
 
 local function place()
-    if InCombatLockdown() then
+    if InCombatLockdown() or dragging then
         return
     end
     local rc = _G.ReadyCheckFrame
+    local saved = Consumables:Position()
     frame:ClearAllPoints()
-    if rc and rc.IsShown and rc:IsShown() then
+    if saved then
+        -- Where the player put it.
+        frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x, saved.y)
+    elseif rc and rc.IsShown and rc:IsShown() then
         frame:SetPoint("BOTTOM", rc, "TOP", 0, 18)
     else
         frame:SetPoint("TOP", UIParent, "TOP", 0, -200)
@@ -169,6 +204,10 @@ function Display:Refresh()
 end
 
 function Display:Hide()
+    -- A preview kept on from the main panel stays until it is turned off there.
+    if self.persistent then
+        return
+    end
     shownUntil = nil
     self.preview = false
     hideFrame()
@@ -189,7 +228,8 @@ local function show(seconds, preview)
     pendingHide = false
     Display.preview = preview
     sawReadyCheckFrame = false
-    shownUntil = GetTime() + seconds
+    shownUntil = seconds and (GetTime() + seconds) or nil
+    handle:SetShown(preview and true or false)
     place()
     frame:Show()
     elapsed = REFRESH_SECONDS
@@ -203,6 +243,33 @@ function Display:Preview()
         CRT:Print("Showing the consumables row for " .. PREVIEW_SECONDS .. " seconds.")
     end
 end
+
+-- Keeps the row on screen, with its drag handle, until it is turned off. Used by the
+-- "Toggle previews" button in the main panel.
+function Display:SetPreview(on)
+    if on then
+        show(nil, true)
+        self.persistent = frame and frame:IsShown() or false
+    else
+        self.persistent = false
+        if handle then
+            handle:Hide()
+        end
+        self:Hide()
+    end
+end
+
+-- Moves the row back above the ready check dialog.
+function Display:ResetPosition()
+    Consumables:ResetPosition()
+    if frame and frame:IsShown() then
+        place()
+    end
+end
+
+CRT.UI:RegisterPreview("consumables", function(on)
+    Display:SetPreview(on)
+end)
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")

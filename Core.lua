@@ -27,6 +27,15 @@ local defaults = {
         itemOrder = {},
         extra = {}, -- the player's own additions, { { item, name }, ... } per category
         learned = {}, -- buffs worked out from use, itemId -> spellId
+        -- position = { point, relativePoint, x, y } is added when the bar is moved. Without it the
+        -- bar sits above the ready check dialog.
+    },
+    -- The in-combat debuff panel. Every player has their own copy of these in their own saved
+    -- variables, so nothing here is shared between players. position is added when it is moved.
+    debuffs = {
+        enabled = true,
+        size = 44, -- icon size in pixels
+        maxCount = 4, -- how many to show at once
     },
 }
 

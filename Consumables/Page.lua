@@ -329,6 +329,12 @@ local function build(pf)
     minutes:SetPoint("LEFT", lowEdit, "RIGHT", 6, 0)
     minutes:SetText("minutes left")
 
+    local resetBar = makeButton(pf, "Reset bar position", 170)
+    resetBar:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -176, -60)
+    resetBar:SetScript("OnClick", function()
+        CRT.ConsumablesDisplay:ResetPosition()
+    end)
+
     local preview = makeButton(pf, "Preview on screen", 160)
     preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -60)
     preview:SetScript("OnClick", function()

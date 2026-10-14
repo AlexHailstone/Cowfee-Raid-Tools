@@ -12,6 +12,38 @@ function UI:RegisterPage(key, title, builder)
     self.order[#self.order + 1] = key
 end
 
+-- Previews: the panels that appear on their own, such as the ready check bar and the debuff panel,
+-- register here. "Toggle previews" in the corner of the main panel shows them all so they can be
+-- dragged into place, and hides them again. setFn(on) shows or hides one panel's preview.
+UI.previews = {}
+UI.previewing = false
+
+function UI:RegisterPreview(key, setFn)
+    self.previews[key] = setFn
+end
+
+function UI:SetPreviews(on)
+    on = on and true or false
+    if on and InCombatLockdown() then
+        CRT:Print("Previews can't be turned on during combat.")
+        return
+    end
+    self.previewing = on
+    for key, setFn in pairs(self.previews) do
+        local ok, err = pcall(setFn, on)
+        if not ok then
+            CRT:Print("Preview '" .. key .. "' failed: " .. tostring(err))
+        end
+    end
+    if self.previewButton then
+        self.previewButton:SetText(on and "Previews: ON" or "Toggle previews")
+    end
+end
+
+function UI:TogglePreviews()
+    self:SetPreviews(not self.previewing)
+end
+
 function UI.SetFrameTitle(frame, text)
     if frame.SetTitle then
         frame:SetTitle(text)
@@ -68,6 +100,33 @@ function UI:Create()
     end)
     UI.SetFrameTitle(f, "Cowfee Raid Tools")
     tinsert(UISpecialFrames, "CowfeeRaidToolsFrame")
+
+    -- Closing the panel also turns the previews off, so nothing is left floating on screen.
+    f:SetScript("OnHide", function()
+        UI:SetPreviews(false)
+    end)
+
+    -- "Toggle previews", in the top right corner beside the close button.
+    local pb = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    pb:SetNormalFontObject(CRTFontNormal)
+    pb:SetHighlightFontObject(CRTFontHighlight)
+    pb:SetDisabledFontObject(CRTFontDisable)
+    pb:SetSize(150, 22)
+    pb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -34, -4)
+    pb:SetText("Toggle previews")
+    pb:SetScript("OnClick", function()
+        UI:TogglePreviews()
+    end)
+    pb:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Toggle previews", 1, 1, 1)
+        GameTooltip:AddLine("Shows the ready check bar and the debuff panel so you can drag them where you want them. Closing this window also turns the previews off.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    pb:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    UI.previewButton = pb
 
     local w = CRT.db.window
     f:ClearAllPoints()
