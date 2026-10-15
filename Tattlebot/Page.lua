@@ -507,12 +507,11 @@ local function scanEntries()
     out[1] = { text = format("|cffffd100Last fight|r: %s%s", where or "not a boss", scanResult.duration and (", " .. duration(scanResult.duration)) or "") }
     -- Whether spells added now also count on the fight that was scanned.
     local when
+    local on = where and ("on " .. where) or "on every boss pull"
     if scanResult.pull then
-        when = "Ticked spells are tracked on " .. where .. " from this pull on: this pull is filled in too."
-    elseif where then
-        when = "This fight wasn't saved as a pull, so ticked spells are tracked on " .. where .. " from the next pull."
+        when = "Ticked spells are tracked " .. on .. " from this pull on: this pull is filled in too."
     else
-        when = "Ticked spells are tracked on every boss, from the next boss pull."
+        when = "This fight isn't saved as a pull yet. Add checked saves it as one with the ticked spells, and they are tracked " .. on .. " from then on."
     end
     out[2] = { text = "|cffbbbbbb" .. when .. "|r" }
     if scanError then
@@ -1002,7 +1001,7 @@ local function buildMechanics(f)
     end)
     scanBar.add = makeButton(scanBar, "Add checked", 130)
     scanBar.add:SetPoint("LEFT", mechEdit, "RIGHT", 8, 0)
-    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells, tied to the boss of the fight, so History counts them against that boss's pulls. If the fight was saved as a boss pull, their damage is filled in on that pull too, and they count on every pull after. A fight that was not a boss adds them for every boss, from the next boss pull.\n\nLeave Mechanic empty to use each spell's own name, so spells that share a name become one mechanic. Type a name to put every ticked spell under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
+    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells, tied to the boss of the fight, so History counts them against that boss's pulls. Their damage from this fight counts at once: it is filled in on the pull Tattlebot saved for it, or, when it has none (not a boss, or a training dummy), the fight is saved as a pull of its own. They count on every boss pull after. A fight that was not a boss adds them for every boss.\n\nLeave Mechanic empty to use each spell's own name, so spells that share a name become one mechanic. Type a name to put every ticked spell under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
     scanBar.add:SetScript("OnClick", function()
         if not scanResult then
             return
@@ -1023,10 +1022,16 @@ local function buildMechanics(f)
         mechEdit:SetText("")
         mechEdit:ClearFocus()
         Tattle:AddCustomMany(ids, names, boss and boss.name, boss and boss.encounterID)
-        local filled = ""
+        local filled
         if scanResult.pull then
             local n = Tattle:Backfill(scanResult.pull, scanResult.players, ids)
             filled = format(", and filled them in on this pull for %d %s", n, n == 1 and "player" or "players")
+        else
+            -- No saved pull for this fight: save it as one, so the spells show up now. Later adds from
+            -- the same scan fill in this pull.
+            local pull, n = Tattle:AddScannedPull(scanResult, ids)
+            scanResult.pull = pull
+            filled = format(", and saved this fight as a pull with %d %s hit", n, n == 1 and "player" or "players")
         end
         CRT:Print(format("Tattlebot now tracks %d more %s%s%s.", #ids, #ids == 1 and "spell" or "spells", boss and boss.name and (" on " .. boss.name) or "", filled))
     end)
