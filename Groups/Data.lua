@@ -37,6 +37,18 @@ function Groups.Display(key)
     return Ambiguate(key, "none")
 end
 
+-- A name for reports, chat posts and Discord exports (the Late Tracker and Tattlebot): without its
+-- realm when "Leave realm names out" is ticked on Addon Settings, else as Display shows it.
+function Groups.ReportName(key)
+    if not key or key == "" then
+        return ""
+    end
+    if CRT.db.ui.hideRealms then
+        return Ambiguate(key, "short")
+    end
+    return Ambiguate(key, "none")
+end
+
 -- classOverride is the live class of a matched group member, if any.
 function Groups.ClassColor(key, classOverride)
     local class = classOverride or (key and CRT.db.classCache[key:lower()])

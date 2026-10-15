@@ -219,6 +219,22 @@ local function build(pf)
         end,
     }), -578)
 
+    -- Reports.
+    heading(pf, -620, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm: on their pages, in chat posts and in Discord exports. Unticked, a realm only shows for players from another realm, as the game shows it.\n\nThe Raid Groups grid always keeps realms, since it needs them to tell players apart.")
+    local realms = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
+    realms:SetSize(24, 24)
+    realms:SetPoint("TOPLEFT", 6, -640)
+    local realmsText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    realmsText:SetPoint("LEFT", realms, "RIGHT", 2, 0)
+    realmsText:SetText("Leave realm names out of reports and Discord exports")
+    realms:SetScript("OnClick", function(self)
+        ui().hideRealms = self:GetChecked() and true or false
+    end)
+    realms.refresh = function()
+        realms:SetChecked(ui().hideRealms and true or false)
+    end
+    controls[#controls + 1] = realms
+
     -- Layers.
     heading(pf, -296, "Layers", "Which layer each window is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nThe game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
     for i, layer in ipairs(UI.LAYERS) do

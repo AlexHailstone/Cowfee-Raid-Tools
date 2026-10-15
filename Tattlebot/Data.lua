@@ -710,7 +710,7 @@ local function mechanicChat(lines, nights, maxPlayers, withPulls)
         local parts = {}
         for i = 1, math.min(#block.rows, maxPlayers or #block.rows) do
             local row = block.rows[i]
-            local part = CRT.Groups.Display(row.key) .. " " .. Tattle.Short(row.damage)
+            local part = CRT.Groups.ReportName(row.key) .. " " .. Tattle.Short(row.damage)
             if withPulls then
                 part = part .. " (" .. row.hits .. ")"
             end

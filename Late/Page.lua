@@ -95,7 +95,7 @@ end
 
 local function name(key)
     local r, g, b = Groups.ClassColor(key)
-    return format("|cff%02x%02x%02x%s|r", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255), Groups.Display(key))
+    return format("|cff%02x%02x%02x%s|r", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255), Groups.ReportName(key))
 end
 
 local function sortedPlayers(night, now)
@@ -213,7 +213,7 @@ local function pad(s, width)
 end
 
 local function plain(key)
-    return Groups.Display(key)
+    return Groups.ReportName(key)
 end
 
 local function totalsExport()

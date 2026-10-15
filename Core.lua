@@ -11,7 +11,8 @@ local defaults = {
     -- "minimal" (flat black), bgAlpha the main window background's opacity in percent. layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
     -- soundChannel is the game sound channel every sound the addon plays goes through (CRT:PlaySound).
-    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {}, soundChannel = "Master" },
+    -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
+    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false },
     lastPage = "groups",
     classCache = {},
     roleCache = {},
