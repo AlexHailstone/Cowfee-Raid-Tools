@@ -5,7 +5,7 @@
 ## Version: 0.16.0
 ## SavedVariables: CRTDB
 ## SavedVariablesPerCharacter: CRTDBChar
-## IconTexture: Interface\Icons\inv_drink_31_embalmingfluid
+## IconTexture: Interface\AddOns\CowfeeRaidTools\Media\Icon
 ## AddonCompartmentFunc: CowfeeRaidTools_OnAddonCompartmentClick
 ## Category: Dungeons & Raids
 
