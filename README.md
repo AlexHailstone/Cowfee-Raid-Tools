@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.14.1</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.14.2</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:

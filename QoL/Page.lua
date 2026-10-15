@@ -348,6 +348,12 @@ local function buildLowHealth(pf, top)
         end)
         test:SetText(started and TEXT.lowHealthStop or TEXT.lowHealthTest)
     end)
+    -- Greyed out with the rest of the sound settings, and while the sound is a work in progress.
+    controls[#controls + 1] = {
+        refresh = function()
+            test:SetEnabled(soundOn() and true or false)
+        end,
+    }
 
 end
 
