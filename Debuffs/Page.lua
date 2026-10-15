@@ -162,29 +162,18 @@ local function build(pf)
     regularCheck = makeCheck(pf, "Also show regular debuffs in a second row (this includes long ones)", -154, function(checked)
         Debuffs:SetIncludeRegular(checked)
     end)
-    local reset = makeButton(pf, "Reset position", 160)
-    reset:SetPoint("TOPLEFT", 8, -192)
-    reset:SetScript("OnClick", function()
-        CRT.DebuffPanel:ResetPosition()
-    end)
-
-    local info = makeButton(pf, "Show diagnostics", 160)
-    info:SetPoint("LEFT", reset, "RIGHT", 12, 0)
-    info:SetScript("OnClick", function()
-        CRT.DebuffPanel:ShowInfo()
-    end)
 
     -- The look of the boss debuff icons. Previews shows the changes as you make them.
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    lookTitle:SetPoint("TOPLEFT", 8, -236)
+    lookTitle:SetPoint("TOPLEFT", 8, -192)
     lookTitle:SetText("Look")
     UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. It writes their timer in its own shared small font, so their font and text size can't be changed without changing text all over the game. The font setting on the General Settings page changes everything else.\n\nTimer: the game's timer text beside or on the icon, or its countdown numbers on the swipe, never both.\n\nBorder size: the game's colored debuff border, the icon plus 5 pixels for each step.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
-    local timer = lookDropdown(pf, -254, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
+    local timer = lookDropdown(pf, -210, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
     nudgeBox(pf, nudgeX, "Y", "timerY")
-    lookCheck(pf, "Swipe animation as the debuff runs out", -288, "swipe")
-    lookCheck(pf, "Bright edge on the swipe", -312, "swipeEdge", 28, "swipe")
+    lookCheck(pf, "Swipe animation as the debuff runs out", -244, "swipe")
+    lookCheck(pf, "Bright edge on the swipe", -268, "swipeEdge", 28, "swipe")
     local border = UI.Slider(pf, "Border size", { min = 0, max = 6, step = 0.5, labelWidth = 80, width = 200, enabledIf = panelOn,
         format = function(v)
             return format("%g", v)
@@ -196,7 +185,7 @@ local function build(pf)
             Debuffs:Set("borderScale", v)
         end,
     })
-    border:SetPoint("TOPLEFT", 8, -340)
+    border:SetPoint("TOPLEFT", 8, -296)
     look[#look + 1] = border
 
 

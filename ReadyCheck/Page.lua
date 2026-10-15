@@ -287,11 +287,6 @@ local function buildWindow(f)
         Window:Show()
     end)
     tooltip(live, "Show with my group", "Opens the window with your current group, as a ready check would. Raid buff columns follow Only raid buff columns my group can give.")
-    local reset = makeButton(f, "Reset position", 150)
-    reset:SetPoint("LEFT", live, "RIGHT", 8, 0)
-    reset:SetScript("OnClick", function()
-        Window:ResetPosition()
-    end)
 end
 
 -- Tabs ----------------------------------------------------------------------------------------

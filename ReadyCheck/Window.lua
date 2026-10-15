@@ -872,6 +872,11 @@ local function build()
             Window:Refresh()
         end
     end)
+    frame.reset = CRT.UI.ResetButton(frame, function()
+        Window:ResetPosition()
+    end)
+    frame.reset:SetPoint("TOPRIGHT", -4, -4)
+    frame.reset:Hide()
     applyPosition()
     frame:Hide()
 end
@@ -924,6 +929,7 @@ CRT.UI:RegisterPreview("readycheckwindow", function(on)
         build()
     end
     previewOn = on
+    frame.reset:SetShown(on and true or false)
     if on then
         applyPosition()
         frame:Show()

@@ -527,6 +527,9 @@ local function build()
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("CENTER")
     text:SetText("Debuffs: drag to move")
+    CRT.UI.ResetButton(handle, function()
+        Panel:ResetPosition()
+    end):SetPoint("RIGHT", -2, 0)
     handle:SetScript("OnDragStart", function()
         if InCombatLockdown() then
             return
