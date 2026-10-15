@@ -652,10 +652,202 @@ local function buildSettings(f)
     end)
 end
 
+-- The pop-out window -----------------------------------------------------------------------------
+-- Pop out moves the whole Review tab (the boss and pull choices, the zoom and the view) into a
+-- window of its own that can be dragged to any size, for a wider view than the main panel allows.
+-- The Review tab then shows a note and a button to bring it back, and closing the window (its X,
+-- Escape or Dock) puts it back. Its size and position are saved in timeline.popout.
+
+local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
+local MIN_W, MIN_H = 760, 360
+local popWin, popButton, dockedNote
+local popped = false
+
+local function popSettings()
+    local s = settings()
+    s.popout = s.popout or { width = 1200, height = 600 }
+    return s.popout
+end
+
+local function placePopout()
+    local p = popSettings()
+    popWin:ClearAllPoints()
+    if p.point then
+        popWin:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x or 0, p.y or 0)
+    else
+        popWin:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+    popWin:SetSize(math.max(MIN_W, p.width or 1200), math.max(MIN_H, p.height or 600))
+end
+
+-- The window's colours follow the Modern or Classic look.
+local function stylePopout()
+    if UI:IsModern() then
+        local c, e = CRT.MOCHA.espresso, CRT.MOCHA.edge
+        popWin:SetBackdropColor(c[1], c[2], c[3], 0.96)
+        popWin:SetBackdropBorderColor(e[1], e[2], e[3], 1)
+    else
+        popWin:SetBackdropColor(0, 0, 0, 0.9)
+        popWin:SetBackdropBorderColor(GRAY[1], GRAY[2], GRAY[3], 1)
+    end
+end
+
+local dock
+
+local function buildPopout()
+    if popWin then
+        return
+    end
+    popWin = CreateFrame("Frame", "CowfeeRaidToolsTimelineWindow", UIParent, "BackdropTemplate")
+    popWin:SetBackdrop(BACKDROP)
+    popWin:SetClampedToScreen(true)
+    popWin:SetMovable(true)
+    popWin:SetResizable(true)
+    if popWin.SetResizeBounds then
+        popWin:SetResizeBounds(MIN_W, MIN_H)
+    end
+    popWin:EnableMouse(true)
+    UI:RegisterLayer("timeline", popWin)
+    tinsert(UISpecialFrames, "CowfeeRaidToolsTimelineWindow")
+
+    -- The header: drag it to move the window.
+    local header = CreateFrame("Frame", nil, popWin)
+    header:SetPoint("TOPLEFT", 1, -1)
+    header:SetPoint("TOPRIGHT", -1, -1)
+    header:SetHeight(24)
+    header:EnableMouse(true)
+    header:RegisterForDrag("LeftButton")
+    local headerBg = header:CreateTexture(nil, "BACKGROUND")
+    headerBg:SetAllPoints()
+    headerBg:SetColorTexture(1, 1, 1, 0.05)
+    local title = label(header, "Timeline", "CRTFontNormal")
+    title:SetPoint("LEFT", 8, 0)
+    local function save()
+        local point, _, relativePoint, x, y = popWin:GetPoint()
+        local p = popSettings()
+        p.point, p.relativePoint, p.x, p.y = point, relativePoint, x, y
+        p.width = math.floor(popWin:GetWidth() + 0.5)
+        p.height = math.floor(popWin:GetHeight() + 0.5)
+    end
+    header:SetScript("OnDragStart", function()
+        popWin:StartMoving()
+    end)
+    header:SetScript("OnDragStop", function()
+        popWin:StopMovingOrSizing()
+        save()
+    end)
+
+    local close = CreateFrame("Button", nil, header, "UIPanelCloseButton")
+    close:SetSize(22, 22)
+    close:SetPoint("RIGHT", -1, 0)
+    close:SetScript("OnClick", function()
+        popWin:Hide()
+    end)
+    local reset = UI.ResetButton(header, function()
+        local p = popSettings()
+        p.point, p.relativePoint, p.x, p.y = nil, nil, nil, nil
+        p.width, p.height = 1200, 600
+        placePopout()
+    end)
+    reset:SetPoint("RIGHT", close, "LEFT", -4, 0)
+
+    popWin.content = CreateFrame("Frame", nil, popWin)
+    popWin.content:SetPoint("TOPLEFT", 4, -30)
+    popWin.content:SetPoint("BOTTOMRIGHT", -4, 18)
+
+    local grip = CreateFrame("Button", nil, popWin)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    grip:SetNormalTexture(GRIP .. "-Up")
+    grip:SetHighlightTexture(GRIP .. "-Highlight")
+    grip:SetPushedTexture(GRIP .. "-Down")
+    grip:SetScript("OnMouseDown", function()
+        popWin:StartSizing("BOTTOMRIGHT")
+    end)
+    grip:SetScript("OnMouseUp", function()
+        popWin:StopMovingOrSizing()
+        save()
+    end)
+
+    -- Closing the window, however it closes, puts the Review tab back.
+    popWin:SetScript("OnHide", function()
+        if popped then
+            dock()
+        end
+    end)
+    popWin:Hide()
+end
+
+-- Puts the Review tab back on the page.
+dock = function()
+    popped = false
+    reviewFrame:SetParent(tabFrames.review)
+    reviewFrame:ClearAllPoints()
+    reviewFrame:SetAllPoints(tabFrames.review)
+    reviewFrame:Show()
+    dockedNote:Hide()
+    popButton:SetText("Pop out")
+    if popWin and popWin:IsShown() then
+        popWin:Hide()
+    end
+    refresh()
+end
+
+-- Moves the Review tab into the pop-out window.
+local function popOut()
+    buildPopout()
+    popped = true
+    placePopout()
+    stylePopout()
+    popWin:SetScale(UI:Scale() / 100)
+    reviewFrame:SetParent(popWin.content)
+    reviewFrame:ClearAllPoints()
+    reviewFrame:SetAllPoints(popWin.content)
+    reviewFrame:Show()
+    dockedNote:Show()
+    popButton:SetText("Dock")
+    popWin:Show()
+    UI:SkinTree(popWin)
+    refresh()
+end
+
+local function togglePopout()
+    if popped then
+        dock()
+    else
+        popOut()
+    end
+end
+
+-- The Pop out button on the Review tab, and the note left on the tab while it is popped out.
+local function buildPopControls()
+    popButton = button(reviewFrame, "Pop out", 90)
+    popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8, -38)
+    popButton:SetScript("OnClick", togglePopout)
+    UI.Help(reviewFrame, "Pop out", "Moves the timeline into a window of its own that you can drag to any size, for a wider view. Drag its title to move it and its corner to resize it.\n\nDock, the window's X or Escape puts it back here."):SetPoint("RIGHT", popButton, "LEFT", -2, 0)
+
+    dockedNote = CreateFrame("Frame", nil, tabFrames.review)
+    dockedNote:SetAllPoints(tabFrames.review)
+    local text = label(dockedNote, "The timeline is in its own window.", "CRTFontNormal")
+    text:SetPoint("CENTER", 0, 20)
+    local back = button(dockedNote, "Bring it back", 130)
+    back:SetPoint("TOP", text, "BOTTOM", 0, -12)
+    back:SetScript("OnClick", dock)
+    dockedNote:Hide()
+end
+
+-- /crt timeline pop: opens the Timeline page and pops the Review tab out.
+function CRT.TimelinePopout()
+    UI:Show("timeline")
+    if not popped then
+        popOut()
+    end
+end
+
 -- The page -------------------------------------------------------------------------------------
 
 refresh = function()
-    if not page or not page:IsShown() then
+    if not page or not (page:IsShown() or (popped and popWin:IsShown())) then
         return
     end
     bossList = buildBossList()
@@ -720,7 +912,11 @@ local function build(pf)
     line:SetPoint("TOPLEFT", 8, -62)
     line:SetPoint("TOPRIGHT", -8, -62)
 
-    buildReview(tabFrames.review)
+    -- The Review tab's content sits in a frame of its own, so Pop out can move it to its window.
+    local review = CreateFrame("Frame", nil, tabFrames.review)
+    review:SetAllPoints(tabFrames.review)
+    buildReview(review)
+    buildPopControls()
     refTab = ReferencePage.Build(tabFrames.references, {
         selectedBoss = function()
             return selectedBoss
