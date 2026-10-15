@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.15.1</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.16.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -44,7 +44,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
 | **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
 | **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider. A low-health sound is a work in progress and switched off for now |
-| **Addon Settings** | Settings for the whole addon: the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, the sound channel the addon's sounds play through, and whether reports and Discord exports leave out realm names |
+| **General Settings** | Settings for the whole addon: a Modern look (coffee colors, flat controls, grouped menu) or the Classic look, the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black in Classic, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, the sound channel the addon's sounds play through, whether reports and Discord exports leave out realm names, the minimap button, and profiles (each character picks one; create, copy, reset, delete, export and import) |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
 
@@ -142,7 +142,8 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 | `/crt tattle scan`, `/crt tattle scan text`, `/crt tattle export` | Pick spells to track from the last fight, the same list as plain text, and the Tattlebot totals for Discord |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert |
-| `/crt settings` | Addon Settings: window scale and style, background opacity, fonts and layers |
+| `/crt settings` | General Settings: the look, window, fonts, sound, minimap button, layers and profiles |
+| `/crt minimap` | Shows or hides the minimap button |
 | `/crt lowhp off`, `/crt lowhp on` | Turns the experimental low-health alert off or on |
 | `/crt lowhp stop` | Stops any low-health sound the addon is playing |
 | `/crt perf` | Shows the addon's CPU use since the last `/reload`, from the game's profiler |
@@ -153,7 +154,7 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 <details>
 <summary><strong>Where are my settings saved?</strong></summary>
 
-In the game's saved variables: `WTF\Account\<account>\SavedVariables\CowfeeRaidTools.lua`. Back that file up if you want to keep your layouts, notes and late history.
+In the game's saved variables: `WTF\Account\<account>\SavedVariables\CowfeeRaidTools.lua`. Back that file up if you want to keep your layouts, notes and late history. Each profile is kept there too, and each character's choice of profile is in `WTF\Account\<account>\<realm>\<character>\SavedVariables\CowfeeRaidTools.lua`. Export on General Settings gives a profile as text to keep or share.
 
 </details>
 
@@ -198,11 +199,13 @@ The addon is plain Lua with no bundled libraries.
 ```
 CowfeeRaidTools/
   CowfeeRaidTools.toc    title, version, interface number, saved variable
-  Core.lua               namespace, saved data defaults, scaled fonts
+  Core.lua               namespace, saved data defaults, scaled fonts, the Modern colors
+  Profiles.lua           profiles: load, switch, copy, reset, delete, export, import
   Slash.lua              the /crt command
   UI/Panel.lua           main window, left menu, page registry, previews
   UI/Controls.lua        Edit Mode style dropdowns and sliders shared by the pages
-  UI/SettingsPage.lua    the Addon Settings page
+  UI/Minimap.lua         the minimap button and the game's addon menu entry
+  UI/SettingsPage.lua    the General Settings page
   Sounds/                your own low-health sound files (see its README.txt)
   Groups/                Raid Groups: data, Apply, page
   Consumables/           your ready check bar and the consumables list
