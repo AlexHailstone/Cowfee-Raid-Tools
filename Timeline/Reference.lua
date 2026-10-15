@@ -7,12 +7,37 @@ local ADDON, CRT = ...
 -- which belong to a boss (List, Find, ForBoss, BossKey). The text is one line per thing:
 --   Boss: Name            (required)   Difficulty: Mythic   Length: 9:48   Encounter: 3001
 --   Phase: [label] time   a phase line, the time is the last word
---   Name [spell N] (lead N, color rrggbb): time, time+bar, ...   an ability row
+--   Name [spell N] (type raid soak, lead N, color rrggbb): time, time+bar, ...   an ability row
 -- A time is m:ss or plain seconds. Blank lines and lines starting with # are skipped. Every line
 -- that cannot be read is reported as "Line N: reason", and nothing is saved until the text is clean.
 
 local Reference = {}
 CRT.TimelineReference = Reference
+
+-- What an ability is, written (type raid) or (type mythic soak). The first type colors the row; the
+-- others show as dots on its label, and the tooltip lists them all. No type means a plain mechanic.
+Reference.TYPE_ORDER = { "dispel", "raid", "falloff", "mythic", "heroic", "generic", "soak", "spread" }
+Reference.TYPES = {
+    dispel = { label = "Dispellable debuff", color = { 0.29, 0.64, 1 } },
+    raid = { label = "Raid-wide damage, unavoidable", color = { 1, 0.31, 0.31 } },
+    falloff = { label = "Fall-off damage", color = { 0.49, 0.86, 0.42 } },
+    mythic = { label = "Mythic only", color = { 1, 0.6, 0.24 } },
+    heroic = { label = "Heroic and higher", color = { 0.77, 0.36, 0.88 } },
+    generic = { label = "Mechanic", color = { 0.95, 0.9, 0.84 } },
+    soak = { label = "Soak", color = { 1, 0.5, 0.82 } },
+    spread = { label = "Spread out or get away", color = { 1, 0.85, 0.29 } },
+}
+
+-- The type colors as tooltip text, one line per type in its own color: "Soak (soak)".
+function Reference.Legend()
+    local lines = {}
+    for _, key in ipairs(Reference.TYPE_ORDER) do
+        local t = Reference.TYPES[key]
+        local r, g, b = math.floor(t.color[1] * 255 + 0.5), math.floor(t.color[2] * 255 + 0.5), math.floor(t.color[3] * 255 + 0.5)
+        lines[#lines + 1] = string.format("|cff%02x%02x%02x%s (%s)|r", r, g, b, t.label, key)
+    end
+    return table.concat(lines, "\n")
+end
 
 local function settings()
     return CRT.Timeline:Settings()
@@ -69,6 +94,15 @@ local function readOptions(row, text)
                     tonumber(hex:sub(3, 4), 16) / 255,
                     tonumber(hex:sub(5, 6), 16) / 255,
                 }
+            elseif key == "type" then
+                row.types = row.types or {}
+                for word in arg:gmatch("%S+") do
+                    word = word:lower()
+                    if not Reference.TYPES[word] then
+                        return "unknown type '" .. word .. "' (use " .. table.concat(Reference.TYPE_ORDER, ", ") .. ")"
+                    end
+                    row.types[#row.types + 1] = word
+                end
             else
                 return "unknown option '" .. opt .. "'"
             end
@@ -133,6 +167,11 @@ local function readAbility(line)
             local err = readTimes(row, rest:sub(2))
             if err then
                 return nil, err
+            end
+            -- the first type colors the row, unless a color was given
+            if not row.color and row.types and row.types[1] then
+                local c = Reference.TYPES[row.types[1]].color
+                row.color = { c[1], c[2], c[3] }
             end
             return row
         else

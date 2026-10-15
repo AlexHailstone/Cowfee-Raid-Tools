@@ -37,8 +37,10 @@ local FORMAT_HELP = "One line per thing:\n\n"
     .. "Length: 9:48  (else the last cast plus its bar)\n"
     .. "Encounter: 3001  (the boss's encounter ID, optional)\n"
     .. "Phase: P2 7:20  (a phase line, the label is optional)\n"
-    .. "Soulcoil Rite (lead 7, color ff6b7d) [spell 123456]: 0:02+45, 1:17, 95\n\n"
-    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. lead N draws the cast line N seconds before each icon, color rrggbb colors the name, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\nIcons and the match to a Journal ability come from the Encounter Journal, which is not read in combat, so they can be blank until you are out of combat."
+    .. "Soulcoil Rite (type raid, lead 7) [spell 123456]: 0:02+45, 1:17, 95\n\n"
+    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. type says what the ability is, one or more of the words below: the first colors the row, and each other one adds a dot to its name. lead N draws the cast line N seconds before each icon, color rrggbb colors the name instead of its type, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
+    .. CRT.TimelineReference.Legend()
+    .. "\n\nIcons and the match to a Journal ability come from the Encounter Journal, which is not read in combat, so they can be blank until you are out of combat."
 
 local function skin(frame, alpha)
     frame:SetBackdrop(BACKDROP)

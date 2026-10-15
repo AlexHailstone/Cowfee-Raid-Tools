@@ -29,7 +29,12 @@ local ZOOM = 1.25
 local TICK_GAP = 40 -- the fewest pixels between two axis labels
 local DEATH_RED = { 0.89, 0.29, 0.29 } -- also the phase lines
 local LEAD_GREEN = { 0.72, 0.88, 0.72 }
-local DUR_H = 12 -- the height of a duration bar
+local DUR_H = 18 -- the height of a duration bar
+local BAR_ALPHA = 0.45
+local TINT_ALPHA = 0.08 -- a reference row's background, in its type's color
+local DOT = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask" -- a white circle, colored per type
+local DOT_SIZE = 8
+local MAX_DOTS = 3
 local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -107,6 +112,17 @@ local function spellTip(spellID, fallback)
     end
 end
 
+-- The type lines of a reference ability ("Soak", "Mythic only"), each in its type's color.
+local function addTypes(lane)
+    local Reference = CRT.TimelineReference
+    for _, key in ipairs(lane.types or {}) do
+        local t = Reference and Reference.TYPES[key]
+        if t then
+            GameTooltip:AddLine(t.label, t.color[1], t.color[2], t.color[3])
+        end
+    end
+end
+
 local function iconEnter(b)
     local mark, lane = b.mark, b.lane
     GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
@@ -133,6 +149,7 @@ local function iconEnter(b)
         if type(lane.lead) == "number" and lane.lead > 0 then
             GameTooltip:AddLine(string.format("Cast starts %ds before", lane.lead), 0.85, 0.85, 0.85)
         end
+        addTypes(lane)
     elseif lane.kind == "unnamed" then
         GameTooltip:SetText("Boss cast (unnamed)", 1, 1, 1)
         GameTooltip:AddLine("Cast at " .. View.Format(mark.t), 0.85, 0.85, 0.85)
@@ -147,9 +164,15 @@ local function iconEnter(b)
 end
 
 local function labelEnter(l)
-    if l.lane and l.lane.kind == "spell" then
+    local lane = l.lane
+    if lane and lane.kind == "spell" then
         GameTooltip:SetOwner(l, "ANCHOR_RIGHT")
-        spellTip(l.lane.spellID, l.lane.label)
+        spellTip(lane.spellID, lane.label)
+        GameTooltip:Show()
+    elseif lane and lane.kind == "reference" and lane.types and #lane.types > 0 then
+        GameTooltip:SetOwner(l, "ANCHOR_RIGHT")
+        GameTooltip:SetText(lane.label or "", 1, 0.82, 0)
+        addTypes(lane)
         GameTooltip:Show()
     end
 end
@@ -426,6 +449,16 @@ function Methods:Label(n)
         l.text:SetPoint("RIGHT", l, "RIGHT", -2, 0)
         l.text:SetJustifyH("LEFT")
         l.text:SetWordWrap(false)
+        -- one dot per extra ability type, at the right end of the label
+        l.dots = {}
+        for d = 1, MAX_DOTS do
+            local dot = l:CreateTexture(nil, "OVERLAY")
+            dot:SetTexture(DOT)
+            dot:SetSize(DOT_SIZE, DOT_SIZE)
+            dot:SetPoint("RIGHT", l, "RIGHT", -4 - (d - 1) * (DOT_SIZE + 3), 0)
+            dot:Hide()
+            l.dots[d] = dot
+        end
         l:SetScript("OnEnter", labelEnter)
         l:SetScript("OnLeave", hideTip)
         return l
@@ -529,9 +562,9 @@ function Methods:DrawPlan(lane, mid, length, bars, leads)
             bars = bars + 1
             local bar = self:Tex(self.bars, bars, "BORDER", 1, 1, 1, 1)
             if c then
-                bar:SetColorTexture(c[1], c[2], c[3], 0.35)
+                bar:SetColorTexture(c[1], c[2], c[3], BAR_ALPHA)
             else
-                bar:SetColorTexture(mocha("caramel", 0.35))
+                bar:SetColorTexture(mocha("caramel", BAR_ALPHA))
             end
             bar:ClearAllPoints()
             bar:SetSize(math.max(1, View.TimeToX(math.min(mark.t + mark.dur, length), length, self.trackW) - x), DUR_H)
@@ -603,7 +636,29 @@ function Methods:Refresh()
         l:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, y)
         l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
         l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
-        l.stripe:SetShown(i % 2 == 0)
+        -- a reference row is tinted faintly in its type's color; other rows keep the alternate stripe
+        local tint = lane.kind == "reference" and lane.color
+        if tint then
+            l.stripe:SetColorTexture(tint[1], tint[2], tint[3], TINT_ALPHA)
+        else
+            l.stripe:SetColorTexture(mocha("cream", 0.04))
+        end
+        l.stripe:SetShown(tint and true or i % 2 == 0)
+        -- the extra types (after the first, which colors the row) as dots, rightmost last
+        local extras = lane.kind == "reference" and lane.types or {}
+        local dotCount = math.min(MAX_DOTS, math.max(0, #extras - 1))
+        local Reference = CRT.TimelineReference
+        for d = 1, MAX_DOTS do
+            local key = extras[#extras - d + 1]
+            local t = d <= dotCount and key and Reference and Reference.TYPES[key]
+            if t then
+                l.dots[d]:SetVertexColor(t.color[1], t.color[2], t.color[3])
+                l.dots[d]:Show()
+            else
+                l.dots[d]:Hide()
+            end
+        end
+        l.text:SetPoint("RIGHT", l, "RIGHT", -2 - dotCount * (DOT_SIZE + 3), 0)
         l.icon:SetTexture(lane.icon)
         l.text:SetText(lane.label or "")
         if lane.class then

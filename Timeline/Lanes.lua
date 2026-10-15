@@ -163,7 +163,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
             end
             lanes[#lanes + 1] = {
                 key = "ref:" .. row.name, label = row.name, color = row.color, lead = row.lead, kind = "reference",
-                spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
+                types = row.types, spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
             }
         end
     end
