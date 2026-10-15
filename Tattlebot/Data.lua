@@ -746,6 +746,44 @@ end
 -- meter's current session is that boss: it is when no combat started after the boss ended.
 local lastBoss -- { name, encounterID, combat }
 local combatCount = 0
+local lastRecorded -- { pull, boss }: the pull Tattlebot saved for the boss fight lastBoss was
+
+-- The saved pull for the meter's current session, or nil when that fight was not a boss or no pull
+-- was saved for it (tracking off, outside a raid, or the read failed).
+function Tattle.LastFightPull()
+    local boss = Tattle.LastFightBoss()
+    if boss and lastRecorded and lastRecorded.boss == boss then
+        return lastRecorded.pull
+    end
+    return nil
+end
+
+-- Writes the damage of the spells given into a saved pull, from a scan's per-player damage, so
+-- spells added from the Last fight view count on the pull they were seen in. Returns how many
+-- players it added damage for.
+function Tattle:Backfill(pull, players, ids)
+    local count = 0
+    for key, p in pairs(players) do
+        local hit = false
+        for _, id in ipairs(ids) do
+            local amount = p.spells[id]
+            if amount then
+                local saved = pull.players[key]
+                if not saved then
+                    saved = { class = p.class, spells = {} }
+                    pull.players[key] = saved
+                end
+                saved.spells[id] = amount
+                hit = true
+            end
+        end
+        if hit then
+            count = count + 1
+        end
+    end
+    self:Fire()
+    return count
+end
 
 -- The boss of the meter's current session, { name, encounterID }, or nil for a fight that was not
 -- a boss.
@@ -757,8 +795,9 @@ function Tattle.LastFightBoss()
 end
 
 -- Every spell that damaged the group in the meter's current session, most damage first: { spells =
--- { { id, name, damage, players, avoidable, tracked } }, duration, unnamed, boss }, or nil and why.
--- tracked is the mechanic the spell already counts under, if any.
+-- { { id, name, damage, players, avoidable, tracked } }, duration, unnamed, boss, pull, players },
+-- or nil and why. tracked is the mechanic the spell already counts under, if any. pull is the saved
+-- pull for this fight, if any, and players each player's damage per spell, for Backfill.
 function Tattle:Scan()
     local why = self.Unavailable()
     if why then
@@ -798,7 +837,7 @@ function Tattle:Scan()
         end
         return a.id < b.id
     end)
-    return { spells = list, duration = pull.duration, unnamed = pull.unnamed, boss = Tattle.LastFightBoss() }
+    return { spells = list, duration = pull.duration, unnamed = pull.unnamed, boss = Tattle.LastFightBoss(), pull = Tattle.LastFightPull(), players = pull.players }
 end
 
 -- The scan as lines to paste into Tattlebot/Database.lua.
@@ -890,6 +929,9 @@ local function attempt(info, tries)
         CRT:Print(format("Tattlebot could not name %s after %s, so their damage is missing.", players(pull.unnamed), info.name or "the boss"))
     end
     Tattle:AddPull(pull, info)
+    if info.boss then
+        lastRecorded = { pull = pull, boss = info.boss }
+    end
     local night = Tattle:Current()
     autoPost(pull, night and #night.pulls)
 end
@@ -930,6 +972,7 @@ driver:SetScript("OnEvent", function(_, event, ...)
             return
         end
         local info = {
+            boss = lastBoss,
             encounterID = readable(encounterID) and encounterID or nil,
             name = readable(encounterName) and encounterName or nil,
             difficulty = readable(difficultyID) and difficultyID or nil,
