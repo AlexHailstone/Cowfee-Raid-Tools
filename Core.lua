@@ -159,6 +159,20 @@ local defaults = {
         nextId = 1,
         lastAuto = "", -- the day the schedule last started (or skipped) a night
     },
+    -- Tattlebot. After each boss pull it reads the game's damage meter for the spells in
+    -- Tattlebot/Database.lua. current is tonight, { id, startedAt, lastAt, pulls }, and each pull has
+    -- players[key] = { class, spells = { [spellID] = damage } }. history holds the finished nights.
+    -- output is "self", "raid" or "officer". maxPlayers caps the players in a chat post.
+    tattle = {
+        enabled = true,
+        raidsOnly = true,
+        avoidable = false, -- also count what the game's meter marks as avoidable damage
+        autoPost = false, -- post each pull's report when it is read (to chat only for the raid leader)
+        output = "self",
+        maxPlayers = 10,
+        history = {},
+        nextId = 1,
+    },
 }
 
 local function copyDefaults(src, dst)

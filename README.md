@@ -1,11 +1,11 @@
 <h1 align="center">Cowfee Raid Tools</h1>
 
 <p align="center">
-  <strong>Raid groups, ready checks, raid notes, debuffs and a late tracker, in one panel.</strong>
+  <strong>Raid groups, ready checks, raid notes, debuffs, a late tracker and Tattlebot, in one panel.</strong>
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.4</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.14.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -15,7 +15,7 @@
 Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and raiders. Type `/crt` to open one panel with a page for each tool.
 
 > [!NOTE]
-> **Beta.** Raid Groups has been used in its author's raids. The other pages (Ready Check, Debuffs, Raid Notes, Late Tracker) are new and have not been tested in a live raid yet. Applying a layout moves real players, so try it on a small group first, and please report anything odd.
+> **Beta.** Raid Groups has been used in its author's raids. The other pages (Ready Check, Debuffs, Raid Notes, Late Tracker, Tattlebot) are new and have not been tested in a live raid yet. Applying a layout moves real players, so try it on a small group first, and please report anything odd.
 
 ## Contents
 
@@ -27,6 +27,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 - [Debuffs](#debuffs)
 - [Raid Notes](#raid-notes)
 - [Late Tracker](#late-tracker)
+- [Tattlebot](#tattlebot)
 - [Commands](#commands)
 - [FAQ](#faq)
 - [Known limitations](#known-limitations)
@@ -45,6 +46,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider, and optionally the game's own low-health pulse sound at the same threshold. Off by default |
 | **Addon Settings** | Settings for the whole addon: the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, and the sound channel the addon's sounds play through |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
+| **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
 
 **Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
 
@@ -117,6 +119,10 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 
 `/crt late`. The page has three tabs: **Tonight**, **History** and **Settings**. On Settings, tick your raid days and the start time, and pick the Raid Groups layout of who should be there. At the start time, anyone in it who is not in your group gets a running clock until they join, or until the group disbands. **Start raid now** starts a night by hand when invites go out off schedule. Every night is saved to a history with join times, and Totals shows how often each player was late. **Export for Discord** opens the selected totals or night as text to copy and paste into Discord, where the columns line up in a code block.
 
+## Tattlebot
+
+`/crt tattle`. After each boss pull, once you are out of combat, Tattlebot reads the game's own damage meter (Damage Taken) and keeps the damage each player took from the boss mechanics in its built-in list. The game keeps the meter secret during a fight, so nothing is read until combat ends. The meter has damage per spell but no hit count, so Tattlebot reports each player's damage per mechanic and the number of pulls it hit them in. **Tonight** shows tonight's pulls and totals, **History** keeps every night with totals, and both can post to chat or **Export for Discord**. On **Settings**, Tattlebot can also count everything the game marks as avoidable damage, and post each pull's report on its own (to chat only from the raid leader). The mechanics list ships with the addon in `Tattlebot/Database.lua`. `/crt tattle scan` lists every spell that damaged the group in the last fight, to help fill it in.
+
 ## Commands
 
 | Command | What it does |
@@ -132,6 +138,8 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 | `/crt note test`, `/crt note next`, `/crt note stop` | Start the note in use now, start the next phase, stop |
 | `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |
 | `/crt late export` | The late totals as text to paste into Discord |
+| `/crt tattle`, `/crt tattle post`, `/crt tattle night`, `/crt tattle end` | Tattlebot, post the last pull, post tonight's totals, end the night |
+| `/crt tattle scan`, `/crt tattle export` | The spells that damaged the group in the last fight, and the Tattlebot totals for Discord |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert |
 | `/crt settings` | Addon Settings: window scale and style, background opacity, fonts and layers |
@@ -177,6 +185,7 @@ Close the game and delete `CowfeeRaidTools.lua` from your SavedVariables folder.
 - Raid note phases after the first need **Next phase**, and notes must be shared before the pull.
 - Potions and healthstones used in a fight, and other players' weapon oils and armor kits, cannot be checked.
 - Apply cannot move a player who is in combat.
+- Tattlebot reports damage taken, not the number of hits: the game's damage meter does not count hits, and the combat log is closed to addons during boss fights. It reads the meter after each boss pull, so it needs the game's damage meter to be available.
 
 ## Reporting a problem
 
@@ -200,6 +209,7 @@ CowfeeRaidTools/
   Debuffs/               the debuff panel
   Notes/                 raid notes: parser, timers, windows, alert, sharing, page
   Late/                  the Late Tracker
+  Tattlebot/             Tattlebot: the mechanics list, the damage meter reading, page
 ```
 
 - **Releases.** Pushing a tag such as `v0.12.0` runs the GitHub Actions workflow in `.github/workflows/release.yml`, which builds `CowfeeRaidTools-v0.12.0.zip` with the BigWigs packager (`BigWigsMods/packager`) and attaches it to a GitHub release.

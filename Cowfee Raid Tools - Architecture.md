@@ -123,6 +123,10 @@ The Look settings (`swipe`, `swipeEdge`, `countdownNumbers`, `timerPosition`, `t
 
 `Late/Data.lua` keeps the schedule and the expected Raid Groups layout in `CRTDB.late`, starts a raid night from the schedule (a 5-second ticker) or from Start raid now, marks players as joined on `GROUP_ROSTER_UPDATE`, ends the night when the group disbands, on End raid or after 8 hours, and adds up the totals. `Late/Page.lua` is the Late Tracker page. The running night is stored in saved variables, so a reload does not lose it. See the maintenance skill's `references/late.md`.
 
+## Tattlebot
+
+`Tattlebot/Database.lua` is the shipped list of tracked boss mechanics, `CRT.TattleDB.spells[spellID] = label`. `Tattlebot/Data.lua` waits for `ENCOUNTER_END`, then for `PLAYER_REGEN_ENABLED` if still in combat, and one second later reads `C_DamageMeter.GetCombatSessionFromType(Current, DamageTaken)` and, per player, `GetCombatSessionSourceFromType` for their spells. It keeps only the listed spells, plus the meter's `AvoidableDamageTaken` spells when that setting is on. The meter is secret in combat, so a read that meets a secret is tried again up to 5 times. Players are named by matching the meter's GUID to the group, then by the meter's name. Pulls go into a night in `CRTDB.tattle.current`, which moves to `history` on End night or when the next pull is more than 6 hours later. Chat posts go through `CRT.RaidReport:Output`. `Tattlebot/Page.lua` is the page, with Tonight, History and Settings tabs. See the maintenance skill's `references/tattlebot.md`.
+
 ## Apply algorithm
 
 `Apply:Start(slots)` runs only for a raid leader or assistant, in a raid, out of combat.

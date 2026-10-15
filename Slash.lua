@@ -15,6 +15,10 @@ local function printHelp()
     print("  |cffffd100/crt late|r - open the Late Tracker page")
     print("  |cffffd100/crt late start|r, |cffffd100end|r - start tonight's raid now, or end it")
     print("  |cffffd100/crt late export|r - the late totals as text to paste into Discord")
+    print("  |cffffd100/crt tattle|r - open the Tattlebot page")
+    print("  |cffffd100/crt tattle post|r, |cffffd100night|r, |cffffd100end|r - post the last pull or tonight's totals, or end the night")
+    print("  |cffffd100/crt tattle scan|r - list every spell that damaged the group in the last fight, for the spell list")
+    print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
     print("  |cffffd100/crt qol|r - open the Quality of Life page")
     print("  |cffffd100/crt settings|r - open Addon Settings: window scale and style, fonts, layers")
     print("  |cffffd100/crt lowhp off|r, |cffffd100on|r, |cffffd100info|r, |cffffd100stop|r - turn the experimental low-health alert off or on, print its diagnostics, or stop any sound it is playing")
@@ -90,6 +94,23 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("No raid night is running.")
         end
+    elseif msg == "tattle" then
+        CRT.UI:Show("tattle")
+    elseif msg == "tattle post" then
+        CRT.Tattle:PostLastPull()
+    elseif msg == "tattle night" then
+        CRT.Tattle:PostNight()
+    elseif msg == "tattle end" then
+        if CRT.Tattle:Current() then
+            CRT.Tattle:EndNight("button")
+            CRT:Print("Tattlebot night ended and saved to the history.")
+        else
+            CRT:Print("No Tattlebot night is running.")
+        end
+    elseif msg == "tattle scan" then
+        CRT.TattlePage.Scan()
+    elseif msg == "tattle export" then
+        CRT.TattlePage.ExportTotals()
     elseif msg == "lowhp stop" then
         CRT.LowHealthSound:StopAll()
         CRT:Print("Stopped every low-health sound the addon was playing.")
