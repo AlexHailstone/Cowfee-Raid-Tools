@@ -274,6 +274,11 @@ function UI:Create()
         w.point, w.x, w.y = point, x, y
     end)
     UI.SetFrameTitle(f, "Cowfee Raid Tools")
+    -- The addon's version, from the .toc, in the top left of the title bar.
+    f.version = f:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
+    f.version:SetPoint("TOPLEFT", 10, -6)
+    f.version:SetTextColor(0.6, 0.6, 0.6)
+    f.version:SetText("v" .. tostring(CRT.version))
     tinsert(UISpecialFrames, "CowfeeRaidToolsFrame")
 
     -- Closing the panel also turns the previews off, so nothing is left floating on screen.
