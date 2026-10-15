@@ -2,7 +2,7 @@
 ## Title: |cFFC8A050Cowfee|r Raid Tools
 ## Notes: Save, edit and apply raid group layouts, check the raid's consumables and buffs on a ready check, show debuffs in combat, run raid notes, track who is late, and report who took damage from boss mechanics. Type /crt to open.
 ## Author: Solex
-## Version: 0.16.0
+## Version: 0.16.1
 ## SavedVariables: CRTDB
 ## SavedVariablesPerCharacter: CRTDBChar
 ## IconTexture: Interface\AddOns\CowfeeRaidTools\Media\Icon
