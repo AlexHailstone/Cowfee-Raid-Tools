@@ -16,6 +16,10 @@ local TEXT = {
     lowHealthTag = "(experimental)",
     lowHealthEnable = "Show a LOW HEALTH banner when my health is low",
     lowHealthThreshold = "Show it at or under this much health:",
+    lowHealthSound = "Also play the game's low-health pulse sound",
+    lowHealthSoundNote = "Turns on the game's own low-health pulse (Combat Audio Alerts, in the game's Accessibility options): a sound that loops while your health is under your threshold, faster as it drops. The game compares your health itself, so it works in combat, where an addon can't.\n\nThe pulse works in 10% steps, so your threshold is rounded to the nearest one (35% becomes 40%).\n\nIf you weren't using Combat Audio Alerts, its spoken alerts are switched off so only the pulse plays. Unticking this puts every game setting it changed back.",
+    lowHealthVolume = "Pulse volume",
+    lowHealthTest = "Test sound",
     lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
     resetPosition = "Reset position",
 }
@@ -110,6 +114,59 @@ local function buildLowHealth(pf, top)
     reset:SetPoint("LEFT", slider, "RIGHT", 12, 0)
     reset:SetScript("OnClick", function()
         LowHealth:ResetPosition()
+    end)
+
+    -- The sound: the game's own low-health pulse.
+    local Sound = CRT.LowHealthSound
+    local function alertOn()
+        return settings().enabled
+    end
+    local sound = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
+    sound:SetSize(24, 24)
+    sound:SetPoint("TOPLEFT", 6, top - 76)
+    local soundText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    soundText:SetPoint("LEFT", sound, "RIGHT", 1, 0)
+    soundText:SetText(TEXT.lowHealthSound)
+    UI.Help(pf, TEXT.lowHealthSound, TEXT.lowHealthSoundNote):SetPoint("LEFT", soundText, "RIGHT", 6, 0)
+    sound:SetScript("OnClick", function(self)
+        settings().sound = self:GetChecked() and true or false
+        Sound:Apply()
+        refresh()
+    end)
+    sound.refresh = function()
+        local on = alertOn() and Sound:Available()
+        sound:SetChecked(settings().sound and true or false)
+        sound:SetEnabled(on)
+        local c = on and 1 or 0.5
+        soundText:SetTextColor(c, c, c)
+    end
+    controls[#controls + 1] = sound
+
+    local volume = UI.Slider(pf, TEXT.lowHealthVolume, {
+        min = 0,
+        max = 100,
+        step = 5,
+        labelWidth = SLIDER_LABEL_W,
+        width = 200,
+        format = percent,
+        get = function()
+            return settings().soundVolume or 100
+        end,
+        set = function(v)
+            settings().soundVolume = v
+            Sound:Apply()
+        end,
+        enabledIf = function()
+            return alertOn() and settings().sound
+        end,
+    })
+    volume:SetPoint("TOPLEFT", 10, top - 100)
+    controls[#controls + 1] = volume
+
+    local test = smallButton(pf, TEXT.lowHealthTest)
+    test:SetPoint("LEFT", volume, "RIGHT", 12, 0)
+    test:SetScript("OnClick", function()
+        Sound:Test()
     end)
 
 end

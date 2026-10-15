@@ -39,6 +39,7 @@ Notes\Page.lua
 Late\Data.lua
 Late\Page.lua
 QoL\LowHealth.lua
+QoL\LowHealthSound.lua
 QoL\Page.lua
 UI\SettingsPage.lua
 #@do-not-package@

@@ -10,7 +10,8 @@ local defaults = {
     -- "", "OUTLINE" or "THICKOUTLINE", textSize a percent. style is "game" (the game's window art) or
     -- "minimal" (flat black), bgAlpha the main window background's opacity in percent. layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
-    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {} },
+    -- soundChannel is the game sound channel every sound the addon plays goes through (CRT:PlaySound).
+    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {}, soundChannel = "Master" },
     lastPage = "groups",
     classCache = {},
     roleCache = {},
@@ -140,7 +141,9 @@ local defaults = {
     -- Quality of Life options. lowHealth is the experimental low-health alert: threshold is the health
     -- percent at or under which the banner shows. position is added when the banner is moved.
     qol = {
-        lowHealth = { enabled = false, threshold = 35 },
+        -- sound turns on the game's own low-health pulse (QoL/LowHealthSound.lua), soundVolume is its
+        -- volume, and caaSaved holds the game settings it changed, to put back when it is turned off.
+        lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100 },
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout
@@ -298,6 +301,26 @@ makeFont("CRTFontStandard", GameFontNormal, 1)
 makeFont("CRTFontStandardHighlight", GameFontHighlight, 1)
 makeFont("CRTFontStandardDisable", GameFontDisable, 1)
 makeFont("CRTFontEdit", ChatFontNormal, 1)
+
+-- The game's sound channels a sound can play through, for the Addon Settings page.
+CRT.SOUND_CHANNELS = {
+    { key = "Master", label = "Master" },
+    { key = "SFX", label = "Sound effects" },
+    { key = "Dialog", label = "Dialog" },
+    { key = "Ambience", label = "Ambience" },
+    { key = "Music", label = "Music" },
+}
+
+-- Plays a sound kit through the channel chosen on the Addon Settings page. Every sound the addon plays
+-- goes through here. Returns the sound handle, to stop it with StopSound.
+function CRT:PlaySound(kit)
+    local channel = (self.db and self.db.ui and self.db.ui.soundChannel) or "Master"
+    local ok, willPlay, handle = pcall(PlaySound, kit, channel)
+    if ok and willPlay then
+        return handle
+    end
+    return nil
+end
 
 function CRT:Print(msg)
     print("|cffc8a050Cowfee Raid Tools|r: " .. tostring(msg))

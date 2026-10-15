@@ -204,6 +204,21 @@ local function build(pf)
         end,
     }), -252)
 
+    -- Sound.
+    heading(pf, -560, "Sound", "Every sound the addon plays goes through this game sound channel, so it follows that channel's volume and mute in the game's Sound settings.\n\nTwo sounds are played by the game instead and keep its own outputs: the low-health pulse (Combat Audio Alerts, with its own volume on Quality of Life) and text to speech for your next spell (its volume is on Raid Notes).")
+    add(UI.Dropdown(pf, "Sound channel", {
+        options = CRT.SOUND_CHANNELS,
+        labelWidth = LABEL_W,
+        width = CONTROL_W,
+        get = function()
+            return ui().soundChannel or "Master"
+        end,
+        set = function(key)
+            ui().soundChannel = key
+            refresh()
+        end,
+    }), -578)
+
     -- Layers.
     heading(pf, -296, "Layers", "Which layer each window is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nThe game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
     for i, layer in ipairs(UI.LAYERS) do

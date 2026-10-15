@@ -168,6 +168,10 @@ function LowHealth:Apply()
     frame:SetShown(previewOn or settings().enabled)
     frame:EnableMouse(previewOn)
     self:Update()
+    -- The game's low-health pulse follows the same threshold (QoL/LowHealthSound.lua).
+    if CRT.LowHealthSound then
+        CRT.LowHealthSound:Apply()
+    end
 end
 
 function LowHealth:SetEnabled(on)
@@ -219,6 +223,9 @@ function LowHealth:Info()
     add(format("banner shown %s, visible %s, layer %s, at %s %s %s", tostring(frame:IsShown() and true or false), tostring(frame:IsVisible() and true or false), tostring((frame:GetFrameStrata())), tostring(point), show(x), show(y)))
     local okAlpha, alpha = pcall(frame.GetAlpha, frame)
     add("banner alpha: " .. (okAlpha and show(alpha) or "unreadable"))
+    if CRT.LowHealthSound then
+        add(CRT.LowHealthSound:Info())
+    end
     CRT:Print("Low-health alert diagnostics:")
     for _, line in ipairs(lines) do
         print("  " .. line)
