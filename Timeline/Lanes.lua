@@ -107,7 +107,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     if overlay then
         sources[1] = { pull = overlay, deaths = overlay.deaths or {} }
     end
-    addDeaths(lanes, unknown, sources, settings, true)
+    addDeaths(lanes, unknown, sources, settings, settings.deathRows ~= "player")
 
     local byName, byID = {}, {}
     for _, row in ipairs(rows or {}) do
@@ -124,8 +124,10 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     for _, row in ipairs(ref.rows or {}) do
         local key = trimLower(row.name)
         local given = row.spellID
-        local match = (given and given ~= 0 and byID[given]) or byName[key]
-        local spellID = (given and given ~= 0) and given or (match and match.spellID) or 0
+        local hasGiven = given and given ~= 0
+        -- a given [spell] is matched by id only; the name match is for rows that gave none
+        local match = (hasGiven and byID[given]) or (not hasGiven and byName[key]) or nil
+        local spellID = hasGiven and given or (match and match.spellID) or 0
         local hidden = (spellID ~= 0 and CRT.TimelineJournal:IsHidden(encounterID, spellID))
             or (hiddenNames and hiddenNames[key])
         if not hidden then
