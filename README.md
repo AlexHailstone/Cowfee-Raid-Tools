@@ -181,9 +181,9 @@ Close the game and delete `CowfeeRaidTools.lua` from your SavedVariables folder.
 ## Known limitations
 
 - During combat and boss fights the game hides many values from addons. The raid report and ready check window list players they cannot read as "couldn't check", and it is not yet confirmed whether other players' buffs can be read inside a raid instance.
-- The built-in consumables list is still being filled in. Until it is, food, flasks and runes on other players are recognized by their English buff names, so the raid report needs an English game client.
+- The built-in consumables list is still being filled in. Until it is, flasks and runes on other players are recognized by their English buff names, so the raid report needs an English game client for those. Food is recognized by its buff, in any language.
 - Raid note phases after the first need **Next phase**, and notes must be shared before the pull.
-- Potions and healthstones used in a fight, and other players' weapon oils and armor kits, cannot be checked.
+- Potions and healthstones used in a fight, and other players' armor kits, cannot be checked. Other players' weapon oils and durability only show for raiders who run the addon.
 - Apply cannot move a player who is in combat.
 - Tattlebot reports damage taken, not the number of hits: the game's damage meter does not count hits, and the combat log is closed to addons during boss fights. It reads the meter after each boss pull, so it needs the game's damage meter to be available.
 
