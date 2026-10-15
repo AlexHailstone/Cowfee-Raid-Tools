@@ -470,6 +470,8 @@ end
 --     decision made inside it is ignored. Its end, a StopHealthPulse, settles back to the last real one.
 --   * A loading screen or death stops the game's pulse, and so yours.
 local decided -- the kit the game last decided on, nil for no pulse
+-- For /crt lowhp info: how many pulse decisions the game made since login, and the last one.
+local seen = { decisions = 0, withSound = 0, last = "none yet" }
 local fromPreview = false
 local settling = false
 
@@ -510,6 +512,15 @@ local function changed()
 end
 
 local function onPulse(_, kit)
+    seen.decisions = seen.decisions + 1
+    if issecretvalue and issecretvalue(kit) then
+        seen.last = "hidden (secret)"
+    else
+        seen.last = kit and ("sound " .. tostring(kit)) or "no pulse"
+        if kit then
+            seen.withSound = seen.withSound + 1
+        end
+    end
     if not (Sound:Active() and Sound:Custom()) then
         return
     end
@@ -603,4 +614,23 @@ function Sound:Info()
         self:StepPercent(), tostring(settings().caaSaved ~= nil), tostring(settings().soundChoice), tostring(settings().soundChannel),
         tostring(self:Custom()), tostring(self.hooked and true or false), self.hidden and ", the game hid the tier so it played its own" or "")
         .. "; last sound: " .. tostring(lastPlay or "none yet")
+        .. self:GameInfo()
+end
+
+-- What the game itself reports about its pulse, for /crt lowhp info: whether Combat Audio Alerts are
+-- really on, whether it is listening to your health, and the decisions it has made. Read only.
+function Sound:GameInfo()
+    local enabled = "unknown"
+    if C_CombatAudioAlert and C_CombatAudioAlert.IsEnabled then
+        local ok, value = pcall(C_CombatAudioAlert.IsEnabled)
+        enabled = ok and tostring(value) or "error"
+    end
+    local manager = _G.CombatAudioAlertManager
+    local watching = "no manager"
+    if manager then
+        local lookup = manager.unitHealthUnitsLookup
+        watching = type(lookup) == "table" and tostring(lookup.player ~= nil) or "unknown"
+    end
+    return format("\n  game: Combat Audio Alerts on %s, listening to your health %s, pulse decisions since login %d (%d with a sound), last decision %s",
+        enabled, watching, seen.decisions, seen.withSound, seen.last)
 end
