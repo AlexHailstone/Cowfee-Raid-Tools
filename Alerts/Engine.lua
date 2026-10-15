@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- RegisterBlock and answers Entries(run) with items: an entry as AlertRules describes it, without `at`,
 -- plus `ph` (the phase it belongs to) and `time` (seconds into that phase). A speech item carries
 -- `offset` (seconds before the entry) instead of `at`. Start collects every block's items once, so a
--- block edited mid-pull shows on the next start. Phase 1 starts at the pull; a later phase starts when
+-- block edited mid-pull shows on the next start. The run's lowest phase (1 when nothing names one) starts at the pull; a later phase starts when
 -- its event fires or Next phase is pressed, and starting one skips every earlier phase that never began.
 -- Settings are read from CRT.db.alerts fresh each time, so a profile switch or reset mid-pull is safe.
 
@@ -84,9 +84,10 @@ function Alerts:Collect(run, opts)
     return out
 end
 
--- The sorted phases for a run: those of the given items, of the phase sources, and 1.
+-- The sorted phases for a run: those of the given items and of the phase sources, or just 1 when
+-- nothing names a phase. The lowest is the one that starts at the pull.
 local function phaseList(self, run, items)
-    local seen, list = { [1] = true }, { 1 }
+    local seen, list = {}, {}
     local function add(ph)
         if type(ph) == "number" and not seen[ph] then
             seen[ph] = true
@@ -104,6 +105,9 @@ local function phaseList(self, run, items)
             end
         end
     end
+    if #list == 0 then
+        list[1] = 1
+    end
     table.sort(list)
     return list
 end
@@ -113,7 +117,7 @@ function Alerts:PhasesFor(run)
     return phaseList(self, run, self:Collect(run))
 end
 
--- The phases of the current run (its collected items, the phase sources and 1).
+-- The phases of the current run (its collected items and the phase sources, or 1).
 function Alerts:Phases()
     if not self.running then
         return { 1 }

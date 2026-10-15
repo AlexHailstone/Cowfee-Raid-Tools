@@ -149,7 +149,6 @@ function Engine:WordIsMe(word)
     return tokens()[w] and true or false
 end
 
-
 function Engine:Note()
     return note
 end
@@ -207,13 +206,13 @@ end
 
 -- The note block -----------------------------------------------------------------------------
 
--- The note a run uses: the one running, or (for a run that is not the current one, such as the
+-- The note a run uses: the one running for the current run, or (for any other run, such as the
 -- Phases tab asking which phases a boss has) the note saved for that boss.
 local function noteFor(run)
-    if note then
+    if run == nil or run == Alerts.run then
         return note
     end
-    if run and run ~= Alerts.run and run.encounterID then
+    if run.encounterID then
         local id = Notes:FindForEncounter(run.encounterID, run.difficultyName)
         if id then
             return Notes:Parsed(id)
