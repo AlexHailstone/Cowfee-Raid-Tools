@@ -99,6 +99,22 @@ local function pullLanes(pull, rows, settings, encounterID)
     return lanes, unknown, { phases = {}, length = pull.length or 0 }
 end
 
+-- The spell of a reference row: its own [spell], else the spell of the boss's Journal row with the
+-- same name (trimmed, any case), else 0. A given [spell] is never matched by name. rows is the
+-- boss's Journal rows when the caller has them; the page leaves it out.
+function Lanes.RowSpell(row, encounterID, rows)
+    if row.spellID and row.spellID ~= 0 then
+        return row.spellID
+    end
+    local key = trimLower(row.name)
+    for _, r in ipairs(rows or CRT.TimelineJournal:Rows(encounterID)) do
+        if trimLower(r.name) == key then
+            return r.spellID or 0
+        end
+    end
+    return 0
+end
+
 -- The lanes of a reference timeline: deaths (from the overlay pull only), one lane per reference
 -- row in file order, and with an overlay a row of ticks for that pull's casts. A row gets its
 -- spell and icon from its own [spell], else from the Journal row of the same name.
@@ -110,12 +126,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     end
     addDeaths(lanes, unknown, sources, settings, settings.deathRows ~= "player")
 
-    local byName, byID = {}, {}
+    local byID = {}
     for _, row in ipairs(rows or {}) do
-        local key = trimLower(row.name)
-        if byName[key] == nil then
-            byName[key] = row
-        end
         if byID[row.spellID] == nil then
             byID[row.spellID] = row
         end
@@ -124,11 +136,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     local hiddenNames = mine and mine.hiddenNames
     for _, row in ipairs(ref.rows or {}) do
         local key = trimLower(row.name)
-        local given = row.spellID
-        local hasGiven = given and given ~= 0
-        -- a given [spell] is matched by id only; the name match is for rows that gave none
-        local match = (hasGiven and byID[given]) or (not hasGiven and byName[key]) or nil
-        local spellID = hasGiven and given or (match and match.spellID) or 0
+        local spellID = Lanes.RowSpell(row, encounterID, rows)
+        local match = spellID ~= 0 and byID[spellID] or nil
         local hidden = (spellID ~= 0 and CRT.TimelineJournal:IsHidden(encounterID, spellID))
             or (hiddenNames and hiddenNames[key])
         if not hidden then

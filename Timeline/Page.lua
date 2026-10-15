@@ -12,6 +12,7 @@ local ADDON, CRT = ...
 local Timeline = CRT.Timeline
 local Journal = CRT.TimelineJournal
 local View = CRT.TimelineView
+local Lanes = CRT.TimelineLanes
 local Reference = CRT.TimelineReference
 local ReferencePage = CRT.TimelineReferencePage
 local UI = CRT.UI
@@ -19,7 +20,6 @@ local UI = CRT.UI
 local ROW_H = 22
 local RIGHT_X = 360
 local RECENT_W = 150
-local RECENT_H = 32
 local DOT = " \194\183 "
 local EMPTY_BOSS = "No pulls recorded for this boss yet"
 local EMPTY_ALL = "No boss pulls recorded yet"
@@ -38,8 +38,7 @@ local TABS = {
 }
 
 local page, view, emptyLabel, unnamedHelp, bossLabel, deleteButton, rowsChild, addEdit
-local reviewFrame, holder, recentFrame, refTab
-local recentLines = {}
+local reviewFrame, holder, recent, refTab
 local tabButtons, tabFrames = {}, {}
 local controls, rowPool = {}, {}
 local currentTab = "review"
@@ -274,42 +273,6 @@ end
 
 -- The Review tab -------------------------------------------------------------------------------
 
--- The Recent pulls list beside a reference: the boss's saved pulls, the overlaid one highlighted.
-local function updateRecent()
-    local pulls = showingReference() and Timeline:Pulls(selectedBoss) or {}
-    recentFrame:SetShown(showingReference())
-    for i, pull in ipairs(pulls) do
-        local line = recentLines[i]
-        if not line then
-            line = CreateFrame("Button", nil, recentFrame)
-            line:SetSize(RECENT_W, RECENT_H - 2)
-            line:SetPoint("TOPLEFT", recentFrame, "TOPLEFT", 0, -20 - (i - 1) * RECENT_H)
-            line.sel = line:CreateTexture(nil, "BACKGROUND")
-            line.sel:SetAllPoints()
-            line.sel:SetColorTexture(1, 0.82, 0, 0.18)
-            line.title = label(line, "", "CRTFontSmall")
-            line.title:SetPoint("TOPLEFT", 4, -2)
-            line.deaths = label(line, "", "CRTFontSmall")
-            line.deaths:SetPoint("TOPLEFT", 4, -16)
-            line.deaths:SetTextColor(1, 0.3, 0.3)
-            line:SetScript("OnClick", function(self)
-                overlayID = overlayID ~= self.pullID and self.pullID or nil
-                refresh()
-            end)
-            recentLines[i] = line
-        end
-        line.pullID = pull.id
-        line.title:SetText(pullLabel(pull))
-        local n = #(pull.deaths or {})
-        line.deaths:SetText(n == 1 and "1 death" or (n .. " deaths"))
-        line.sel:SetShown(pull.id == overlayID)
-        line:Show()
-    end
-    for i = #pulls + 1, #recentLines do
-        recentLines[i]:Hide()
-    end
-end
-
 local function updateView()
     local base, sig
     if showingReference() then
@@ -331,7 +294,7 @@ local function updateView()
     emptyLabel:SetShown(base == nil)
     -- the Recent pulls list takes the right edge while a reference is shown
     holder:SetPoint("BOTTOMRIGHT", reviewFrame, "BOTTOMRIGHT", showingReference() and -(RECENT_W + 16) or -8, 8)
-    updateRecent()
+    recent:Update(showingReference() and Timeline:Pulls(selectedBoss) or {}, overlayID, showingReference())
 end
 
 local function buildReview(f)
@@ -403,14 +366,10 @@ local function buildReview(f)
         end,
     }), f, 8, -64)
 
-    recentFrame = CreateFrame("Frame", nil, f)
-    recentFrame:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -96)
-    recentFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
-    recentFrame:SetWidth(RECENT_W)
-    recentFrame:Hide()
-    local recentTitle = label(recentFrame, "Recent pulls")
-    recentTitle:SetPoint("TOPLEFT", 4, 0)
-    UI.Help(recentFrame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the reference: its deaths go in the Deaths row, its casts are drawn as ticks in a row of their own (their spells are usually unreadable), and a line marks where it ended. Click it again to clear it."):SetPoint("LEFT", recentTitle, "RIGHT", 4, 0)
+    recent = ReferencePage.Recent(f, RECENT_W, pullLabel, function(pullID)
+        overlayID = overlayID ~= pullID and pullID or nil
+        refresh()
+    end)
 
     holder = CreateFrame("Frame", nil, f)
     holder:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -96)
@@ -451,16 +410,17 @@ local function settingSlider(parent, x, y, text, field, low, high, step, format)
     })
 end
 
--- A reference row is hidden by its name (trimmed, lowercased, as the lanes read it), or by its
--- [spell] when that spell's row is hidden.
+-- A reference row is hidden by its name (trimmed, lowercased, as the lanes read it), or by the
+-- spell the lanes give it (its [spell] or its Journal match by name) when that spell is hidden.
 local function nameKey(name)
     return (tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")):lower()
 end
 
 local function refRowHidden(row)
     local mine = settings().rows and settings().rows[selectedBoss]
+    local spellID = Lanes.RowSpell(row, selectedBoss)
     return (mine and mine.hiddenNames and mine.hiddenNames[nameKey(row.name)])
-        or (row.spellID and Journal:IsHidden(selectedBoss, row.spellID)) or false
+        or (spellID ~= 0 and Journal:IsHidden(selectedBoss, spellID)) or false
 end
 
 local function setRefRowHidden(row, hidden)
@@ -470,8 +430,9 @@ local function setRefRowHidden(row, hidden)
     local mine = all[selectedBoss]
     mine.hiddenNames = mine.hiddenNames or {}
     mine.hiddenNames[nameKey(row.name)] = hidden or nil
-    if not hidden and row.spellID and Journal:IsHidden(selectedBoss, row.spellID) then
-        Journal:SetHidden(selectedBoss, row.spellID, false)
+    local spellID = Lanes.RowSpell(row, selectedBoss)
+    if not hidden and spellID ~= 0 and Journal:IsHidden(selectedBoss, spellID) then
+        Journal:SetHidden(selectedBoss, spellID, false)
     end
     Timeline:Fire()
 end

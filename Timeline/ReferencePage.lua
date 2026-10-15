@@ -6,7 +6,9 @@ local ADDON, CRT = ...
 -- shipped ones with Copy, which puts their text in the box to change and save as your own. The
 -- Timeline page builds it with Build(parent, ctx) and calls tab:Refresh() when anything changes;
 -- ctx gives it selectedBoss(), bossName(), references() (the selected boss's references, by the
--- same rule as the boss list) and refresh().
+-- same rule as the boss list) and refresh(). Recent(parent, width, pullLabel, toggle) makes the
+-- Review tab's Recent pulls list: the boss's saved pulls beside a reference, where a click lays
+-- one over it (toggle(pullID)); the page keeps which one, and says with recent:Update.
 
 local Reference = CRT.TimelineReference
 local UI = CRT.UI
@@ -68,6 +70,60 @@ local function confirm(text, arg, acceptText, accept)
         callback = accept,
     })
 end
+
+-- The Recent pulls list -------------------------------------------------------------------------
+
+local RECENT_H = 32
+
+function ReferencePage.Recent(f, width, pullLabel, toggle)
+    local frame = CreateFrame("Frame", nil, f)
+    frame:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -96)
+    frame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+    frame:SetWidth(width)
+    frame:Hide()
+    local title = label(frame, "Recent pulls")
+    title:SetPoint("TOPLEFT", 4, 0)
+    UI.Help(frame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the reference: its deaths go in the Deaths row, its casts are drawn as ticks in a row of their own (their spells are usually unreadable), and a line marks where it ended. Click it again to clear it."):SetPoint("LEFT", title, "RIGHT", 4, 0)
+
+    local recent, lines = {}, {}
+    -- pulls newest first, overlayID the one laid over the reference (highlighted), shown whether
+    -- a reference is shown at all
+    function recent:Update(pulls, overlayID, shown)
+        frame:SetShown(shown)
+        for i, pull in ipairs(pulls) do
+            local line = lines[i]
+            if not line then
+                line = CreateFrame("Button", nil, frame)
+                line:SetSize(width, RECENT_H - 2)
+                line:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -20 - (i - 1) * RECENT_H)
+                line.sel = line:CreateTexture(nil, "BACKGROUND")
+                line.sel:SetAllPoints()
+                line.sel:SetColorTexture(1, 0.82, 0, 0.18)
+                line.title = label(line, "", "CRTFontSmall")
+                line.title:SetPoint("TOPLEFT", 4, -2)
+                line.deaths = label(line, "", "CRTFontSmall")
+                line.deaths:SetPoint("TOPLEFT", 4, -16)
+                line.deaths:SetTextColor(1, 0.3, 0.3)
+                line:SetScript("OnClick", function(self)
+                    toggle(self.pullID)
+                end)
+                lines[i] = line
+            end
+            line.pullID = pull.id
+            line.title:SetText(pullLabel(pull))
+            local n = #(pull.deaths or {})
+            line.deaths:SetText(n == 1 and "1 death" or (n .. " deaths"))
+            line.sel:SetShown(pull.id == overlayID)
+            line:Show()
+        end
+        for i = #pulls + 1, #lines do
+            lines[i]:Hide()
+        end
+    end
+    return recent
+end
+
+-- The References tab -----------------------------------------------------------------------------
 
 function ReferencePage.Build(f, ctx)
     local tab = {}
