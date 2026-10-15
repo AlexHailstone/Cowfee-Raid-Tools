@@ -145,7 +145,9 @@ local defaults = {
         -- volume, and caaSaved holds the game settings it changed, to put back when it is turned off.
         -- soundChoice is "pulse" (the game's own) or a key of LowHealthSound.CHOICES, soundChannel is
         -- "game" (the game's own output) or a sound channel from CRT.SOUND_CHANNELS.
-        lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100, soundChoice = "pulse", soundChannel = "game" },
+        -- soundLength cuts each warning after that many seconds; customSounds lists file names in the
+        -- addon's Sounds folder that the player added.
+        lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100, soundChoice = "pulse", soundChannel = "game", soundLength = 1, customSounds = {} },
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout

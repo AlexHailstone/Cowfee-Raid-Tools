@@ -20,6 +20,11 @@ local TEXT = {
     lowHealthSoundNote = "Turns on the game's own low-health pulse (Combat Audio Alerts, in the game's Accessibility options): a sound that loops while your health is under your threshold, faster as it drops. The game compares your health itself, so it works in combat, where an addon can't.\n\nThe pulse works in 10% steps, so your threshold is rounded to the nearest one (35% becomes 40%).\n\nIf you weren't using Combat Audio Alerts, its spoken alerts are switched off so only the pulse plays. Unticking this puts every game setting it changed back.",
     lowHealthVolume = "Volume",
     lowHealthChoice = "Sound",
+    lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops. Any other sound repeats, faster at each lower 10%.\n\nShared sounds come from other addons through LibSharedMedia, when one of them is installed.\n\nYour own sounds: put an .ogg or .mp3 file in Interface\\AddOns\\CowfeeRaidTools\\Sounds, /reload, then type its name below and press Add. Updating the addon by replacing its folder removes them, so keep a copy.\n\nVolume only changes the game's sounds. Shared and your own sounds play at the volume of their output channel.",
+    lowHealthLength = "Play length",
+    lowHealthCustom = "Your sound file",
+    lowHealthAdd = "Add",
+    lowHealthRemove = "Remove",
     lowHealthOutput = "Output",
     lowHealthOutputNote = "Game default plays the sound on the game's voice output, like its own pulse. Pick a channel to follow that channel's volume and mute in the game's Sound settings instead.\n\nAny sound other than the game's pulse, or any channel, is played by the addon: the game's pulse runs silently and the addon plays yours whenever it starts or stops, so it still works in combat.",
     lowHealthTest = "Test sound",
@@ -190,7 +195,7 @@ local function buildLowHealth(pf, top)
     end
 
     local choice = UI.Dropdown(pf, TEXT.lowHealthChoice, {
-        options = Sound.CHOICES,
+        options = Sound.Choices,
         decorate = playButton(function(option)
             return option.key
         end, function()
@@ -210,6 +215,7 @@ local function buildLowHealth(pf, top)
     })
     choice:SetPoint("TOPLEFT", 10, top - 100)
     controls[#controls + 1] = choice
+    UI.Help(pf, TEXT.lowHealthChoice, TEXT.lowHealthChoiceNote):SetPoint("LEFT", choice, "RIGHT", 6, 0)
 
     local output = UI.Dropdown(pf, TEXT.lowHealthOutput, {
         options = Sound.Outputs,
@@ -252,6 +258,83 @@ local function buildLowHealth(pf, top)
     })
     volume:SetPoint("TOPLEFT", 10, top - 160)
     controls[#controls + 1] = volume
+
+    -- Play length: every warning is cut after this many seconds (not the game's looping pulse).
+    local length = UI.Slider(pf, TEXT.lowHealthLength, {
+        min = 0.5,
+        max = 10,
+        step = 0.5,
+        labelWidth = SLIDER_LABEL_W,
+        width = 200,
+        format = function(v)
+            return format("%.1f s", v)
+        end,
+        get = function()
+            return settings().soundLength or 1
+        end,
+        set = function(v)
+            settings().soundLength = v
+        end,
+        enabledIf = function()
+            return soundOn() and (settings().soundChoice or "pulse") ~= "pulse"
+        end,
+    })
+    length:SetPoint("TOPLEFT", 10, top - 190)
+    controls[#controls + 1] = length
+
+    -- Your own sound files, added by name since the game can't list a folder.
+    local customLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    customLabel:SetPoint("TOPLEFT", 10, top - 228)
+    customLabel:SetWidth(SLIDER_LABEL_W)
+    customLabel:SetJustifyH("LEFT")
+    customLabel:SetText(TEXT.lowHealthCustom)
+    local customEdit = CreateFrame("EditBox", nil, pf, "InputBoxTemplate")
+    customEdit:SetAutoFocus(false)
+    customEdit:SetFontObject(CRTFontHighlight)
+    customEdit:SetMaxLetters(80)
+    customEdit:SetSize(190, 22)
+    customEdit:SetPoint("LEFT", customLabel, "RIGHT", 12, 0)
+    customEdit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    customEdit:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    local add = smallButton(pf, TEXT.lowHealthAdd)
+    add:SetWidth(60)
+    add:SetPoint("LEFT", customEdit, "RIGHT", 8, 0)
+    add:SetScript("OnClick", function()
+        local ok, message = Sound:AddCustom(customEdit:GetText())
+        CRT:Print(message)
+        if ok then
+            local name = customEdit:GetText():gsub("^%s+", ""):gsub("%s+$", "")
+            customEdit:SetText("")
+            settings().soundChoice = "file:" .. name
+            Sound:Apply()
+        end
+        refresh()
+    end)
+    local remove = smallButton(pf, TEXT.lowHealthRemove)
+    remove:SetWidth(70)
+    remove:SetPoint("LEFT", add, "RIGHT", 6, 0)
+    remove:SetScript("OnClick", function()
+        local file = (settings().soundChoice or ""):match("^file:(.+)$")
+        if file and Sound:RemoveCustom(file) then
+            CRT:Print("Removed " .. file .. " from the list. The file itself stays in the Sounds folder.")
+            Sound:Apply()
+        end
+        refresh()
+    end)
+    controls[#controls + 1] = {
+        refresh = function()
+            local on = soundOn() and true or false
+            customEdit:SetEnabled(on)
+            add:SetEnabled(on)
+            remove:SetEnabled(on and (settings().soundChoice or ""):find("^file:") ~= nil)
+            local c = on and 1 or 0.5
+            customLabel:SetTextColor(c, c, c)
+        end,
+    }
 
     local test = smallButton(pf, TEXT.lowHealthTest)
     test:SetPoint("LEFT", volume, "RIGHT", 12, 0)

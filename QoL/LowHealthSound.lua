@@ -20,6 +20,18 @@ local ADDON, CRT = ...
 -- or stops (kit nil), and StopHealthPulse on a loading screen. A hook on those plays your choice through
 -- your channel instead, so your health is never read by the addon. The game's pulse kits loop by
 -- themselves; the other sounds repeat, faster at each lower 10% tier, until the pulse stops.
+--
+-- Where the sounds come from (Sound.Choices):
+--   * the game's pulse and game alert sounds (sound kits), played with C_Sound.PlaySoundWithOptions,
+--     which takes your volume
+--   * sounds other addons share through LibSharedMedia-3.0 (List("sound") and Fetch("sound", name)),
+--     when one of them loaded it; the library is not shipped
+--   * your own .ogg or .mp3 files in Interface\AddOns\CowfeeRaidTools\Sounds, added by name on the
+--     Quality of Life page, since the game can't list a folder. A file must be there before you log in
+--     or /reload. Updating the addon by replacing its folder removes them, so keep a copy.
+-- Files play with PlaySoundFile(path, channel), which has no volume of its own: they follow the
+-- channel's volume. Every warning is cut after the play length (soundLength) except the game's
+-- looping pulse.
 
 local LowHealth = CRT.LowHealth
 local Sound = {}
@@ -37,6 +49,7 @@ local PREVIEW_SECONDS = 3
 -- starts the timer that ends its own 3-second volume preview, and the addon's copy of that preview
 -- was never told to stop. At 1% the game plays and ends it as usual.
 local MUTED_VOLUME = 1
+local SOUNDS_FOLDER = "Interface\\AddOns\\" .. ADDON .. "\\Sounds\\"
 
 -- The sounds to choose from: the game's pulse, then game alert sounds by their SOUNDKIT name (checked
 -- in Blizzard_SharedXML/Mainline/SoundKitConstants.lua, with the ID there as a fallback).
@@ -53,6 +66,106 @@ Sound.CHOICES = {
 local choiceByKey = {}
 for _, c in ipairs(Sound.CHOICES) do
     choiceByKey[c.key] = c
+end
+
+-- LibSharedMedia-3.0, if another addon loaded it.
+local function sharedMedia()
+    if not LibStub then
+        return nil
+    end
+    local ok, lib = pcall(LibStub.GetLibrary, LibStub, "LibSharedMedia-3.0", true)
+    return ok and lib or nil
+end
+
+-- Every sound to choose from: the game's, then shared ones, then your own files. Read each time the
+-- menu opens, so sounds shared by other addons appear.
+function Sound.Choices()
+    local out = {}
+    for _, c in ipairs(Sound.CHOICES) do
+        out[#out + 1] = c
+    end
+    local lib = sharedMedia()
+    if lib then
+        local ok, list = pcall(lib.List, lib, "sound")
+        if ok and type(list) == "table" then
+            for _, name in ipairs(list) do
+                if name ~= "None" then
+                    out[#out + 1] = { key = "lsm:" .. name, label = name .. " (shared)" }
+                end
+            end
+        end
+    end
+    for _, file in ipairs(CRT.db.qol.lowHealth.customSounds or {}) do
+        out[#out + 1] = { key = "file:" .. file, label = file .. " (yours)" }
+    end
+    return out
+end
+
+-- What a choice plays: { kind = "pulse" }, { kind = "kit", id } or { kind = "file", path }, or nil
+-- when it is gone (a shared sound whose addon isn't loaded).
+local function resolve(choice)
+    choice = choice or "pulse"
+    if choice == "pulse" then
+        return { kind = "pulse" }
+    end
+    local shared = choice:match("^lsm:(.+)$")
+    if shared then
+        local lib = sharedMedia()
+        local ok, path = false, nil
+        if lib then
+            ok, path = pcall(lib.Fetch, lib, "sound", shared, true)
+        end
+        if ok and path then
+            return { kind = "file", path = path }
+        end
+        return nil
+    end
+    local file = choice:match("^file:(.+)$")
+    if file then
+        return { kind = "file", path = SOUNDS_FOLDER .. file }
+    end
+    local c = choiceByKey[choice]
+    if c then
+        return { kind = "kit", id = (SOUNDKIT and SOUNDKIT[c.key]) or c.id }
+    end
+    return nil
+end
+Sound.Resolve = resolve
+
+-- Adds one of your own sound files by name. Returns ok, message.
+function Sound:AddCustom(name)
+    name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if name == "" then
+        return false, "Type the file's name, such as airhorn.ogg."
+    end
+    if name:find("[/\\]") then
+        return false, "Just the file name, without a folder."
+    end
+    if not (name:lower():find("%.ogg$") or name:lower():find("%.mp3$")) then
+        return false, "The game plays .ogg and .mp3 files."
+    end
+    local list = CRT.db.qol.lowHealth.customSounds
+    for _, existing in ipairs(list) do
+        if existing:lower() == name:lower() then
+            return false, name .. " is already in the list."
+        end
+    end
+    list[#list + 1] = name
+    return true, "Added " .. name .. ". If you just copied it into the Sounds folder, /reload first so the game can find it."
+end
+
+function Sound:RemoveCustom(name)
+    local list = CRT.db.qol.lowHealth.customSounds
+    for i, existing in ipairs(list) do
+        if existing == name then
+            table.remove(list, i)
+            if CRT.db.qol.lowHealth.soundChoice == "file:" .. name then
+                CRT.db.qol.lowHealth.soundChoice = "pulse"
+            end
+            return true
+        end
+    end
+    return false
 end
 
 -- The outputs to choose from: the game's own (the pulse plays as a voice sound), then every channel.
@@ -226,6 +339,9 @@ local function stopEntry(entry)
     if entry.timer then
         entry.timer:Cancel()
     end
+    for _, cut in ipairs(entry.cuts or {}) do
+        cut:Cancel()
+    end
 end
 
 -- The channel for an output key: "game" is the game's voice output, like its pulse.
@@ -234,22 +350,45 @@ local function channelFor(output)
     return output == "game" and "Voice" or output
 end
 
--- Plays a sound kit on an output at your volume, adding its handle to the entry.
-local function play(entry, kit, output)
-    local volume = (settings().soundVolume or 100) / 100
+-- Plays a sound on an output, adding its handle to the entry. A kit plays at your volume; a file plays
+-- at the channel's volume (on Master for Game default, since files can't use the game's voice output).
+-- With cut, it is stopped after the play length, and a repeat stops the one before it.
+local function play(entry, source, output, cut)
     local handle
-    if C_Sound and C_Sound.PlaySoundWithOptions then
-        local ok, success, h = pcall(C_Sound.PlaySoundWithOptions, { soundKitID = kit, uiSoundSubType = channelFor(output), volumeOverride = volume })
-        if ok and success then
-            handle = h
+    if source.kind == "file" then
+        local channel = channelFor(output)
+        if channel == "Voice" then
+            channel = "Master"
+        end
+        local ok, willPlay, h = pcall(PlaySoundFile, source.path, channel)
+        handle = ok and willPlay and h or nil
+    else
+        local volume = (settings().soundVolume or 100) / 100
+        if C_Sound and C_Sound.PlaySoundWithOptions then
+            local ok, success, h = pcall(C_Sound.PlaySoundWithOptions, { soundKitID = source.id, uiSoundSubType = channelFor(output), volumeOverride = volume })
+            if ok and success then
+                handle = h
+            end
+        end
+        if not handle then
+            local ok, willPlay, h = pcall(PlaySound, source.id, channelFor(output))
+            handle = ok and willPlay and h or nil
         end
     end
     if not handle then
-        local ok, willPlay, h = pcall(PlaySound, kit, channelFor(output))
-        handle = ok and willPlay and h or nil
+        return
     end
-    if handle then
-        entry.handles[#entry.handles + 1] = handle
+    if cut and entry.last then
+        pcall(StopSound, entry.last)
+    end
+    entry.last = handle
+    entry.handles[#entry.handles + 1] = handle
+    if cut then
+        local length = settings().soundLength or 1
+        entry.cuts = entry.cuts or {}
+        entry.cuts[#entry.cuts + 1] = C_Timer.NewTimer(length, function()
+            pcall(StopSound, handle)
+        end)
     end
 end
 
@@ -263,27 +402,22 @@ local function tierOf(kit)
     return 50
 end
 
--- The sound kit for a choice, or nil for the game's pulse.
-local function alertKit(choice)
-    local c = choiceByKey[choice or settings().soundChoice or "pulse"]
-    if not c or c.key == "pulse" then
-        return nil
-    end
-    return (SOUNDKIT and SOUNDKIT[c.key]) or c.id
-end
-
--- Starts a choice for a game pulse kit: the same looping kit on the output, or the alert sound
--- repeating every 2.4 seconds at 90% down to every 0.8 seconds at 10%.
+-- Starts a choice for a game pulse kit: the same looping kit on the output, or the chosen sound
+-- repeating every 2.4 seconds at 90% down to every 0.8 seconds at 10% (never sooner than the play
+-- length), each cut after the play length.
+-- A choice that is gone (a shared sound whose addon isn't loaded) falls back to the game's pulse.
 local function begin(kit, choice, output)
     local entry = { kit = kit, handles = {} }
-    local alert = alertKit(choice)
-    if not alert then
-        play(entry, kit, output)
+    local source = resolve(choice or settings().soundChoice)
+    if not source or source.kind == "pulse" then
+        play(entry, { kind = "kit", id = kit }, output)
         return entry
     end
-    play(entry, alert, output)
-    entry.ticker = C_Timer.NewTicker(0.6 + tierOf(kit) / 50, function()
-        play(entry, alert, output)
+    play(entry, source, output, true)
+    -- A repeat never comes before the play length is up, so a long sound plays in full.
+    local every = math.max(0.6 + tierOf(kit) / 50, settings().soundLength or 1)
+    entry.ticker = C_Timer.NewTicker(every, function()
+        play(entry, source, output, true)
     end)
     return entry
 end
@@ -397,7 +531,9 @@ function Sound:Preview(choice, output, onStop)
     preview = begin(kit, choice, output)
     preview.key = key
     local mine = preview
-    preview.timer = C_Timer.NewTimer(PREVIEW_SECONDS, function()
+    -- Long enough to hear a whole warning at your play length.
+    local seconds = math.max(PREVIEW_SECONDS, (settings().soundLength or 1) + 0.2)
+    preview.timer = C_Timer.NewTimer(seconds, function()
         if preview == mine then
             Sound:StopPreview()
         end
