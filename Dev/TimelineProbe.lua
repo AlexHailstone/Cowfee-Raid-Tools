@@ -81,10 +81,11 @@ end
 
 -- Records each named field of a table, or "missing" for all of them when there is no table.
 local function recordFields(source, names, moment, t)
-    local usable = type(t) == "table" and classify(t) == "readable"
+    local class = classify(t)
+    local usable = class == "readable" and type(t) == "table"
     for _, name in ipairs(names) do
         if not usable then
-            bump(source, name, moment, t == nil and "missing" or classify(t))
+            bump(source, name, moment, class == "readable" and "missing" or class)
         else
             local ok, v = pcall(function() return t[name] end)
             if ok then
@@ -96,24 +97,27 @@ local function recordFields(source, names, moment, t)
     end
 end
 
--- Calls fn under pcall and returns its first result. A failed call is counted as an error under
--- source.field and returns nil.
+-- Calls fn under pcall and returns its first result and true. A failed call is counted as an error
+-- under source.field and returns nil, false, so the caller records nothing more for it.
 local function call(source, field, moment, fn, ...)
     local ok, v = pcall(fn, ...)
     if not ok then
         bump(source, field, moment, "error")
-        return nil
+        return nil, false
     end
-    return v
+    return v, true
 end
 
 -- Deaths meter, recaps and the dead players' spells. Run at the end and after combat.
 local function readDeaths(moment)
-    local session = call("meter", "session", moment, function()
-        local sessionType = Enum and Enum.DamageMeterSessionType and Enum.DamageMeterSessionType.Current or 1
-        local meterType = Enum and Enum.DamageMeterType and Enum.DamageMeterType.Deaths or 9
+    local sessionType = Enum and Enum.DamageMeterSessionType and Enum.DamageMeterSessionType.Current or 1
+    local meterType = Enum and Enum.DamageMeterType and Enum.DamageMeterType.Deaths or 9
+    local session, okSession = call("meter", "session", moment, function()
         return C_DamageMeter.GetCombatSessionFromType(sessionType, meterType)
     end)
+    if not okSession then
+        return
+    end
     local sources = type(session) == "table" and session.combatSources
     if type(sources) ~= "table" then
         recordFields("meter", METER_FIELDS, moment, nil)
@@ -133,21 +137,29 @@ local function readDeaths(moment)
                 else
                     doneOther = true
                 end
-                local events = call("recap", "events", moment, C_DeathRecap.GetRecapEvents, recapID)
-                recordFields(isSelf and "recap.self" or "recap.other", RECAP_FIELDS, moment,
-                    type(events) == "table" and events[#events] or nil)
+                local events, okEvents = call("recap", "events", moment, function()
+                    return C_DeathRecap.GetRecapEvents(recapID)
+                end)
+                if okEvents then
+                    recordFields(isSelf and "recap.self" or "recap.other", RECAP_FIELDS, moment,
+                        type(events) == "table" and events[#events] or nil)
+                end
             end
             if not doneDeadly then
                 doneDeadly = true
-                local detail = call("deadly", "source", moment, C_DamageMeter.GetCombatSessionSourceFromType,
-                    1, 9, src.sourceGUID, src.sourceCreatureID)
-                local spells = type(detail) == "table" and detail.combatSpells
-                if type(spells) == "table" and #spells > 0 then
-                    for s = 1, math.min(#spells, 10) do
-                        recordFields("deadly", DEADLY_FIELDS, moment, spells[s])
+                local detail, okDetail = call("deadly", "source", moment, function()
+                    return C_DamageMeter.GetCombatSessionSourceFromType(sessionType, meterType, src.sourceGUID,
+                        src.sourceCreatureID)
+                end)
+                if okDetail then
+                    local spells = type(detail) == "table" and detail.combatSpells
+                    if type(spells) == "table" and #spells > 0 then
+                        for n = 1, math.min(#spells, 10) do
+                            recordFields("deadly", DEADLY_FIELDS, moment, spells[n])
+                        end
+                    else
+                        recordFields("deadly", DEADLY_FIELDS, moment, nil)
                     end
-                else
-                    recordFields("deadly", DEADLY_FIELDS, moment, nil)
                 end
             end
         end
@@ -155,8 +167,12 @@ local function readDeaths(moment)
 end
 
 local function readFeature(moment)
-    local enabled = call("feature", "enabled", moment, C_EncounterTimeline.IsFeatureEnabled)
-    record("feature", "enabled", moment, enabled)
+    local enabled, ok = call("feature", "enabled", moment, function()
+        return C_EncounterTimeline.IsFeatureEnabled()
+    end)
+    if ok then
+        record("feature", "enabled", moment, enabled)
+    end
 end
 
 local function readJournal(moment, encounterID)
@@ -173,9 +189,18 @@ end
 -- Reads every event ID seen again through GetEventInfo and GetEventState.
 local function readSeen(moment)
     for id in pairs(seenIDs) do
-        local info = call("getinfo", "info", moment, C_EncounterTimeline.GetEventInfo, id)
-        recordFields("getinfo", INFO_FIELDS, moment, info)
-        record("state", "value", moment, call("state", "value", moment, C_EncounterTimeline.GetEventState, id))
+        local info, okInfo = call("getinfo", "info", moment, function()
+            return C_EncounterTimeline.GetEventInfo(id)
+        end)
+        if okInfo then
+            recordFields("getinfo", INFO_FIELDS, moment, info)
+        end
+        local state, okState = call("state", "value", moment, function()
+            return C_EncounterTimeline.GetEventState(id)
+        end)
+        if okState then
+            record("state", "value", moment, state)
+        end
     end
 end
 
@@ -205,10 +230,9 @@ function Probe.HandleEvent(event, ...)
         readFeature("event")
         readJournal("event", encounterID)
         if frame then
-            for i = 1, 5 do
-                frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "boss" .. i)
-                frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "boss" .. i)
-            end
+            -- Not RegisterUnitEvent: it listens to at most two units. The handler skips non-boss units.
+            frame:RegisterEvent("UNIT_SPELLCAST_START")
+            frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
         end
     elseif stage == "pull" then
         if event == "ENCOUNTER_TIMELINE_EVENT_ADDED" then
@@ -224,7 +248,12 @@ function Probe.HandleEvent(event, ...)
             local id = ...
             if classify(id) == "readable" then
                 seenIDs[id] = true
-                record("state", "value", "event", call("state", "value", "event", C_EncounterTimeline.GetEventState, id))
+                local state, okState = call("state", "value", "event", function()
+                    return C_EncounterTimeline.GetEventState(id)
+                end)
+                if okState then
+                    record("state", "value", "event", state)
+                end
             end
         elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED" then
             local unit, castGUID, spellID = ...
