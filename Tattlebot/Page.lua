@@ -22,6 +22,7 @@ local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "
 local ENDED = { button = "End night was pressed", gap = "no pull came for 6 hours" }
 
 local page, tonightText, tonightChild, detailText, detailChild, listChild
+local tonightPane, detailPane -- the text boxes' views, for showView
 local endButton, postPullButton, postNightButton, deleteButton, postSelectedButton
 local rows, controls = {}, {}
 local selected = TOTALS
@@ -98,28 +99,6 @@ local function trackingWarning()
     end
 end
 
--- The per-player totals for a set of nights, as text lines. With mechKey, only that mechanic: one
--- line per player with the average damage per pull it hit them in.
-local function summaryLines(nights, lines, mechKey)
-    local rowsOut, pulls = Tattle.Summary(nights, mechKey)
-    if #rowsOut == 0 then
-        lines[#lines + 1] = mechKey and "  Nobody took damage from this mechanic." or "  Nobody took damage from a tracked mechanic."
-        return
-    end
-    for _, row in ipairs(rowsOut) do
-        local line = format("  %s  |cffff8060%s|r, hit in %d of %d pulls", name(row.key, row.class), Tattle.Short(row.damage), row.hits, pulls)
-        if mechKey then
-            line = line .. format(", |cffbbbbbb%s a hit pull|r", Tattle.Short(row.damage / math.max(1, row.hits)))
-        end
-        lines[#lines + 1] = line
-        if not mechKey then
-            for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
-                lines[#lines + 1] = format("      |cffbbbbbb%s  %s  (%d %s)|r", m.name, Tattle.Short(m.damage), m.hits, m.hits == 1 and "pull" or "pulls")
-            end
-        end
-    end
-end
-
 -- One pull as one heading line and one line of who took the most.
 local function pullLines(pull, index, lines)
     local bits = { clock(pull.at) .. "  " .. Tattle.PullTitle(pull, index) }
@@ -156,7 +135,8 @@ local function pullLines(pull, index, lines)
     lines[#lines + 1] = "      " .. table.concat(parts, ", ")
 end
 
-local function tonightLines(night)
+-- Tonight: the intro, the night's mechanics added up over every pull, and the pulls under them.
+local function tonightView(night)
     local lines = {}
     local warn = trackingWarning()
     if warn then
@@ -172,16 +152,12 @@ local function tonightLines(night)
         end
         return table.concat(lines, "\n")
     end
-    lines[#lines + 1] = format("Started %s %s, %d %s so far.", day(night.startedAt), clock(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls")
-    lines[#lines + 1] = ""
-    lines[#lines + 1] = "|cffffd100Tonight's totals|r"
-    summaryLines({ night }, lines)
-    lines[#lines + 1] = ""
-    lines[#lines + 1] = "|cffffd100Pulls, newest first|r"
+    lines[#lines + 1] = format("Started %s %s, %d %s so far. |cffffd100Tonight's totals|r, all pulls added up:", day(night.startedAt), clock(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls")
+    local below = { "|cffffd100Pulls, newest first|r" }
     for i = #night.pulls, 1, -1 do
-        pullLines(night.pulls[i], i, lines)
+        pullLines(night.pulls[i], i, below)
     end
-    return table.concat(lines, "\n")
+    return table.concat(lines, "\n"), Tattle.MechanicBlocks({ night }), table.concat(below, "\n")
 end
 
 -- History filters --------------------------------------------------------------------------
@@ -231,25 +207,24 @@ local function mechText()
     return key and Tattle.MechanicLabel(Tattle.MechanicByKey(key)) or nil
 end
 
-local function nightLines(night)
+local function nightView(night)
     local mechKey = filterMech()
-    local lines = {
-        format("%s, %s to %s, %d pulls. Ended when %s.", day(night.startedAt), clock(night.startedAt), clock(night.endedAt), #night.pulls, ENDED[night.endReason] or "it ended"),
-        "",
-        mechKey and ("|cffffd100" .. mechText() .. "|r") or "|cffffd100Totals|r",
-    }
-    summaryLines({ night }, lines, mechKey)
+    local intro = format("%s, %s to %s, %d %s. Ended when %s.", day(night.startedAt), clock(night.startedAt), clock(night.endedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls", ENDED[night.endReason] or "it ended")
+    if mechKey then
+        intro = intro .. " |cffffd100" .. mechText() .. "|r only."
+    end
+    local below
     if not mechKey then
-        lines[#lines + 1] = ""
-        lines[#lines + 1] = "|cffffd100Pulls|r"
+        local lines = { "|cffffd100Pulls|r" }
         for i, pull in ipairs(night.pulls) do
             pullLines(pull, i, lines)
         end
+        below = table.concat(lines, "\n")
     end
-    return table.concat(lines, "\n")
+    return intro, Tattle.MechanicBlocks({ night }, mechKey), below
 end
 
-local function totalsLines()
+local function totalsView()
     local nights = filteredNights()
     if #nights == 0 then
         if seasonFilter == NIGHT then
@@ -258,20 +233,98 @@ local function totalsLines()
         return "No finished nights yet. Each night is added here when it ends."
     end
     local mechKey = filterMech()
-    local lines = {}
+    local intro
     if mechKey then
-        lines[1] = format("|cffffd100%s|r, %s, %d %s, most damage first.", mechText(), seasonText(), #nights, #nights == 1 and "night" or "nights")
+        intro = format("|cffffd100%s|r, %s, %d %s.", mechText(), seasonText(), #nights, #nights == 1 and "night" or "nights")
     else
-        lines[1] = format("All mechanics, %s, %d %s, most damage first.", seasonText(), #nights, #nights == 1 and "night" or "nights")
+        intro = format("All mechanics, %s, %d %s.", seasonText(), #nights, #nights == 1 and "night" or "nights")
     end
-    lines[2] = ""
-    summaryLines(nights, lines, mechKey)
-    return table.concat(lines, "\n")
+    return intro, Tattle.MechanicBlocks(nights, mechKey)
 end
 
-local function setText(fs, child, s)
-    fs:SetText(s)
-    child:SetHeight(fs:GetStringHeight() + 8)
+-- Mechanic tables ----------------------------------------------------------------------------
+-- A text box shows a view: a line of text, a table with a Mechanic, Player, Pulls hit and Damage
+-- column (the mechanic's name only on its first row, a gap between mechanics), and more text below.
+-- Pulls hit is the number of pulls on the mechanic's boss it hit that player in: the game's meter
+-- has no count of single hits.
+
+local TABLE_ROW_H = 18
+local TABLE_GAP = 6
+
+local function tableRow(view, i)
+    local row = view.rows[i]
+    if row then
+        return row
+    end
+    row = {}
+    for _, key in ipairs({ "mech", "player", "pulls", "damage" }) do
+        local fs = view.child:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        fs:SetWordWrap(false)
+        row[key] = fs
+    end
+    view.rows[i] = row
+    return row
+end
+
+local function cell(fs, x, y, width, justify, text)
+    fs:ClearAllPoints()
+    fs:SetPoint("TOPLEFT", x, y)
+    fs:SetWidth(width)
+    fs:SetJustifyH(justify)
+    fs:SetText(text)
+    fs:Show()
+end
+
+local function showView(view, intro, blocks, below)
+    for _, row in pairs(view.rows) do
+        for _, fs in pairs(row) do
+            fs:Hide()
+        end
+    end
+    view.text:SetText(intro or "")
+    local y = -(view.text:GetStringHeight() + 10)
+    local w = view.child:GetWidth()
+    if not w or w < 300 then
+        w = 360
+    end
+    -- Mechanic, Player, then Pulls hit and Damage right-aligned at the right edge.
+    local xMech, wMech = 2, math.floor(w * 0.36)
+    local xPlayer, wPlayer = xMech + wMech + 6, math.floor(w * 0.32)
+    local wNum = math.floor((w - (xPlayer + wPlayer) - 12) / 2)
+    local xPulls = xPlayer + wPlayer + 4
+    local xDamage = xPulls + wNum + 4
+    local n = 0
+    if blocks and #blocks > 0 then
+        n = n + 1
+        local head = tableRow(view, n)
+        cell(head.mech, xMech, y, wMech, "LEFT", "|cff999999Mechanic|r")
+        cell(head.player, xPlayer, y, wPlayer, "LEFT", "|cff999999Player|r")
+        cell(head.pulls, xPulls, y, wNum, "RIGHT", "|cff999999Pulls hit|r")
+        cell(head.damage, xDamage, y, wNum, "RIGHT", "|cff999999Damage|r")
+        y = y - TABLE_ROW_H
+        for b, block in ipairs(blocks) do
+            if b > 1 then
+                y = y - TABLE_GAP
+            end
+            for r, data in ipairs(block.rows) do
+                n = n + 1
+                local row = tableRow(view, n)
+                cell(row.mech, xMech, y, wMech, "LEFT", r == 1 and ("|cffffd100" .. block.name .. "|r") or "")
+                cell(row.player, xPlayer, y, wPlayer, "LEFT", name(data.key, data.class))
+                cell(row.pulls, xPulls, y, wNum, "RIGHT", data.hits .. " of " .. block.pulls)
+                cell(row.damage, xDamage, y, wNum, "RIGHT", "|cffff8060" .. Tattle.Short(data.damage) .. "|r")
+                y = y - TABLE_ROW_H
+            end
+        end
+        y = y - 10
+    elseif blocks then
+        view.text:SetText((intro or "") .. "\n\nNobody took damage from a tracked mechanic.")
+        y = -(view.text:GetStringHeight() + 10)
+    end
+    view.below:ClearAllPoints()
+    view.below:SetPoint("TOPLEFT", 2, y)
+    view.below:SetText(below or "")
+    view.child:SetHeight(-y + (below and view.below:GetStringHeight() or 0) + 8)
 end
 
 -- Discord export ----------------------------------------------------------------------------
@@ -287,54 +340,38 @@ local function pad(s, width)
     return s .. string.rep(" ", width - #s)
 end
 
--- The export: with a mechanic picked, that mechanic; otherwise every mechanic, most total damage
--- first. Each has a heading with its total, then a row per player it hit, most damage first. Pulls
--- hit counts the pulls on the mechanic's boss.
+local function lpad(s, width)
+    s = tostring(s)
+    if #s >= width then
+        return s
+    end
+    return string.rep(" ", width - #s) .. s
+end
+
+-- The export: Mechanic, Player, Pulls hit and Damage, the mechanic's name only on its first row and
+-- a blank line between mechanics, most total damage first. With a mechanic picked, that one only.
 local function summaryExport(title, nights)
     local mechKey = filterMech()
-    local keys = {}
-    if mechKey then
-        keys[1] = mechKey
-    else
-        local seen = {}
-        for _, row in ipairs((Tattle.Summary(nights))) do
-            for key in pairs(row.mechanics) do
-                if not seen[key] then
-                    seen[key] = true
-                    keys[#keys + 1] = key
-                end
-            end
-        end
-    end
-    local blocks = {}
-    for _, key in ipairs(keys) do
-        local rowsOut, pulls = Tattle.Summary(nights, key)
-        local total = 0
-        for _, row in ipairs(rowsOut) do
-            total = total + row.damage
-        end
-        if #rowsOut > 0 then
-            blocks[#blocks + 1] = { key = key, rows = rowsOut, pulls = pulls, total = total }
-        end
-    end
+    local blocks = Tattle.MechanicBlocks(nights, mechKey)
     if #blocks == 0 then
         return title .. "\n" .. (mechKey and "Nobody took damage from this mechanic." or "Nobody took damage from a tracked mechanic.")
     end
-    table.sort(blocks, function(a, b)
-        if a.total ~= b.total then
-            return a.total > b.total
+    -- Columns as wide as the longest name in them, within limits.
+    local wMech, wPlayer = #"Mechanic", #"Player"
+    for _, block in ipairs(blocks) do
+        wMech = math.max(wMech, #block.name)
+        for _, row in ipairs(block.rows) do
+            wPlayer = math.max(wPlayer, #Groups.Display(row.key))
         end
-        return a.key < b.key
-    end)
-    local lines = { title, "```", pad("  Player", 26) .. pad("Damage", 10) .. pad("Pulls hit", 12) .. "Per hit pull" }
+    end
+    wMech, wPlayer = math.min(wMech, 28) + 2, math.min(wPlayer, 24) + 2
+    local lines = { title, "```", pad("Mechanic", wMech) .. pad("Player", wPlayer) .. pad("Pulls hit", 11) .. lpad("Damage", 8) }
     for i, block in ipairs(blocks) do
         if i > 1 then
             lines[#lines + 1] = ""
         end
-        local n = #block.rows
-        lines[#lines + 1] = format("%s  %s, %d %s", Tattle.MechanicLabel(Tattle.MechanicByKey(block.key)), Tattle.Short(block.total), n, n == 1 and "player" or "players")
-        for _, row in ipairs(block.rows) do
-            lines[#lines + 1] = pad("  " .. Groups.Display(row.key), 26) .. pad(Tattle.Short(row.damage), 10) .. pad(row.hits .. " of " .. block.pulls, 12) .. Tattle.Short(row.damage / math.max(1, row.hits))
+        for r, row in ipairs(block.rows) do
+            lines[#lines + 1] = pad(r == 1 and block.name or "", wMech) .. pad(Groups.Display(row.key), wPlayer) .. pad(row.hits .. " of " .. block.pulls, 11) .. lpad(Tattle.Short(row.damage), 8)
         end
     end
     lines[#lines + 1] = "```"
@@ -360,7 +397,7 @@ end
 
 local function nightExport(night)
     local what = mechText()
-    local title = format("**Tattlebot, %s**: %d pulls", day(night.startedAt), #night.pulls)
+    local title = format("**Tattlebot, %s**: %d %s", day(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls")
     if what then
         title = title .. ", " .. what
     end
@@ -396,10 +433,19 @@ local function textBox(pf, scrollName)
     text:SetPoint("TOPLEFT", 2, -2)
     text:SetJustifyH("LEFT")
     text:SetJustifyV("TOP")
+    -- Text under a mechanic table, placed by showView.
+    local below = child:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    below:SetJustifyH("LEFT")
+    below:SetJustifyV("TOP")
     scroll:SetScript("OnSizeChanged", function(self, w)
         child:SetWidth(w)
         text:SetWidth(w - 6)
+        below:SetWidth(w - 6)
+        if box.onResize then
+            box.onResize()
+        end
     end)
+    box.view = { child = child, text = text, below = below, rows = {} }
     return box, text, child
 end
 
@@ -694,7 +740,7 @@ refresh = function()
         control.refresh()
     end
     local night = Tattle:Current()
-    setText(tonightText, tonightChild, tonightLines(night))
+    showView(tonightPane, tonightView(night))
     local hasPulls = night and #night.pulls > 0
     endButton:SetEnabled(night ~= nil)
     postPullButton:SetEnabled(hasPulls and true or false)
@@ -702,11 +748,11 @@ refresh = function()
     refreshList()
     refreshMechanics()
     if selected == TOTALS then
-        setText(detailText, detailChild, totalsLines())
+        showView(detailPane, totalsView())
         deleteButton:Hide()
         postSelectedButton:Hide()
     else
-        setText(detailText, detailChild, nightLines(Tattle:Find(selected)))
+        showView(detailPane, nightView(Tattle:Find(selected)))
         deleteButton:Show()
         postSelectedButton:Show()
     end
@@ -760,6 +806,10 @@ local function buildTonight(f)
 
     local tonightBox
     tonightBox, tonightText, tonightChild = textBox(f, "CowfeeRaidToolsTattleTonightScroll")
+    tonightPane = tonightBox.view
+    tonightBox.onResize = function()
+        refresh()
+    end
     tonightBox:SetPoint("TOPLEFT", 8, -40)
     tonightBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
 end
@@ -819,6 +869,10 @@ local function buildHistory(f)
 
     local detailBox
     detailBox, detailText, detailChild = textBox(f, "CowfeeRaidToolsTattleDetailScroll")
+    detailPane = detailBox.view
+    detailBox.onResize = function()
+        refresh()
+    end
     detailBox:SetPoint("TOPLEFT", listBox, "TOPRIGHT", 8, 0)
     detailBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 38)
 
