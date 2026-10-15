@@ -287,28 +287,54 @@ local function pad(s, width)
     return s .. string.rep(" ", width - #s)
 end
 
+-- The export: with a mechanic picked, that mechanic; otherwise every mechanic, most total damage
+-- first. Each has a heading with its total, then a row per player it hit, most damage first. Pulls
+-- hit counts the pulls on the mechanic's boss.
 local function summaryExport(title, nights)
     local mechKey = filterMech()
-    local rowsOut, pulls = Tattle.Summary(nights, mechKey)
-    local lines = { title }
-    if #rowsOut == 0 then
-        lines[#lines + 1] = mechKey and "Nobody took damage from this mechanic." or "Nobody took damage from a tracked mechanic."
-        return table.concat(lines, "\n")
-    end
-    lines[#lines + 1] = "```"
+    local keys = {}
     if mechKey then
-        lines[#lines + 1] = pad("Player", 24) .. pad("Damage", 10) .. pad("Pulls hit", 12) .. "Per hit pull"
+        keys[1] = mechKey
     else
-        lines[#lines + 1] = pad("Player", 24) .. pad("Damage", 10) .. "Pulls hit"
-    end
-    for _, row in ipairs(rowsOut) do
-        if mechKey then
-            lines[#lines + 1] = pad(Groups.Display(row.key), 24) .. pad(Tattle.Short(row.damage), 10) .. pad(row.hits .. " of " .. pulls, 12) .. Tattle.Short(row.damage / math.max(1, row.hits))
-        else
-            lines[#lines + 1] = pad(Groups.Display(row.key), 24) .. pad(Tattle.Short(row.damage), 10) .. row.hits .. " of " .. pulls
-            for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
-                lines[#lines + 1] = pad("  " .. m.name, 24) .. pad(Tattle.Short(m.damage), 10) .. m.hits
+        local seen = {}
+        for _, row in ipairs((Tattle.Summary(nights))) do
+            for key in pairs(row.mechanics) do
+                if not seen[key] then
+                    seen[key] = true
+                    keys[#keys + 1] = key
+                end
             end
+        end
+    end
+    local blocks = {}
+    for _, key in ipairs(keys) do
+        local rowsOut, pulls = Tattle.Summary(nights, key)
+        local total = 0
+        for _, row in ipairs(rowsOut) do
+            total = total + row.damage
+        end
+        if #rowsOut > 0 then
+            blocks[#blocks + 1] = { key = key, rows = rowsOut, pulls = pulls, total = total }
+        end
+    end
+    if #blocks == 0 then
+        return title .. "\n" .. (mechKey and "Nobody took damage from this mechanic." or "Nobody took damage from a tracked mechanic.")
+    end
+    table.sort(blocks, function(a, b)
+        if a.total ~= b.total then
+            return a.total > b.total
+        end
+        return a.key < b.key
+    end)
+    local lines = { title, "```", pad("  Player", 26) .. pad("Damage", 10) .. pad("Pulls hit", 12) .. "Per hit pull" }
+    for i, block in ipairs(blocks) do
+        if i > 1 then
+            lines[#lines + 1] = ""
+        end
+        local n = #block.rows
+        lines[#lines + 1] = format("%s  %s, %d %s", Tattle.MechanicLabel(Tattle.MechanicByKey(block.key)), Tattle.Short(block.total), n, n == 1 and "player" or "players")
+        for _, row in ipairs(block.rows) do
+            lines[#lines + 1] = pad("  " .. Groups.Display(row.key), 26) .. pad(Tattle.Short(row.damage), 10) .. pad(row.hits .. " of " .. block.pulls, 12) .. Tattle.Short(row.damage / math.max(1, row.hits))
         end
     end
     lines[#lines + 1] = "```"
@@ -329,7 +355,7 @@ local function totalsExport()
         local pulls = #nights[1].pulls
         return summaryExport(format("**%s**, %s: %d %s", what, day(first), pulls, pulls == 1 and "pull" or "pulls"), nights)
     end
-    return summaryExport(format("**%s**, all seasons: %d nights, %s to %s", what, #nights, day(first), day(last)), nights)
+    return summaryExport(format("**%s**, all seasons: %d %s, %s to %s", what, #nights, #nights == 1 and "night" or "nights", day(first), day(last)), nights)
 end
 
 local function nightExport(night)
