@@ -420,7 +420,7 @@ local function refreshList()
     local entries = { { value = TOTALS, text = "|cffffd100Totals (" .. (seasonFilter == NIGHT and "current night" or "all seasons") .. ")|r" } }
     for i = #history, 1, -1 do
         local night = history[i]
-        entries[#entries + 1] = { value = night.id, text = format("%s %s  (%d pulls)", day(night.startedAt), clock(night.startedAt), #night.pulls) }
+        entries[#entries + 1] = { value = night.id, text = format("%s %s  (%d %s)", day(night.startedAt), clock(night.startedAt), #night.pulls, #night.pulls == 1 and "pull" or "pulls") }
     end
     for i, entry in ipairs(entries) do
         local row = getRow(i)
@@ -504,9 +504,17 @@ local function scanEntries()
         return out
     end
     local where = scanTarget()
-    out[1] = { text = format("|cffffd100Last fight|r: %s%s. Tick spells and press Add checked to track them %s.",
-        where or "not a boss", scanResult.duration and (", " .. duration(scanResult.duration)) or "",
-        where and ("on " .. where) or "on every boss") }
+    out[1] = { text = format("|cffffd100Last fight|r: %s%s", where or "not a boss", scanResult.duration and (", " .. duration(scanResult.duration)) or "") }
+    -- Whether spells added now also count on the fight that was scanned.
+    local when
+    if scanResult.pull then
+        when = "Ticked spells are tracked on " .. where .. " from this pull on: this pull is filled in too."
+    elseif where then
+        when = "This fight wasn't saved as a pull, so ticked spells are tracked on " .. where .. " from the next pull."
+    else
+        when = "Ticked spells are tracked on every boss, from the next boss pull."
+    end
+    out[2] = { text = "|cffbbbbbb" .. when .. "|r" }
     if scanError then
         out[#out + 1] = { text = "|cffff6060" .. scanError .. " Showing the last fight read.|r" }
     end
@@ -994,7 +1002,7 @@ local function buildMechanics(f)
     end)
     scanBar.add = makeButton(scanBar, "Add checked", 130)
     scanBar.add:SetPoint("LEFT", mechEdit, "RIGHT", 8, 0)
-    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells, tied to the boss of the fight, so History counts them against that boss's pulls. A fight that was not a boss adds them for every boss.\n\nLeave Mechanic empty to use each spell's own name, so spells that share a name become one mechanic. Type a name to put every ticked spell under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
+    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells, tied to the boss of the fight, so History counts them against that boss's pulls. If the fight was saved as a boss pull, their damage is filled in on that pull too, and they count on every pull after. A fight that was not a boss adds them for every boss, from the next boss pull.\n\nLeave Mechanic empty to use each spell's own name, so spells that share a name become one mechanic. Type a name to put every ticked spell under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
     scanBar.add:SetScript("OnClick", function()
         if not scanResult then
             return
@@ -1015,7 +1023,12 @@ local function buildMechanics(f)
         mechEdit:SetText("")
         mechEdit:ClearFocus()
         Tattle:AddCustomMany(ids, names, boss and boss.name, boss and boss.encounterID)
-        CRT:Print(format("Tattlebot now tracks %d more %s%s.", #ids, #ids == 1 and "spell" or "spells", boss and boss.name and (" on " .. boss.name) or ""))
+        local filled = ""
+        if scanResult.pull then
+            local n = Tattle:Backfill(scanResult.pull, scanResult.players, ids)
+            filled = format(", and filled them in on this pull for %d %s", n, n == 1 and "player" or "players")
+        end
+        CRT:Print(format("Tattlebot now tracks %d more %s%s%s.", #ids, #ids == 1 and "spell" or "spells", boss and boss.name and (" on " .. boss.name) or "", filled))
     end)
     local copy = makeButton(scanBar, "Copy as text", 110)
     copy:SetPoint("RIGHT", 0, 0)
