@@ -18,7 +18,10 @@ local TEXT = {
     lowHealthThreshold = "Show it at or under this much health:",
     lowHealthSound = "Also play the game's low-health pulse sound",
     lowHealthSoundNote = "Turns on the game's own low-health pulse (Combat Audio Alerts, in the game's Accessibility options): a sound that loops while your health is under your threshold, faster as it drops. The game compares your health itself, so it works in combat, where an addon can't.\n\nThe pulse works in 10% steps, so your threshold is rounded to the nearest one (35% becomes 40%).\n\nIf you weren't using Combat Audio Alerts, its spoken alerts are switched off so only the pulse plays. Unticking this puts every game setting it changed back.",
-    lowHealthVolume = "Pulse volume",
+    lowHealthVolume = "Volume",
+    lowHealthChoice = "Sound",
+    lowHealthOutput = "Output",
+    lowHealthOutputNote = "Game default plays the sound on the game's voice output, like its own pulse. Pick a channel to follow that channel's volume and mute in the game's Sound settings instead.\n\nAny sound other than the game's pulse, or any channel, is played by the addon: the game's pulse runs silently and the addon plays yours whenever it starts or stops, so it still works in combat.",
     lowHealthTest = "Test sound",
     lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
     resetPosition = "Reset position",
@@ -142,6 +145,44 @@ local function buildLowHealth(pf, top)
     end
     controls[#controls + 1] = sound
 
+    local function soundOn()
+        return alertOn() and settings().sound
+    end
+    local choice = UI.Dropdown(pf, TEXT.lowHealthChoice, {
+        options = Sound.CHOICES,
+        labelWidth = SLIDER_LABEL_W,
+        width = 200,
+        get = function()
+            return settings().soundChoice or "pulse"
+        end,
+        set = function(key)
+            settings().soundChoice = key
+            Sound:Apply()
+            refresh()
+        end,
+        enabledIf = soundOn,
+    })
+    choice:SetPoint("TOPLEFT", 10, top - 100)
+    controls[#controls + 1] = choice
+
+    local output = UI.Dropdown(pf, TEXT.lowHealthOutput, {
+        options = Sound.Outputs,
+        labelWidth = SLIDER_LABEL_W,
+        width = 200,
+        get = function()
+            return settings().soundChannel or "game"
+        end,
+        set = function(key)
+            settings().soundChannel = key
+            Sound:Apply()
+            refresh()
+        end,
+        enabledIf = soundOn,
+    })
+    output:SetPoint("TOPLEFT", 10, top - 130)
+    controls[#controls + 1] = output
+    UI.Help(pf, TEXT.lowHealthOutput, TEXT.lowHealthOutputNote):SetPoint("LEFT", output, "RIGHT", 6, 0)
+
     local volume = UI.Slider(pf, TEXT.lowHealthVolume, {
         min = 0,
         max = 100,
@@ -156,11 +197,9 @@ local function buildLowHealth(pf, top)
             settings().soundVolume = v
             Sound:Apply()
         end,
-        enabledIf = function()
-            return alertOn() and settings().sound
-        end,
+        enabledIf = soundOn,
     })
-    volume:SetPoint("TOPLEFT", 10, top - 100)
+    volume:SetPoint("TOPLEFT", 10, top - 160)
     controls[#controls + 1] = volume
 
     local test = smallButton(pf, TEXT.lowHealthTest)

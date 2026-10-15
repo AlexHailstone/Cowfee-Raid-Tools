@@ -143,7 +143,9 @@ local defaults = {
     qol = {
         -- sound turns on the game's own low-health pulse (QoL/LowHealthSound.lua), soundVolume is its
         -- volume, and caaSaved holds the game settings it changed, to put back when it is turned off.
-        lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100 },
+        -- soundChoice is "pulse" (the game's own) or a key of LowHealthSound.CHOICES, soundChannel is
+        -- "game" (the game's own output) or a sound channel from CRT.SOUND_CHANNELS.
+        lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100, soundChoice = "pulse", soundChannel = "game" },
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout
@@ -309,6 +311,7 @@ CRT.SOUND_CHANNELS = {
     { key = "Dialog", label = "Dialog" },
     { key = "Ambience", label = "Ambience" },
     { key = "Music", label = "Music" },
+    { key = "Talking Head", label = "Talking head" },
 }
 
 -- Plays a sound kit through the channel chosen on the Addon Settings page. Every sound the addon plays
