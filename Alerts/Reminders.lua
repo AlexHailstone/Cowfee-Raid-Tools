@@ -172,7 +172,15 @@ end
 function Reminders:Save(encounterID, id, r)
     local all = store(true)
     local db = Alerts:Settings()
+    if not (all and db) then
+        return nil
+    end
     local saved = copy(r)
+    for _, k in ipairs({ "difficulty", "boss" }) do
+        if type(saved[k]) ~= "string" or trim(saved[k]) == "" then
+            saved[k] = nil
+        end
+    end
     if saved.times ~= nil and trim(saved.times) == "" then
         saved.times = nil
     end
@@ -321,8 +329,8 @@ local function matchesDifficulty(r, run)
     return type(run.difficultyName) == "string" and lower(run.difficultyName) == lower(r.difficulty)
 end
 
-local function speechList(r)
-    local mode, warn, text = r.speech, r.warn or 5, r.text or ""
+local function speechList(r, text)
+    local mode, warn = r.speech, r.warn or 5
     local out = {}
     if mode == "textcount" then
         out[1] = { offset = math.max(warn, 4), text = text }
@@ -353,9 +361,15 @@ local function entries(run)
                     icon = tex
                 end
             end
-            local text = spellName(r.spellID) or r.text
-            if text == nil or trim(text) == "" then
-                text = r.spellID and ("Spell " .. tostring(r.spellID)) or ""
+            local text
+            if type(r.text) == "string" and trim(r.text) ~= "" then
+                text = r.text
+            else
+                text = spellName(r.spellID)
+                if not text then
+                    local hasSpell = type(r.spellID) == "number" and r.spellID > 0
+                    text = hasSpell and ("Spell " .. tostring(r.spellID)) or "Reminder"
+                end
             end
             local o = r.outputs or {}
             for n, t in ipairs(times) do
@@ -371,7 +385,7 @@ local function entries(run)
                     hold = 0.5,
                     outputs = { alert = o.alert and true or false, bar = o.bar and true or false,
                         speech = o.speech and true or false },
-                    speech = speechList(r),
+                    speech = speechList(r, text),
                 }
             end
         end
