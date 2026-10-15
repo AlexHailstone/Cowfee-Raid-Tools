@@ -15,7 +15,7 @@
 Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and raiders. Type `/crt` to open one panel with a page for each tool.
 
 > [!NOTE]
-> **Beta.** Raid Groups has been used in its author's raids. The other pages (Ready Check, Debuffs, Raid Notes, Late Tracker, Tattlebot) are new and have not been tested in a live raid yet. Applying a layout moves real players, so try it on a small group first, and please report anything odd.
+> **Beta.** Raid Groups has been used in its author's raids. The other pages (Ready Check, Debuffs, Raid Notes, Late Tracker, Tattlebot, Timeline) are new and have not been tested in a live raid yet. Applying a layout moves real players, so try it on a small group first, and please report anything odd.
 
 ## Contents
 
@@ -28,6 +28,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 - [Raid Notes](#raid-notes)
 - [Late Tracker](#late-tracker)
 - [Tattlebot](#tattlebot)
+- [Timeline](#timeline)
 - [Commands](#commands)
 - [FAQ](#faq)
 - [Known limitations](#known-limitations)
@@ -47,6 +48,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **General Settings** | Settings for the whole addon: a Modern look (coffee colors, flat controls, grouped menu) or the Classic look, the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black in Classic, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, the sound channel the addon's sounds play through, whether reports and Discord exports leave out realm names, the minimap button, and profiles (each character picks one; create, copy, reset, delete, export and import) |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
+| **Timeline** | Saves every raid boss pull, ten per boss, and draws it as a timeline: time runs left to right, with a row for each boss ability and a row of deaths. Zoom, scroll, hover for the time, and draw the deaths of recent pulls over the shown one to see who keeps dying and when |
 
 **Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
 
@@ -123,6 +125,10 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 
 `/crt tattle`. After each boss pull, once you are out of combat, Tattlebot reads the game's own damage meter (Damage Taken) and keeps the damage each player took from the boss mechanics it tracks. A mechanic can have several spell IDs, and they are added together, so each mechanic is one line in the report. The game keeps the meter secret during a fight, so nothing is read until combat ends. The meter has damage per spell but no hit count, so Tattlebot reports each player's damage per mechanic and the number of pulls it hit them in. **Tonight** shows tonight's pulls and totals, **History** keeps every night with totals, and both can post to chat or **Export for Discord**. Totals on Tonight and History, the Discord export and chat posts are all by mechanic, most damage first: a table of Mechanic, Player, Pulls hit and Damage, with each mechanic's name on its first row. Tonight adds up every pull of the night. History has a **Season** filter (**All seasons** or **Current night**, which is tonight's night, or the last one saved when none is running) and a **Mechanic** filter: pick a mechanic and Totals becomes its record, with each player's damage from it, how many pulls on its boss it hit them in, and the average per pull it hit. Nights are also labeled with the season named on **Settings**. **Mechanics** has a boss dropdown that shows the mechanics tracked for each boss with their spell IDs, and **Your own spells**, where you can add spell IDs of your own and name the mechanic they belong to. On **Settings**, Tattlebot can also count everything the game marks as avoidable damage, and post each pull's report on its own (to chat only from the raid leader). The shipped list is in `Tattlebot/Database.lua`, grouped by boss and mechanic. To track more on the fly, pick **Last fight** in the Mechanics dropdown (or type `/crt tattle scan`): it lists every spell that damaged the group in the last fight with a check box, so tick the ones to track and press **Add checked**. They are added for that fight's boss, and spells that share a name become one mechanic. Their damage in that fight counts at once: it is filled in on the pull Tattlebot saved for it, or, if there is none (a fight that wasn't a boss, or a training dummy), the fight is saved as a pull of its own. Tracking starts with the fight you scanned.
 
+## Timeline
+
+`/crt timeline`. Every raid boss pull is saved on its own, from the pull to the kill or wipe, and the last ten pulls of each boss are kept (a pull shorter than 15 seconds is dropped as a reset). Pick a boss and a pull on the **Review** tab and it is drawn as a timeline: time runs left to right, with a row for each boss ability and a row for deaths. Hover the timeline to see the time under the mouse, so you can copy it into a note. Zoom with the slider or the mouse wheel over the timeline, scroll by dragging it, and use the mouse wheel with Shift to scroll the rows. Hover a death to see the player, the time and, when the game gives it, the killing blow. **Deaths from recent pulls** draws the deaths of the pulls before the shown one over it, fainter the older they are, so deaths that repeat stand out. The ability rows come from the boss's Encounter Journal page, read out of combat, and a cast shows on the row of its spell. **Settings** has the view (visible time, grid interval, icon size), which rows to show or hide, spell IDs of your own to add as rows, the deaths (one row or one per player, which roles, only the first few deaths, how many pulls the overlay covers), and recording (on or off, the shortest pull to keep, delete a boss's pulls). Planning markers and sending them to Raid Notes are not built yet.
+
 ## Commands
 
 | Command | What it does |
@@ -140,6 +146,7 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 | `/crt late export` | The late totals as text to paste into Discord |
 | `/crt tattle`, `/crt tattle post`, `/crt tattle night`, `/crt tattle end` | Tattlebot, post the last pull, post tonight's totals, end the night |
 | `/crt tattle scan`, `/crt tattle scan text`, `/crt tattle export` | Pick spells to track from the last fight, the same list as plain text, and the Tattlebot totals for Discord |
+| `/crt timeline` | Timeline |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert |
 | `/crt settings` | General Settings: the look, window, fonts, sound, minimap button, layers and profiles |
@@ -187,6 +194,7 @@ Close the game and delete `CowfeeRaidTools.lua` from your SavedVariables folder.
 - Potions and healthstones used in a fight, and other players' armor kits, cannot be checked. Other players' weapon oils and durability only show for raiders who run the addon.
 - Apply cannot move a player who is in combat.
 - Tattlebot reports damage taken, not the number of hits: the game's damage meter does not count hits, and the combat log is closed to addons during boss fights. It reads the meter after each boss pull, so it needs the game's damage meter to be available.
+- Timeline probably records boss casts without the spell's name. The game keeps the spell ID secret during boss fights, so those casts show as "Boss casts (unnamed)", with only their time. Deaths and their times come from the game's damage meter after the pull, so they are read once you are out of combat, and a `/reload` in the middle of a pull loses that pull.
 
 ## Reporting a problem
 
@@ -214,6 +222,7 @@ CowfeeRaidTools/
   Notes/                 raid notes: parser, timers, windows, alert, sharing, page
   Late/                  the Late Tracker
   Tattlebot/             Tattlebot: the mechanics list, the damage meter reading, page
+  Timeline/              Timeline: the recorded pulls, the Journal ability rows, the timeline view, page
 ```
 
 - **Releases.** Pushing a tag such as `v0.12.0` runs the GitHub Actions workflow in `.github/workflows/release.yml`, which builds `CowfeeRaidTools-v0.12.0.zip` with the BigWigs packager (`BigWigsMods/packager`) and attaches it to a GitHub release.
