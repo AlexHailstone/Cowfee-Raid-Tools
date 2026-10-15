@@ -357,10 +357,12 @@ end
 -- Plays a sound on an output, adding its handle to the entry. A kit plays at your volume; a file plays
 -- at the channel's volume (on Master for Game default, since files can't use the game's voice output).
 -- With replace, it stops the sound the entry played before (a repeat cuts off the one before it).
+local lastPlay -- the last sound the addon asked the game for, and whether it played, for /crt lowhp info
+
 local function play(entry, source, output, replace)
     local handle
+    local channel = channelFor(output)
     if source.kind == "file" then
-        local channel = channelFor(output)
         if channel == "Voice" then
             channel = "Master"
         end
@@ -379,7 +381,14 @@ local function play(entry, source, output, replace)
             handle = ok and willPlay and h or nil
         end
     end
+    lastPlay = format("%s %s on %s: %s", source.kind, tostring(source.path or source.id), channel, handle and "playing" or "refused by the game")
     if not handle then
+        -- Say so once per sound, so a silent warning has a reason in chat.
+        if not entry.warned then
+            entry.warned = true
+            CRT:Print(format("The game didn't play %s on %s. Check that channel isn't muted in the game's Sound settings%s.",
+                tostring(source.path or source.id), channel, source.kind == "file" and ", and that the file exists (then /reload)" or ""))
+        end
         return
     end
     if replace and entry.last then
@@ -426,8 +435,12 @@ function Sound:StopOurs()
 end
 
 function Sound:StopPreview()
+    local ended = preview
     stopEntry(preview)
     preview = nil
+    if ended and ended.onStop then
+        ended.onStop()
+    end
 end
 
 local function stopLingering()
@@ -551,6 +564,8 @@ function Sound:Preview(choice, output, onStop)
     end
     preview = begin(kit, choice, output)
     preview.key = key
+    -- Called however the preview ends: its timer, a second click, another Play, or leaving the page.
+    preview.onStop = onStop
     local mine = preview
     preview.timer = C_Timer.NewTimer(PREVIEW_SECONDS, function()
         if preview == mine then
@@ -560,12 +575,12 @@ function Sound:Preview(choice, output, onStop)
                     lingering[#lingering + 1] = handle
                 end
                 preview = nil
+                if onStop then
+                    onStop()
+                end
             else
                 Sound:StopPreview()
             end
-        end
-        if onStop then
-            onStop()
         end
     end)
     return true
@@ -587,4 +602,5 @@ function Sound:Info()
         tostring(settings().sound), tostring(self:Available()), tostring(getCVar(ENABLED)), tostring(getCVar(PULSE)),
         self:StepPercent(), tostring(settings().caaSaved ~= nil), tostring(settings().soundChoice), tostring(settings().soundChannel),
         tostring(self:Custom()), tostring(self.hooked and true or false), self.hidden and ", the game hid the tier so it played its own" or "")
+        .. "; last sound: " .. tostring(lastPlay or "none yet")
 end
