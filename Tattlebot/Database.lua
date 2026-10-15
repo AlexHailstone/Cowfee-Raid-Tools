@@ -1,23 +1,29 @@
 local ADDON, CRT = ...
 
--- The boss mechanics Tattlebot reports on. This list ships with the addon, so players do not
--- configure it. After each boss pull, Tattlebot reads the game's damage meter (Damage Taken) and
--- keeps only the damage each player took from the spells listed here.
+-- The boss mechanics Tattlebot reports on. This list ships with the addon. After each boss pull,
+-- Tattlebot reads the game's damage meter (Damage Taken) and keeps only the damage each player took
+-- from the spells listed here. Players can add their own spell IDs on the Mechanics tab as well.
 --
--- One line per spell:
---   [<spell ID>] = "label",
+-- Bosses are listed in raid order, each with its mechanics:
+--   { boss = "Boss name", mechanics = {
+--       { name = "Mechanic name", spells = { <spell ID>, <spell ID> } },
+--   } },
 --
--- spell ID  The ID of the spell that does the damage, as the damage meter shows it. To find them,
---           do a pull, leave combat and type `/crt tattle scan`: it lists every spell that damaged
---           the group in the last fight as lines you can paste here.
--- label     Only for people reading this file, such as the boss and the mechanic. The game's own
---           spell name is shown in the addon.
+-- boss      The name shown in the boss dropdown on the Mechanics tab.
+-- name      The mechanic's name in every report. All its spell IDs are added together under it,
+--           so a mechanic with a different ID per difficulty or per hit is still one line.
+-- spells    The IDs of the spells that do its damage, as the damage meter shows them. To find
+--           them, do a pull, leave combat and type `/crt tattle scan`: it lists every spell that
+--           damaged the group in the last fight, with its ID.
 --
--- The meter gives damage, not hits, so Tattlebot reports damage taken and how many pulls each
--- player was hit in. The Settings tab can also count every spell the game itself marks avoidable.
+-- The meter gives damage, not hits, so Tattlebot reports damage taken per mechanic and how many
+-- pulls each player was hit in.
 
 CRT.TattleDB = {
-    spells = {
-        -- [123456] = "Example boss: Falling Debris",
+    bosses = {
+        -- { boss = "Example Boss", mechanics = {
+        --     { name = "Falling Debris", spells = { 123456, 123457 } },
+        --     { name = "Void Pool", spells = { 234567 } },
+        -- } },
     },
 }

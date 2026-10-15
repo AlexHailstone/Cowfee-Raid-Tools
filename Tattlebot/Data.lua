@@ -77,9 +77,41 @@ function Tattle:Delete(id)
     end
 end
 
--- The tracked spells, [spellID] = label.
+-- The tracked mechanics. The shipped list in Tattlebot/Database.lua is grouped by boss, and the
+-- player's own spells (CRTDB.tattle.custom, [spellID] = mechanic name) are a group of their own.
+-- Every tracked spell ID maps to its mechanic, { key, name, boss, own }, and the reports add up all
+-- the spells of one mechanic under its name. Pulls store damage per spell ID, so a mechanic that
+-- gains or loses an ID later still adds up right in old nights.
+
+local index -- [spellID] = mechanic, rebuilt when the player's own list changes
+
+function Tattle.Bosses()
+    return (CRT.TattleDB and CRT.TattleDB.bosses) or {}
+end
+
+local function buildIndex()
+    index = {}
+    for _, boss in ipairs(Tattle.Bosses()) do
+        for _, mech in ipairs(boss.mechanics or {}) do
+            local name = mech.name or "?"
+            local entry = { key = (boss.boss or "") .. "/" .. name:lower(), name = name, boss = boss.boss }
+            for _, id in ipairs(mech.spells or {}) do
+                index[id] = index[id] or entry
+            end
+        end
+    end
+    for id, name in pairs(tdb().custom) do
+        if not index[id] then
+            local label = (type(name) == "string" and name ~= "") and name or Tattle.SpellName(id)
+            index[id] = { key = "own/" .. label:lower(), name = label, own = true }
+        end
+    end
+    return index
+end
+
+-- The tracked spells, [spellID] = mechanic.
 function Tattle.List()
-    return (CRT.TattleDB and CRT.TattleDB.spells) or {}
+    return index or buildIndex()
 end
 
 function Tattle.ListSize()
@@ -88,6 +120,25 @@ function Tattle.ListSize()
         n = n + 1
     end
     return n
+end
+
+-- The mechanic a spell counts under. A spell in neither list (avoidable damage) is its own.
+function Tattle.Mechanic(id)
+    return Tattle.List()[id] or { key = "spell/" .. id, name = Tattle.SpellName(id) }
+end
+
+-- The player's own spells. name may be empty, and then the game's spell name is used. Spells given
+-- the same name are reported as one mechanic.
+function Tattle:AddCustom(id, name)
+    tdb().custom[id] = name or ""
+    index = nil
+    self:Fire()
+end
+
+function Tattle:RemoveCustom(id)
+    tdb().custom[id] = nil
+    index = nil
+    self:Fire()
 end
 
 -- Reading the meter -------------------------------------------------------------------------------
@@ -303,8 +354,24 @@ end
 
 -- Summaries ------------------------------------------------------------------------------------------
 
--- One row per player over the nights given: { key, class, damage, hits (pulls hit), spells =
--- { [spellID] = { damage, hits } } }, most damage first, plus the number of pulls.
+-- One player's spells in one pull, added up per mechanic: { [key] = { key, name, damage } }.
+function Tattle.ByMechanic(spells)
+    local out = {}
+    for id, amount in pairs(spells) do
+        local mech = Tattle.Mechanic(id)
+        local m = out[mech.key]
+        if not m then
+            m = { key = mech.key, name = mech.name, damage = 0 }
+            out[mech.key] = m
+        end
+        m.damage = m.damage + amount
+    end
+    return out
+end
+
+-- One row per player over the nights given: { key, class, damage, hits (pulls hit), mechanics =
+-- { [key] = { name, damage, hits } } }, most damage first, plus the number of pulls. A mechanic
+-- counts once per pull, however many of its spells hit.
 function Tattle.Summary(nights)
     local byKey, rows, pulls = {}, {}, 0
     for _, night in ipairs(nights) do
@@ -314,21 +381,21 @@ function Tattle.Summary(nights)
                 local lower = key:lower()
                 local row = byKey[lower]
                 if not row then
-                    row = { key = key, damage = 0, hits = 0, spells = {} }
+                    row = { key = key, damage = 0, hits = 0, mechanics = {} }
                     byKey[lower] = row
                     rows[#rows + 1] = row
                 end
                 row.class = p.class or row.class
                 row.hits = row.hits + 1
-                for id, amount in pairs(p.spells) do
-                    local spell = row.spells[id]
-                    if not spell then
-                        spell = { damage = 0, hits = 0 }
-                        row.spells[id] = spell
+                for mkey, m in pairs(Tattle.ByMechanic(p.spells)) do
+                    local total = row.mechanics[mkey]
+                    if not total then
+                        total = { name = m.name, damage = 0, hits = 0 }
+                        row.mechanics[mkey] = total
                     end
-                    spell.damage = spell.damage + amount
-                    spell.hits = spell.hits + 1
-                    row.damage = row.damage + amount
+                    total.damage = total.damage + m.damage
+                    total.hits = total.hits + 1
+                    row.damage = row.damage + m.damage
                 end
             end
         end
@@ -346,21 +413,17 @@ function Tattle:Totals()
     return Tattle.Summary(tdb().history)
 end
 
--- A player's spells as a list, most damage first: { id, damage, hits }.
-function Tattle.SortedSpells(spells)
+-- Mechanics as a list, most damage first: { name, damage, hits }. hits is 1 for a single pull.
+function Tattle.SortedMechanics(mechanics)
     local list = {}
-    for id, v in pairs(spells) do
-        if type(v) == "number" then
-            list[#list + 1] = { id = id, damage = v, hits = 1 }
-        else
-            list[#list + 1] = { id = id, damage = v.damage, hits = v.hits }
-        end
+    for _, m in pairs(mechanics) do
+        list[#list + 1] = { name = m.name, damage = m.damage, hits = m.hits or 1 }
     end
     table.sort(list, function(a, b)
         if a.damage ~= b.damage then
             return a.damage > b.damage
         end
-        return a.id < b.id
+        return a.name < b.name
     end)
     return list
 end
@@ -384,7 +447,7 @@ function Tattle.SpellName(id)
             name = n
         end
     end
-    return name or Tattle.List()[id] or ("Spell " .. id)
+    return name or ("Spell " .. id)
 end
 
 -- 1234 -> 1.2K, 56789 -> 57K, 2345678 -> 2.3M.
@@ -449,8 +512,8 @@ function Tattle.PullChat(pull, index, maxPlayers)
     for i = 1, math.min(#players, maxPlayers or #players) do
         local e = players[i]
         local parts = {}
-        for _, spell in ipairs(Tattle.SortedSpells(e.p.spells)) do
-            parts[#parts + 1] = Tattle.SpellName(spell.id) .. " " .. Tattle.Short(spell.damage)
+        for _, m in ipairs(Tattle.SortedMechanics(Tattle.ByMechanic(e.p.spells))) do
+            parts[#parts + 1] = m.name .. " " .. Tattle.Short(m.damage)
         end
         lines[#lines + 1] = format("%s %s: %s", CRT.Groups.Display(e.key), Tattle.Short(e.damage), table.concat(parts, ", "))
     end
@@ -471,8 +534,8 @@ function Tattle.NightChat(night, maxPlayers)
     for i = 1, math.min(#rows, maxPlayers or #rows) do
         local row = rows[i]
         local parts = {}
-        for _, spell in ipairs(Tattle.SortedSpells(row.spells)) do
-            parts[#parts + 1] = format("%s %s (%d)", Tattle.SpellName(spell.id), Tattle.Short(spell.damage), spell.hits)
+        for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
+            parts[#parts + 1] = format("%s %s (%d)", m.name, Tattle.Short(m.damage), m.hits)
         end
         lines[#lines + 1] = format("%s %s, hit in %d of %d pulls: %s", CRT.Groups.Display(row.key), Tattle.Short(row.damage), row.hits, pulls, table.concat(parts, ", "))
     end
@@ -543,8 +606,8 @@ function Tattle:ScanText()
     local avoidable = avoidableSet()
     local tracked = Tattle.List()
     local lines = {
-        format("-- Damage taken in the last fight (%s), most first. Copy the lines you want into", pull.duration and (pull.duration .. " s") or "length unknown"),
-        "-- the spells list in Tattlebot/Database.lua, and remove the -- in front.",
+        format("-- Damage taken in the last fight (%s), most first. Copy the lines you want into a", pull.duration and (pull.duration .. " s") or "length unknown"),
+        "-- boss's mechanics in Tattlebot/Database.lua, or add the IDs on the Mechanics tab.",
     }
     for _, s in ipairs(list) do
         local notes = { Tattle.Short(s.damage) .. " on " .. players(s.players) }
@@ -552,9 +615,9 @@ function Tattle:ScanText()
             notes[#notes + 1] = "the game marks it avoidable"
         end
         if tracked[s.id] then
-            notes[#notes + 1] = "already tracked"
+            notes[#notes + 1] = "already tracked as " .. tracked[s.id].name
         end
-        lines[#lines + 1] = format("-- [%d] = %q, -- %s", s.id, Tattle.SpellName(s.id), table.concat(notes, ", "))
+        lines[#lines + 1] = format("{ name = %q, spells = { %d } }, -- %s", Tattle.SpellName(s.id), s.id, table.concat(notes, ", "))
     end
     if #list == 0 then
         lines[#lines + 1] = "-- Nobody in the group took damage in the last fight."
