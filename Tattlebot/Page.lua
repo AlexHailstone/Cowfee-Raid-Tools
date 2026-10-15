@@ -94,7 +94,7 @@ end
 
 local function trackingWarning()
     if Tattle.ListSize() == 0 and not Tattle:Settings().avoidable then
-        return "|cffff6060The spell list is empty and avoidable damage is off, so nothing is tracked yet.|r"
+        return "|cffff6060No spells are tracked yet and avoidable damage is off, so nothing is recorded. Add spells on the Mechanics tab.|r"
     end
 end
 
@@ -107,8 +107,8 @@ local function summaryLines(nights, lines)
     end
     for _, row in ipairs(rowsOut) do
         lines[#lines + 1] = format("  %s  |cffff8060%s|r, hit in %d of %d pulls", name(row.key, row.class), Tattle.Short(row.damage), row.hits, pulls)
-        for _, spell in ipairs(Tattle.SortedSpells(row.spells)) do
-            lines[#lines + 1] = format("      |cffbbbbbb%s  %s  (%d %s)|r", Tattle.SpellName(spell.id), Tattle.Short(spell.damage), spell.hits, spell.hits == 1 and "pull" or "pulls")
+        for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
+            lines[#lines + 1] = format("      |cffbbbbbb%s  %s  (%d %s)|r", m.name, Tattle.Short(m.damage), m.hits, m.hits == 1 and "pull" or "pulls")
         end
     end
 end
@@ -230,8 +230,8 @@ local function summaryExport(title, nights)
     lines[#lines + 1] = pad("Player", 24) .. pad("Damage", 10) .. "Pulls hit"
     for _, row in ipairs(rowsOut) do
         lines[#lines + 1] = pad(Groups.Display(row.key), 24) .. pad(Tattle.Short(row.damage), 10) .. row.hits .. " of " .. pulls
-        for _, spell in ipairs(Tattle.SortedSpells(row.spells)) do
-            lines[#lines + 1] = pad("  " .. Tattle.SpellName(spell.id), 24) .. pad(Tattle.Short(spell.damage), 10) .. spell.hits
+        for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
+            lines[#lines + 1] = pad("  " .. m.name, 24) .. pad(Tattle.Short(m.damage), 10) .. m.hits
         end
     end
     lines[#lines + 1] = "```"
@@ -343,6 +343,129 @@ local function refreshList()
     listChild:SetHeight(#entries * ROW_H)
 end
 
+-- Mechanics list ---------------------------------------------------------
+-- The dropdown picks a boss from the shipped list, or the player's own spells. The list shows each
+-- mechanic with its spell IDs. Own spells can be removed one by one and added below the list.
+
+local OWN = "own"
+local MECH_ROW_H = 20
+local shownBoss -- "boss:<index>" or OWN, nil until the tab is first shown
+local mechChild, addRow
+local mechRows = {}
+
+local function bossOptions()
+    local out = {}
+    for i, boss in ipairs(Tattle.Bosses()) do
+        out[#out + 1] = { key = "boss:" .. i, label = boss.boss or ("Boss " .. i) }
+    end
+    out[#out + 1] = { key = OWN, label = "Your own spells" }
+    return out
+end
+
+local function currentBoss()
+    if shownBoss == OWN then
+        return OWN
+    end
+    local i = shownBoss and tonumber(shownBoss:match("^boss:(%d+)$"))
+    if i and Tattle.Bosses()[i] then
+        return shownBoss
+    end
+    return #Tattle.Bosses() > 0 and "boss:1" or OWN
+end
+
+local function idList(ids)
+    local parts = {}
+    for _, id in ipairs(ids) do
+        local spellName = Tattle.SpellName(id)
+        parts[#parts + 1] = spellName == ("Spell " .. id) and tostring(id) or (id .. " " .. spellName)
+    end
+    return table.concat(parts, ", ")
+end
+
+-- Lines for the list: { text, id } where id is set for an own spell, which gets a Remove button.
+local function mechanicEntries()
+    local key = currentBoss()
+    local out = {}
+    if key == OWN then
+        local list = {}
+        for id, name in pairs(Tattle:Settings().custom) do
+            local label = (type(name) == "string" and name ~= "") and name or Tattle.SpellName(id)
+            list[#list + 1] = { id = id, label = label }
+        end
+        table.sort(list, function(a, b)
+            if a.label:lower() ~= b.label:lower() then
+                return a.label:lower() < b.label:lower()
+            end
+            return a.id < b.id
+        end)
+        for _, e in ipairs(list) do
+            local text = format("|cffffd100%s|r   %s", e.label, idList({ e.id }))
+            -- A spell in the shipped list counts under that list's mechanic instead.
+            local tracked = Tattle.List()[e.id]
+            if tracked and not tracked.own then
+                text = text .. "  |cff999999(already in the shipped list as " .. tracked.name .. ")|r"
+            end
+            out[#out + 1] = { text = text, id = e.id }
+        end
+        if #out == 0 then
+            out[1] = { text = "|cff999999None yet. Add a spell ID below.|r" }
+        end
+        return out
+    end
+    local boss = Tattle.Bosses()[tonumber(key:match("%d+"))]
+    for _, mech in ipairs(boss.mechanics or {}) do
+        out[#out + 1] = { text = format("|cffffd100%s|r   %s", mech.name or "?", idList(mech.spells or {})) }
+    end
+    if #out == 0 then
+        out[1] = { text = "|cff999999No mechanics listed for this boss yet.|r" }
+    end
+    return out
+end
+
+local function getMechRow(i)
+    local row = mechRows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Frame", nil, mechChild)
+    row:SetHeight(MECH_ROW_H)
+    row:SetPoint("TOPLEFT", 0, -(i - 1) * MECH_ROW_H)
+    row:SetPoint("RIGHT", mechChild, "RIGHT", 0, 0)
+    row.remove = makeButton(row, "Remove", 70, 18)
+    row.remove:SetPoint("RIGHT", -2, 0)
+    row.remove:SetScript("OnClick", function(self)
+        if self.id then
+            Tattle:RemoveCustom(self.id)
+        end
+    end)
+    row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.text:SetPoint("LEFT", 4, 0)
+    row.text:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
+    row.text:SetJustifyH("LEFT")
+    row.text:SetWordWrap(false)
+    mechRows[i] = row
+    return row
+end
+
+local function refreshMechanics()
+    if not mechChild then
+        return
+    end
+    local entries = mechanicEntries()
+    for i, entry in ipairs(entries) do
+        local row = getMechRow(i)
+        row.text:SetText(entry.text)
+        row.remove.id = entry.id
+        row.remove:SetShown(entry.id ~= nil)
+        row:Show()
+    end
+    for i = #entries + 1, #mechRows do
+        mechRows[i]:Hide()
+    end
+    mechChild:SetHeight(#entries * MECH_ROW_H)
+    addRow:SetShown(currentBoss() == OWN)
+end
+
 -- Refresh ----------------------------------------------------------------
 
 refresh = function()
@@ -359,6 +482,7 @@ refresh = function()
     postPullButton:SetEnabled(hasPulls and true or false)
     postNightButton:SetEnabled(hasPulls and true or false)
     refreshList()
+    refreshMechanics()
     if selected == TOTALS then
         setText(detailText, detailChild, totalsLines())
         deleteButton:Hide()
@@ -375,6 +499,7 @@ end
 local TABS = {
     { key = "tonight", label = "Tonight" },
     { key = "history", label = "History" },
+    { key = "mechanics", label = "Mechanics" },
     { key = "settings", label = "Settings" },
 }
 local tabButtons, tabFrames = {}, {}
@@ -547,16 +672,98 @@ local function buildSettings(f)
     maxPlayers:SetPoint("TOPLEFT", 8, -144)
     controls[#controls + 1] = maxPlayers
     UI.Help(f, "Players in a post", "Chat posts list the players who took the most damage first, up to this many, so a post does not flood the chat. The Discord export always lists everyone."):SetPoint("LEFT", maxPlayers, "RIGHT", 6, 0)
+end
 
-    local list = label(f, "")
-    list:SetPoint("TOPLEFT", 8, -188)
+local function editBox(parent, width, letters, numeric)
+    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(CRTFontEdit)
+    edit:SetNumeric(numeric and true or false)
+    edit:SetMaxLetters(letters)
+    edit:SetSize(width, 20)
+    edit:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    return edit
+end
+
+local function buildMechanics(f)
+    local bossDropdown = UI.Dropdown(f, "Boss", {
+        options = bossOptions,
+        labelWidth = 50,
+        width = 260,
+        get = currentBoss,
+        set = function(key)
+            shownBoss = key
+            refresh()
+        end,
+    })
+    bossDropdown:SetPoint("TOPLEFT", 8, -8)
+    controls[#controls + 1] = bossDropdown
+    UI.Help(f, "Tracked mechanics", "Pick a boss to see the mechanics Tattlebot tracks for it, with their spell IDs. These ship with the addon, in Tattlebot/Database.lua.\n\nYour own spells adds spell IDs of your own, tracked on every boss.\n\nAll the spell IDs of one mechanic are added together in the reports, so each mechanic is one line however many IDs it has.\n\nTo find spell IDs, do a pull, leave combat and type /crt tattle scan. It lists every spell that damaged the group in the last fight."):SetPoint("LEFT", bossDropdown, "RIGHT", 6, 0)
+
+    local count = label(f, "", "CRTFontSmall")
+    count:SetPoint("TOPRIGHT", -12, -16)
     controls[#controls + 1] = {
         refresh = function()
             local n = Tattle.ListSize()
-            list:SetText(format("Tracked mechanics: %d %s", n, n == 1 and "spell" or "spells"))
+            count:SetText(format("%d %s tracked in all", n, n == 1 and "spell ID" or "spell IDs"))
         end,
     }
-    UI.Help(f, "The tracked mechanics", "The spells Tattlebot reports on ship with the addon, in Tattlebot/Database.lua.\n\nTo find a spell's ID, do a pull, leave combat and type /crt tattle scan. It lists every spell that damaged the group in the last fight, as lines to paste into that file."):SetPoint("LEFT", list, "RIGHT", 6, 0)
+
+    local box = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    skin(box, 0.4)
+    box:SetPoint("TOPLEFT", 8, -44)
+    box:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 44)
+    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTattleMechScroll", box, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 4, -4)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 4)
+    mechChild = CreateFrame("Frame", nil, scroll)
+    mechChild:SetSize(1, 1)
+    scroll:SetScrollChild(mechChild)
+    scroll:SetScript("OnSizeChanged", function(_, w)
+        mechChild:SetWidth(w)
+    end)
+
+    -- Adding an own spell: its ID and, optionally, the mechanic to count it under.
+    addRow = CreateFrame("Frame", nil, f)
+    addRow:SetPoint("BOTTOMLEFT", 8, 8)
+    addRow:SetPoint("BOTTOMRIGHT", -8, 8)
+    addRow:SetHeight(28)
+    local idLabel = label(addRow, "Spell ID", "CRTFontSmall")
+    idLabel:SetPoint("LEFT", 0, 0)
+    local idEdit = editBox(addRow, 90, 9, true)
+    idEdit:SetPoint("LEFT", idLabel, "RIGHT", 10, 0)
+    local nameLabel = label(addRow, "Mechanic", "CRTFontSmall")
+    nameLabel:SetPoint("LEFT", idEdit, "RIGHT", 14, 0)
+    local nameEdit = editBox(addRow, 200, 40, false)
+    nameEdit:SetPoint("LEFT", nameLabel, "RIGHT", 10, 0)
+    local addButton = makeButton(addRow, "Add", 70)
+    addButton:SetPoint("LEFT", nameEdit, "RIGHT", 8, 0)
+    UI.Help(addRow, "Add a spell", "Type the spell ID, and optionally the mechanic it belongs to. Spells with the same mechanic name are added together in the reports. Left empty, the game's spell name is used.\n\nA spell already in the shipped list counts under that list's mechanic."):SetPoint("LEFT", addButton, "RIGHT", 6, 0)
+    local function add()
+        local id = tonumber(idEdit:GetText())
+        if not id or id <= 0 then
+            CRT:Print("Type a spell ID first.")
+            return
+        end
+        id = math.floor(id)
+        local name = strtrim(nameEdit:GetText() or "")
+        Tattle:AddCustom(id, name)
+        if Tattle.SpellName(id) == ("Spell " .. id) then
+            CRT:Print(format("Added spell %d. The game doesn't know a spell with that ID, so check it.", id))
+        end
+        idEdit:SetText("")
+        nameEdit:SetText("")
+        idEdit:ClearFocus()
+        nameEdit:ClearFocus()
+    end
+    addButton:SetScript("OnClick", add)
+    idEdit:SetScript("OnEnterPressed", add)
+    nameEdit:SetScript("OnEnterPressed", add)
+    idEdit:SetScript("OnTabPressed", function()
+        nameEdit:SetFocus()
+    end)
 end
 
 local function build(pf)
@@ -568,8 +775,8 @@ local function build(pf)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(160, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
+        b:SetSize(150, 26)
+        b:SetPoint("TOPLEFT", 8 + (i - 1) * 154, -36)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
@@ -596,6 +803,7 @@ local function build(pf)
 
     buildTonight(tabFrames.tonight)
     buildHistory(tabFrames.history)
+    buildMechanics(tabFrames.mechanics)
     buildSettings(tabFrames.settings)
 
     pf:SetScript("OnShow", function()

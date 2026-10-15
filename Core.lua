@@ -172,6 +172,7 @@ local defaults = {
         autoPost = false, -- post each pull's report when it is read (to chat only for the raid leader)
         output = "self",
         maxPlayers = 10,
+        custom = {}, -- the player's own tracked spells, [spellID] = mechanic name ("" for the spell's name)
         history = {},
         nextId = 1,
     },
