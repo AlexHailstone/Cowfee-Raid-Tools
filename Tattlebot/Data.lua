@@ -663,56 +663,83 @@ function Tattle.PullTitle(pull, index)
     return title
 end
 
--- Plain chat lines for one pull: a heading, then one line per player, most damage first, at most
--- maxPlayers players.
-function Tattle.PullChat(pull, index, maxPlayers)
-    local players = {}
-    for key, p in pairs(pull.players) do
-        players[#players + 1] = { key = key, p = p, damage = Tattle.PullDamage(p) }
-    end
-    table.sort(players, function(a, b)
-        if a.damage ~= b.damage then
-            return a.damage > b.damage
+-- The nights given, mechanic by mechanic: { { key, name, label, rows, pulls, total } }, most total
+-- damage first. rows are the players it hit, most damage first ({ key, class, damage, hits }), and
+-- pulls is the number of pulls on the mechanic's boss. With mechKey, only that mechanic.
+function Tattle.MechanicBlocks(nights, mechKey)
+    local keys = {}
+    if mechKey then
+        keys[1] = mechKey
+    else
+        local seen = {}
+        for _, row in ipairs((Tattle.Summary(nights))) do
+            for key in pairs(row.mechanics) do
+                if not seen[key] then
+                    seen[key] = true
+                    keys[#keys + 1] = key
+                end
+            end
         end
-        return a.key:lower() < b.key:lower()
+    end
+    local blocks = {}
+    for _, key in ipairs(keys) do
+        local rows, pulls = Tattle.Summary(nights, key)
+        local total = 0
+        for _, row in ipairs(rows) do
+            total = total + row.damage
+        end
+        if #rows > 0 then
+            local mech = Tattle.MechanicByKey(key)
+            blocks[#blocks + 1] = { key = key, name = mech.name, label = Tattle.MechanicLabel(mech), rows = rows, pulls = pulls, total = total }
+        end
+    end
+    table.sort(blocks, function(a, b)
+        if a.total ~= b.total then
+            return a.total > b.total
+        end
+        return a.key < b.key
     end)
-    local lines = { "Tattlebot, " .. Tattle.PullTitle(pull, index) .. ":" }
-    if #players == 0 then
-        lines[1] = lines[1] .. " nobody took damage from a tracked mechanic."
-        return lines
-    end
-    for i = 1, math.min(#players, maxPlayers or #players) do
-        local e = players[i]
+    return blocks
+end
+
+-- One chat line per mechanic: "Name total: Player damage (pulls hit), ...", at most maxPlayers
+-- players a line.
+local function mechanicChat(lines, nights, maxPlayers, withPulls)
+    local blocks = Tattle.MechanicBlocks(nights)
+    for _, block in ipairs(blocks) do
         local parts = {}
-        for _, m in ipairs(Tattle.SortedMechanics(Tattle.ByMechanic(e.p.spells))) do
-            parts[#parts + 1] = m.name .. " " .. Tattle.Short(m.damage)
+        for i = 1, math.min(#block.rows, maxPlayers or #block.rows) do
+            local row = block.rows[i]
+            local part = CRT.Groups.Display(row.key) .. " " .. Tattle.Short(row.damage)
+            if withPulls then
+                part = part .. " (" .. row.hits .. ")"
+            end
+            parts[#parts + 1] = part
         end
-        lines[#lines + 1] = format("%s %s: %s", CRT.Groups.Display(e.key), Tattle.Short(e.damage), table.concat(parts, ", "))
+        local more = #block.rows - #parts
+        if more > 0 then
+            parts[#parts + 1] = "+" .. more .. " more"
+        end
+        lines[#lines + 1] = format("%s %s: %s", block.name, Tattle.Short(block.total), table.concat(parts, ", "))
     end
-    if #players > (maxPlayers or #players) then
-        lines[#lines + 1] = format("and %d more.", #players - maxPlayers)
+    return #blocks
+end
+
+-- Plain chat lines for one pull: a heading, then one line per mechanic.
+function Tattle.PullChat(pull, index, maxPlayers)
+    local lines = { "Tattlebot, " .. Tattle.PullTitle(pull, index) .. ":" }
+    if mechanicChat(lines, { { pulls = { pull } } }, maxPlayers, false) == 0 then
+        lines[1] = lines[1] .. " nobody took damage from a tracked mechanic."
     end
     return lines
 end
 
--- Plain chat lines for a night: per player, the damage and the pulls they were hit in.
+-- Plain chat lines for a night: one line per mechanic, each player with the pulls it hit them in.
 function Tattle.NightChat(night, maxPlayers)
-    local rows, pulls = Tattle.Summary({ night })
-    local lines = { format("Tattlebot, the night of %s: %d pulls.", date("%a %d %b", night.startedAt), pulls) }
-    if #rows == 0 then
-        lines[1] = lines[1] .. " Nobody took damage from a tracked mechanic."
-        return lines
-    end
-    for i = 1, math.min(#rows, maxPlayers or #rows) do
-        local row = rows[i]
-        local parts = {}
-        for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
-            parts[#parts + 1] = format("%s %s (%d)", m.name, Tattle.Short(m.damage), m.hits)
-        end
-        lines[#lines + 1] = format("%s %s, hit in %d of %d pulls: %s", CRT.Groups.Display(row.key), Tattle.Short(row.damage), row.hits, pulls, table.concat(parts, ", "))
-    end
-    if #rows > (maxPlayers or #rows) then
-        lines[#lines + 1] = format("and %d more.", #rows - maxPlayers)
+    local pulls = #night.pulls
+    local lines = { format("Tattlebot, the night of %s, %d %s (pulls hit in brackets):", date("%a %d %b", night.startedAt), pulls, pulls == 1 and "pull" or "pulls") }
+    if mechanicChat(lines, { night }, maxPlayers, true) == 0 then
+        lines[1] = format("Tattlebot, the night of %s, %d %s: nobody took damage from a tracked mechanic.", date("%a %d %b", night.startedAt), pulls, pulls == 1 and "pull" or "pulls")
     end
     return lines
 end
