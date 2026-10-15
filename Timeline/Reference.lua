@@ -18,6 +18,11 @@ local function settings()
     return CRT.Timeline:Settings()
 end
 
+-- Lowercase, trimmed, curly apostrophes folded to a plain one (pasted text brings them).
+local function fold(s)
+    return (s:gsub("\226\128\153", "'"):gsub("\226\128\152", "'"))
+end
+
 local function trim(s)
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -75,19 +80,24 @@ end
 local function readTimes(row, text)
     for tok in (text .. ","):gmatch("([^,]*),") do
         tok = trim(tok)
-        local at, bar = tok:match("^(.-)%s*%+%s*(.+)$")
-        local t = Reference.ParseTime(at or tok)
-        if not t then
-            return "bad time '" .. tok .. "'"
-        end
-        local cast = { t = t }
-        if bar then
-            cast.dur = Reference.ParseTime(bar)
-            if not cast.dur then
-                return "bad bar length '" .. bar .. "'"
+        if tok ~= "" then
+            local at, bar = tok:match("^(.-)%s*%+%s*(.+)$")
+            local t = Reference.ParseTime(at or tok)
+            if not t then
+                return "bad time '" .. tok .. "'"
             end
+            local cast = { t = t }
+            if bar then
+                cast.dur = Reference.ParseTime(bar)
+                if not cast.dur then
+                    return "bad bar length '" .. bar .. "'"
+                end
+            end
+            row.casts[#row.casts + 1] = cast
         end
-        row.casts[#row.casts + 1] = cast
+    end
+    if #row.casts == 0 then
+        return "needs at least one time"
     end
 end
 
@@ -136,6 +146,8 @@ function Reference.Parse(text)
     if type(text) ~= "string" then
         return nil, { "No text to read" }
     end
+    -- pasted text: a non-breaking space is a space, a zero-width space is nothing
+    text = text:gsub("\194\160", " "):gsub("\226\128\139", "")
     local ref = { phases = {}, rows = {} }
     local errors = {}
     local explicitLength
@@ -273,7 +285,7 @@ function Reference:Find(key)
 end
 
 local function norm(name)
-    return type(name) == "string" and trim(name):lower() or nil
+    return type(name) == "string" and fold(trim(name)):lower() or nil
 end
 
 -- The references of a boss: by encounter ID when the reference has one, otherwise by boss name.

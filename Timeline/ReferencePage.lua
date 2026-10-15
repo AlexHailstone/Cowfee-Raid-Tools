@@ -35,7 +35,7 @@ local FORMAT_HELP = "One line per thing:\n\n"
     .. "Encounter: 3001  (the boss's encounter ID, optional)\n"
     .. "Phase: P2 7:20  (a phase line, the label is optional)\n"
     .. "Soulcoil Rite (lead 7, color ff6b7d) [spell 123456]: 0:02+45, 1:17, 95\n\n"
-    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. lead N draws the cast line N seconds before each icon, color rrggbb colors the name, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads."
+    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. lead N draws the cast line N seconds before each icon, color rrggbb colors the name, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\nIcons and the match to a Journal ability come from the Encounter Journal, which is not read in combat, so they can be blank until you are out of combat."
 
 local function skin(frame, alpha)
     frame:SetBackdrop(BACKDROP)
@@ -207,7 +207,14 @@ function ReferencePage.Build(f, ctx)
             editing = key or nil -- a second Save changes this one instead of adding another
         end
         if ok then
-            status:SetText("Saved")
+            -- a reference for another boss is not in this boss's list: say where it went
+            local saved = Reference.Parse(text)
+            local here = false
+            for _, entry in ipairs(ctx.references() or {}) do
+                here = here or entry.key == editing
+            end
+            local sameName = saved and ctx.bossName() and saved.boss:lower() == ctx.bossName():lower()
+            status:SetText((here or sameName or not saved) and "Saved" or ("Saved for " .. saved.boss))
             status:SetTextColor(0.4, 1, 0.4)
         else
             local shown = {}

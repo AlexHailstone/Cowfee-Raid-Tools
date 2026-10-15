@@ -37,12 +37,13 @@ local TABS = {
     { key = "settings", label = "Settings" },
 }
 
-local page, view, emptyLabel, unnamedHelp, bossLabel, deleteButton, rowsChild, addEdit
+local page, view, emptyLabel, unnamedHelp, bossLabel, deleteButton, rowsChild, addEdit, addButton
 local reviewFrame, holder, recent, refTab
 local tabButtons, tabFrames = {}, {}
 local controls, rowPool = {}, {}
 local currentTab = "review"
 local selectedBoss, selectedPull
+local selectedBossName -- the selected boss's name, to find it again if its key changes
 local shownBoss, shownPull, shownBase, shownOverlay
 local overlayID -- the pull laid over the shown reference, by id; not saved
 local raidCache = {}
@@ -52,6 +53,13 @@ local refresh
 
 local function settings()
     return Timeline:Settings()
+end
+
+-- A name as the lanes compare it: trimmed, curly apostrophes made plain, lowercase. The same rule
+-- as trimLower in Lanes.lua.
+local function nameKey(name)
+    local s = tostring(name or ""):gsub("\226\128\153", "'"):gsub("\226\128\152", "'")
+    return (s:gsub("^%s+", ""):gsub("%s+$", "")):lower()
 end
 
 local function skin(frame, alpha)
@@ -219,7 +227,7 @@ end
 local function pullOptions()
     local list = {}
     for _, entry in ipairs(bossRefs()) do
-        list[#list + 1] = { key = entry.key, label = Reference.Label(entry.ref) }
+        list[#list + 1] = { key = entry.key, label = Reference.Label(entry.ref) .. (entry.own and (DOT .. "yours") or "") }
     end
     if selectedBoss then
         for _, pull in ipairs(Timeline:Pulls(selectedBoss)) do
@@ -251,9 +259,25 @@ local function fixSelection()
             found = true
         end
     end
+    -- a boss that was listed only for its reference ("ref:name") gets a numeric key once it is
+    -- pulled or you enter its raid: the same name stays selected, with its reference
+    if not found and type(selectedBoss) == "string" and selectedBossName then
+        for _, option in ipairs(options) do
+            if type(option.key) == "number" and nameKey(option.name) == selectedBossName then
+                selectedBoss, found = option.key, true
+                break
+            end
+        end
+    end
     if not found then
         selectedBoss = options[1] and options[1].key or nil
         selectedPull = nil
+    end
+    selectedBossName = nil
+    for _, option in ipairs(options) do
+        if option.key == selectedBoss then
+            selectedBossName = nameKey(option.name)
+        end
     end
     local valid
     if showingReference() then
@@ -410,29 +434,35 @@ local function settingSlider(parent, x, y, text, field, low, high, step, format)
     })
 end
 
--- A reference row is hidden by its name (trimmed, lowercased, as the lanes read it), or by the
--- spell the lanes give it (its [spell] or its Journal match by name) when that spell is hidden.
-local function nameKey(name)
-    return (tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")):lower()
+-- A reference row is hidden by its name (as the lanes read it), or by the spell the lanes give it
+-- (its [spell] or its Journal match by name) when that spell is hidden. A boss with a text key
+-- uses the reference's own encounter ID for the Journal, like the lanes do.
+local function journalKey(entry)
+    if type(selectedBoss) ~= "number" and entry and type(entry.ref.encounterID) == "number" then
+        return entry.ref.encounterID
+    end
+    return selectedBoss
 end
 
-local function refRowHidden(row)
+local function refRowHidden(row, entry)
     local mine = settings().rows and settings().rows[selectedBoss]
-    local spellID = Lanes.RowSpell(row, selectedBoss)
+    local eid = journalKey(entry)
+    local spellID = Lanes.RowSpell(row, eid)
     return (mine and mine.hiddenNames and mine.hiddenNames[nameKey(row.name)])
-        or (spellID ~= 0 and Journal:IsHidden(selectedBoss, spellID)) or false
+        or (spellID ~= 0 and Journal:IsHidden(eid, spellID)) or false
 end
 
-local function setRefRowHidden(row, hidden)
+local function setRefRowHidden(row, hidden, entry)
     local all = settings().rows or {}
     settings().rows = all
     all[selectedBoss] = all[selectedBoss] or {}
     local mine = all[selectedBoss]
     mine.hiddenNames = mine.hiddenNames or {}
     mine.hiddenNames[nameKey(row.name)] = hidden or nil
-    local spellID = Lanes.RowSpell(row, selectedBoss)
-    if not hidden and spellID ~= 0 and Journal:IsHidden(selectedBoss, spellID) then
-        Journal:SetHidden(selectedBoss, spellID, false)
+    local eid = journalKey(entry)
+    local spellID = Lanes.RowSpell(row, eid)
+    if not hidden and spellID ~= 0 and Journal:IsHidden(eid, spellID) then
+        Journal:SetHidden(eid, spellID, false)
     end
     Timeline:Fire()
 end
@@ -442,6 +472,9 @@ end
 local function updateRows()
     local entry = showingReference() and findRef(selectedPull)
     local rows = entry and entry.ref.rows or (selectedBoss and Journal:Rows(selectedBoss)) or {}
+    -- spells of your own are added to recorded pulls only
+    addEdit:SetEnabled(not entry)
+    addButton:SetEnabled(not entry)
     bossLabel:SetText(selectedBoss and ("Rows for " .. (bossName() or selectedBoss)) or "Pick a boss on the Review tab")
     for i, row in ipairs(rows) do
         local line = rowPool[i]
@@ -463,7 +496,7 @@ local function updateRows()
             line.check:SetScript("OnClick", function(self)
                 local l = self.line
                 if l.refRow then
-                    setRefRowHidden(l.refRow, not self:GetChecked())
+                    setRefRowHidden(l.refRow, not self:GetChecked(), l.refEntry)
                 else
                     Journal:SetHidden(selectedBoss, l.spellID, not self:GetChecked())
                 end
@@ -474,10 +507,10 @@ local function updateRows()
             rowPool[i] = line
             UI:SkinTree(rowsChild) -- so the Modern look skins the new Remove button
         end
-        line.spellID, line.refRow = row.spellID, entry and row or nil
+        line.spellID, line.refRow, line.refEntry = row.spellID, entry and row or nil, entry or nil
         line.text:SetText(row.name or tostring(row.spellID))
         if entry then
-            line.check:SetChecked(not refRowHidden(row))
+            line.check:SetChecked(not refRowHidden(row, entry))
         else
             line.check:SetChecked(not Journal:IsHidden(selectedBoss, row.spellID))
         end
@@ -532,7 +565,7 @@ local function buildSettings(f)
 
     -- Rows
     label(f, "Rows"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -132)
-    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID (the number in its Wowhead address) to track a cast the Journal does not list. The Journal is read out of combat with the Journal window closed.\n\nWith a reference shown, its own rows are listed instead, and unticking one hides it by name."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
+    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID (the number in its Wowhead address) to track a cast the Journal does not list. The Journal is read out of combat with the Journal window closed.\n\nWith a reference shown, its own rows are listed instead, and unticking one hides it by name. Adding a spell works for recorded pulls only.\n\nA reference row gets its icon, and its match to a Journal ability, from the Encounter Journal, which is not read in combat; they can be blank until you are out of combat."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
     bossLabel = label(f, "", "CRTFontSmall")
     bossLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -154)
     checkbox(f, 8, -172, "Hide rows with no casts in this pull", function()
@@ -552,10 +585,10 @@ local function buildSettings(f)
         self:SetText("")
         self:ClearFocus()
     end)
-    local add = button(f, "Add", 50)
-    add:SetPoint("LEFT", addEdit, "RIGHT", 8, 0)
-    add:SetScript("OnClick", addSpell)
-    label(f, "spell ID", "CRTFontSmall"):SetPoint("LEFT", add, "RIGHT", 8, 0)
+    addButton = button(f, "Add", 50)
+    addButton:SetPoint("LEFT", addEdit, "RIGHT", 8, 0)
+    addButton:SetScript("OnClick", addSpell)
+    label(f, "spell ID", "CRTFontSmall"):SetPoint("LEFT", addButton, "RIGHT", 8, 0)
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTimelineRowsScroll", f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -232)

@@ -98,6 +98,15 @@ local function spellName(spellID)
     end
 end
 
+-- Shows a spell's tooltip; when the game refuses (or the spell is unknown) the name stands in as a
+-- gold title, so the lines added after it still have a title above them.
+local function spellTip(spellID, fallback)
+    local ok = pcall(GameTooltip.SetSpellByID, GameTooltip, spellID)
+    if not ok then
+        GameTooltip:SetText(fallback or "Unknown", 1, 0.82, 0)
+    end
+end
+
 local function iconEnter(b)
     local mark, lane = b.mark, b.lane
     GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
@@ -113,7 +122,7 @@ local function iconEnter(b)
         end
     elseif lane.kind == "reference" then
         if lane.spellID and lane.spellID ~= 0 then
-            GameTooltip:SetSpellByID(lane.spellID)
+            spellTip(lane.spellID, lane.label)
         else
             GameTooltip:SetText(lane.label or "Unknown", 1, 0.82, 0)
         end
@@ -131,7 +140,7 @@ local function iconEnter(b)
             GameTooltip:AddLine(string.format("Duration %.1fs", mark.dur), 0.85, 0.85, 0.85)
         end
     else
-        GameTooltip:SetSpellByID(mark.spellID)
+        spellTip(mark.spellID, spellName(mark.spellID))
         GameTooltip:AddLine("Cast at " .. View.Format(mark.t), 1, 1, 1)
     end
     GameTooltip:Show()
@@ -140,7 +149,7 @@ end
 local function labelEnter(l)
     if l.lane and l.lane.kind == "spell" then
         GameTooltip:SetOwner(l, "ANCHOR_RIGHT")
-        GameTooltip:SetSpellByID(l.lane.spellID)
+        spellTip(l.lane.spellID, l.lane.label)
         GameTooltip:Show()
     end
 end

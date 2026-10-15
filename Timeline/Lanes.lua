@@ -18,7 +18,8 @@ local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 local function trimLower(s)
-    return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")):lower()
+    s = tostring(s or ""):gsub("\226\128\153", "'"):gsub("\226\128\152", "'")
+    return (s:gsub("^%s+", ""):gsub("%s+$", "")):lower()
 end
 
 -- Puts the deaths of each source on the lanes: one combined lane, or one lane per player. Deaths
@@ -126,6 +127,13 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     end
     addDeaths(lanes, unknown, sources, settings, settings.deathRows ~= "player")
 
+    -- a boss listed only by its reference has a string key; the reference's own encounter ID then
+    -- stands in for the Journal lookups
+    local eid = encounterID
+    if type(eid) ~= "number" and type(ref.encounterID) == "number" then
+        eid = ref.encounterID
+        rows = CRT.TimelineJournal:Rows(eid)
+    end
     local byID = {}
     for _, row in ipairs(rows or {}) do
         if byID[row.spellID] == nil then
@@ -136,9 +144,14 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     local hiddenNames = mine and mine.hiddenNames
     for _, row in ipairs(ref.rows or {}) do
         local key = trimLower(row.name)
-        local spellID = Lanes.RowSpell(row, encounterID, rows)
+        local spellID = Lanes.RowSpell(row, eid, rows)
         local match = spellID ~= 0 and byID[spellID] or nil
-        local hidden = (spellID ~= 0 and CRT.TimelineJournal:IsHidden(encounterID, spellID))
+        local icon = match and match.icon
+        if not icon and spellID ~= 0 and C_Spell and C_Spell.GetSpellTexture then
+            local ok, tex = pcall(C_Spell.GetSpellTexture, spellID)
+            icon = ok and tex or nil
+        end
+        local hidden = (spellID ~= 0 and CRT.TimelineJournal:IsHidden(eid, spellID))
             or (hiddenNames and hiddenNames[key])
         if not hidden then
             local marks = {}
@@ -147,7 +160,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
             end
             lanes[#lanes + 1] = {
                 key = "ref:" .. row.name, label = row.name, color = row.color, lead = row.lead, kind = "reference",
-                spellID = spellID, icon = match and match.icon or UNNAMED_ICON, marks = marks,
+                spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
             }
         end
     end
