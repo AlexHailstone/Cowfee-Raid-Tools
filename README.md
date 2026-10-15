@@ -48,7 +48,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **General Settings** | Settings for the whole addon: a Modern look (coffee colors, flat controls, grouped menu) or the Classic look, the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black in Classic, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, the sound channel the addon's sounds play through, whether reports and Discord exports leave out realm names, the minimap button, and profiles (each character picks one; create, copy, reset, delete, export and import) |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
-| **Timeline** | Saves every raid boss pull, ten per boss, and draws it as a timeline: time runs left to right, with a row for each boss ability and a row of deaths. Zoom, scroll, hover for the time, and draw the deaths of recent pulls over the shown one to see who keeps dying and when |
+| **Timeline** | Saves every raid boss pull, ten per boss, and draws it as a timeline: time runs left to right, with a row for each boss ability and a row of deaths. Zoom, scroll, hover for the time, and draw the deaths of recent pulls over the shown one to see who keeps dying and when. A boss's reference timeline (shipped for Nek'zali the Soulcoiler on Mythic, or pasted in) shows its planned casts with phase lines and duration bars, and a recent pull can be laid over it |
 
 **Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
 
@@ -127,7 +127,20 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 
 ## Timeline
 
-`/crt timeline`. Every raid boss pull is saved on its own, from the pull to the kill or wipe, and the last ten pulls of each boss are kept (a pull shorter than 15 seconds is dropped as a reset). Pick a boss and a pull on the **Review** tab and it is drawn as a timeline: time runs left to right, with a row for each boss ability and a row for deaths. Hover the timeline to see the time under the mouse, so you can copy it into a note. Zoom with the slider or the mouse wheel over the timeline, scroll by dragging it, and use the mouse wheel with Shift to scroll the rows. Hover a death to see the player, the time and, when the game gives it, the killing blow. **Deaths from recent pulls** draws the deaths of the pulls before the shown one over it, fainter the older they are, so deaths that repeat stand out. The ability rows come from the boss's Encounter Journal page, read out of combat, and a cast shows on the row of its spell. **Settings** has the view (visible time, grid interval, icon size), which rows to show or hide, spell IDs of your own to add as rows, the deaths (one row or one per player, which roles, only the first few deaths, how many pulls the overlay covers), and recording (on or off, the shortest pull to keep, delete a boss's pulls). Planning markers and sending them to Raid Notes are not built yet.
+`/crt timeline`. Every raid boss pull is saved on its own, from the pull to the kill or wipe, and the last ten pulls of each boss are kept (a pull shorter than 15 seconds is dropped as a reset). Pick a boss and a pull on the **Review** tab and it is drawn as a timeline: time runs left to right, with a row for each boss ability and a row for deaths. Hover the timeline to see the time under the mouse, so you can copy it into a note. Zoom with the slider or the mouse wheel over the timeline, scroll by dragging it, and use the mouse wheel with Shift to scroll the rows. Hover a death to see the player, the time and, when the game gives it, the killing blow. **Deaths from recent pulls** draws the deaths of the pulls before the shown one over it, fainter the older they are, so deaths that repeat stand out. The ability rows come from the boss's Encounter Journal page, read out of combat, and a cast shows on the row of its spell. **Settings** has the view (visible time, grid interval, icon size), which rows to show or hide, spell IDs of your own to add as rows, the deaths (one row or one per player, which roles, only the first few deaths, how many pulls the overlay covers), and recording (on or off, the shortest pull to keep, delete a boss's pulls). A boss's **references** are listed in the pull dropdown, before its recorded pulls, as `Reference · Mythic · 9:48`, and a boss with one opens on it, even before its first pull. A reference is a planned cast schedule: the abilities in the order the plan lists them, with red phase lines and their labels across the rows, a bar behind a cast that lasts a while, a thin line before an icon that starts early, and a row name in its own color. Nek'zali the Soulcoiler (Mythic) ships with the addon. The **Recent pulls** list beside a reference shows the boss's saved pulls; click one to lay it over the reference (its deaths in the Deaths row, its casts as ticks on a `Pull N casts` row, and a line where it ended), and click it again to clear it. The **References** tab, between Review and Settings, has a box to paste your own references and a list of the selected boss's, where yours can be edited and deleted and the shipped ones copied into the box to change. A reference is plain text, one line per thing, and nothing is saved until every line reads (the first errors are shown as `Line N: reason`):
+
+```text
+Boss: Nek'zali the Soulcoiler
+Difficulty: Mythic
+Length: 9:48
+Phase: P1.5 3:17
+Phase: 5:53
+Soulcoil Rite (color ff6b7d): 0:02+45, 1:17+45, 2:28+45, 7:38
+Possession Barrage (lead 7, color 7ddc6a): 0:36, 1:12, 1:47
+Grasping Depths [spell 123456]: 0:42, 1:53
+```
+
+`Boss` is required; `Difficulty`, `Length` and `Encounter` (the boss's encounter ID) are optional. A time is `m:ss` or plain seconds, `+45` after a time draws a 45-second bar, `lead 7` draws a line 7 seconds before each icon, `color rrggbb` colors the name, and `[spell N]` gives the icon and tooltip. Blank lines and lines starting with `#` are skipped. Planning markers and sending them to Raid Notes are not built yet.
 
 ## Commands
 
@@ -194,7 +207,7 @@ Close the game and delete `CowfeeRaidTools.lua` from your SavedVariables folder.
 - Potions and healthstones used in a fight, and other players' armor kits, cannot be checked. Other players' weapon oils and durability only show for raiders who run the addon.
 - Apply cannot move a player who is in combat.
 - Tattlebot reports damage taken, not the number of hits: the game's damage meter does not count hits, and the combat log is closed to addons during boss fights. It reads the meter after each boss pull, so it needs the game's damage meter to be available.
-- Timeline probably records boss casts without the spell's name. The game keeps the spell ID secret during boss fights, so those casts show as "Boss casts (unnamed)", with only their time. Deaths and their times come from the game's damage meter after the pull, so they are read once you are out of combat, and a `/reload` in the middle of a pull loses that pull.
+- Timeline probably records boss casts without the spell's name. The game keeps the spell ID secret during boss fights, so those casts show as "Boss casts (unnamed)", with only their time. Reference icons and spell tooltips come from the Encounter Journal (or from `[spell N]`), and the Journal is not read in combat, so they can be blank until you are out of combat. Deaths and their times come from the game's damage meter after the pull, so they are read once you are out of combat, and a `/reload` in the middle of a pull loses that pull.
 
 ## Reporting a problem
 
@@ -222,7 +235,9 @@ CowfeeRaidTools/
   Notes/                 raid notes: parser, timers, windows, alert, sharing, page
   Late/                  the Late Tracker
   Tattlebot/             Tattlebot: the mechanics list, the damage meter reading, page
-  Timeline/              Timeline: the recorded pulls, the Journal ability rows, the timeline view, page
+  Timeline/              Timeline: the recorded pulls, the Journal ability rows, the reference timelines
+                         (Database.lua, Reference.lua), the lanes, the timeline view, the pages
+                         (Page.lua, ReferencePage.lua)
 ```
 
 - **Releases.** Pushing a tag such as `v0.12.0` runs the GitHub Actions workflow in `.github/workflows/release.yml`, which builds `CowfeeRaidTools-v0.12.0.zip` with the BigWigs packager (`BigWigsMods/packager`) and attaches it to a GitHub release.
