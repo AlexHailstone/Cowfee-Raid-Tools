@@ -200,6 +200,8 @@ local defaults = {
         overlay = 3, -- how many pulls the death overlay covers
         overlayOn = false, -- draw the deaths of recent pulls over the shown one
         hideEmpty = false, -- hide rows that have no casts in the shown pull
+        references = {}, -- the player's own reference timelines, { id, text } (Timeline/Reference.lua)
+        nextRef = 1,
         nextId = 1,
     },
 }
