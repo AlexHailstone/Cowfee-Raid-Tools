@@ -137,8 +137,26 @@ layerEvents:SetScript("OnEvent", function()
 end)
 
 -- Window style ------------------------------------------------------------------------------------
--- "game" shows the window template's own art, "minimal" hides it for a flat black background with a
--- thin border. bgAlpha fades whichever background is showing, never the text or buttons.
+-- Two looks, picked with the "Modern look" checkbox on General Settings (CRTDB.ui.modern):
+--   Classic  the menu as one list, and the style dropdown: "game" shows the window template's own
+--            art, "minimal" hides it for a flat black background with a thin border
+--   Modern   a flat dark window with a teal line under the title and beside the menu, the menu in
+--            grouped blocks (UI.MENU_GROUPS) with the selected page filled teal, and teal page tabs
+-- bgAlpha fades whichever background is showing, never the text or buttons.
+
+UI.TEAL = { 0.17, 0.54, 0.54 }
+
+-- The Modern menu's blocks, top to bottom. A page not listed joins the last block.
+UI.MENU_GROUPS = {
+    { "settings", "qol" },
+    { "groups", "readycheck" },
+    { "notes", "debuffs" },
+    { "late", "tattle" },
+}
+
+function UI:IsModern()
+    return CRT.db and CRT.db.ui and CRT.db.ui.modern and true or false
+end
 
 function UI:ApplyStyle()
     local f = self.frame
@@ -146,20 +164,177 @@ function UI:ApplyStyle()
         return
     end
     local s = CRT.db.ui
-    local minimal = s.style == "minimal"
+    local modern = self:IsModern()
+    local flat = modern or s.style == "minimal"
     local alpha = (s.bgAlpha or 100) / 100
     for _, texture in ipairs(f.art) do
-        texture:SetShown(not minimal)
+        texture:SetShown(not flat)
         texture:SetAlpha(alpha)
     end
     for _, texture in ipairs(f.flat) do
-        texture:SetShown(minimal)
+        texture:SetShown(flat)
     end
-    f.flatBg:SetColorTexture(0, 0, 0, 0.92 * alpha)
-    f.flatTitle:SetColorTexture(0.12, 0.12, 0.12, alpha)
-    for _, edge in ipairs(f.flatEdges) do
-        edge:SetColorTexture(0.3, 0.3, 0.3, alpha)
+    if modern then
+        f.flatBg:SetColorTexture(0.055, 0.05, 0.047, 0.95 * alpha)
+        f.flatTitle:SetColorTexture(0.055, 0.05, 0.047, alpha)
+        for _, edge in ipairs(f.flatEdges) do
+            edge:SetColorTexture(0.17, 0.165, 0.157, alpha)
+        end
+    else
+        f.flatBg:SetColorTexture(0, 0, 0, 0.92 * alpha)
+        f.flatTitle:SetColorTexture(0.12, 0.12, 0.12, alpha)
+        for _, edge in ipairs(f.flatEdges) do
+            edge:SetColorTexture(0.3, 0.3, 0.3, alpha)
+        end
     end
+    local t = self.TEAL
+    f.titleLine:SetColorTexture(t[1], t[2], t[3], alpha)
+    f.titleLine:SetShown(modern)
+    f.menuLine:SetColorTexture(t[1], t[2], t[3], alpha)
+    f.menuLine:SetShown(modern)
+    self:LayoutMenu()
+    for _, b in ipairs(self.tabs) do
+        self:StyleTab(b, b.selected)
+    end
+end
+
+-- The menu: one list in Classic, grouped blocks in Modern.
+local MENU_ROW, MENU_GAP = 30, 2
+
+local function menuGroups()
+    local groups, placed = {}, {}
+    for _, group in ipairs(UI.MENU_GROUPS) do
+        local keys = {}
+        for _, key in ipairs(group) do
+            if UI.pages[key] then
+                keys[#keys + 1] = key
+                placed[key] = true
+            end
+        end
+        groups[#groups + 1] = keys
+    end
+    for _, key in ipairs(UI.order) do
+        if not placed[key] then
+            table.insert(groups[#groups], key)
+        end
+    end
+    return groups
+end
+
+function UI:LayoutMenu()
+    local f = self.frame
+    if not f then
+        return
+    end
+    local menu = f.menu
+    for _, bg in ipairs(menu.blocks) do
+        bg:Hide()
+    end
+    if not self:IsModern() then
+        for i, key in ipairs(self.order) do
+            local b = self.pages[key].button
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -(i - 1) * 32)
+            b:SetPoint("TOPRIGHT", menu, "TOPRIGHT", 0, -(i - 1) * 32)
+            b.text:ClearAllPoints()
+            b.text:SetPoint("LEFT", 10, 0)
+        end
+    else
+        local y = 0
+        for g, keys in ipairs(menuGroups()) do
+            if #keys > 0 then
+                local bg = menu.blocks[g]
+                if not bg then
+                    bg = menu:CreateTexture(nil, "BACKGROUND", nil, -1)
+                    menu.blocks[g] = bg
+                end
+                bg:SetColorTexture(0.12, 0.11, 0.1, 0.9)
+                bg:ClearAllPoints()
+                bg:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, y)
+                bg:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -6, y)
+                bg:SetHeight(#keys * (MENU_ROW + MENU_GAP) + 2)
+                bg:Show()
+                y = y - 2
+                for _, key in ipairs(keys) do
+                    local b = self.pages[key].button
+                    b:ClearAllPoints()
+                    b:SetPoint("TOPLEFT", menu, "TOPLEFT", 2, y)
+                    b:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -8, y)
+                    b.text:ClearAllPoints()
+                    b.text:SetPoint("CENTER")
+                    y = y - (MENU_ROW + MENU_GAP)
+                end
+                y = y - 12
+            end
+        end
+    end
+    for _, page in pairs(self.pages) do
+        if page.button then
+            self:StyleMenuButton(page.button, page.button.selected)
+        end
+    end
+end
+
+function UI:StyleMenuButton(b, selected)
+    b.selected = selected and true or false
+    b.sel:SetShown(b.selected)
+    if self:IsModern() then
+        local t = self.TEAL
+        b.sel:SetColorTexture(t[1] * 0.8, t[2] * 0.8, t[3] * 0.8, 0.9)
+        if b.selected then
+            b.text:SetTextColor(1, 1, 1)
+        else
+            b.text:SetTextColor(0.85, 0.85, 0.85)
+        end
+    else
+        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        if b.selected then
+            b.text:SetTextColor(1, 0.82, 0)
+        else
+            b.text:SetTextColor(0.85, 0.85, 0.85)
+        end
+    end
+end
+
+-- Page tabs. A page registers each tab button (a BackdropTemplate button with .sel and .text) when it
+-- makes it, and calls SetTabSelected when its tab changes, so the tabs follow the look.
+UI.tabs = {}
+
+function UI:RegisterTab(b)
+    self.tabs[#self.tabs + 1] = b
+    self:StyleTab(b, false)
+end
+
+function UI:StyleTab(b, selected)
+    b.selected = selected and true or false
+    b.sel:SetShown(b.selected)
+    local modern = self:IsModern()
+    if modern then
+        local t = self.TEAL
+        b.sel:SetColorTexture(t[1] * 0.8, t[2] * 0.8, t[3] * 0.8, 0.9)
+        local c = b.selected and 1 or 0.7
+        b.text:SetTextColor(c, c, c)
+    else
+        b.sel:SetColorTexture(1, 0.82, 0, 0.18)
+        if b.selected then
+            b.text:SetTextColor(1, 0.82, 0)
+        else
+            b.text:SetTextColor(0.75, 0.75, 0.75)
+        end
+    end
+    if b.SetBackdropBorderColor then
+        if modern then
+            b:SetBackdropColor(0.12, 0.11, 0.1, 0.9)
+            b:SetBackdropBorderColor(0.17, 0.165, 0.157, 1)
+        else
+            b:SetBackdropColor(0, 0, 0, 0.4)
+            b:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+        end
+    end
+end
+
+function UI:SetTabSelected(b, selected)
+    self:StyleTab(b, selected)
 end
 
 -- A small blue (?) that shows an explanation as a tooltip, used for every bit of extra context so the
@@ -200,9 +375,7 @@ end
 
 local function createMenuButton(parent, page, index)
     local b = CreateFrame("Button", nil, parent)
-    b:SetHeight(30)
-    b:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(index - 1) * 32)
-    b:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -(index - 1) * 32)
+    b:SetHeight(30) -- placed by UI:LayoutMenu
 
     b.sel = b:CreateTexture(nil, "BACKGROUND")
     b.sel:SetAllPoints()
@@ -258,6 +431,11 @@ function UI:Create()
         end
         f.flatEdges[#f.flatEdges + 1] = edge
     end
+    -- The Modern look's teal line under the title.
+    f.titleLine = f:CreateTexture(nil, "BORDER")
+    f.titleLine:SetPoint("TOPLEFT", 1, -24)
+    f.titleLine:SetPoint("TOPRIGHT", -1, -24)
+    f.titleLine:SetHeight(1)
     f.flat = { f.flatBg, f.flatTitle }
     for _, edge in ipairs(f.flatEdges) do
         f.flat[#f.flat + 1] = edge
@@ -331,7 +509,13 @@ function UI:Create()
     menu:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -32)
     menu:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 8)
     menu:SetWidth(MENU_W)
+    menu.blocks = {}
     f.menu = menu
+    -- The Modern look's teal line on the menu's right edge.
+    f.menuLine = menu:CreateTexture(nil, "BORDER")
+    f.menuLine:SetPoint("TOPRIGHT", 0, 0)
+    f.menuLine:SetPoint("BOTTOMRIGHT", 0, 0)
+    f.menuLine:SetWidth(2)
 
     local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", menu, "TOPRIGHT", 8, 0)
@@ -371,12 +555,7 @@ function UI:SelectPage(key)
             p.frame:SetShown(selected)
         end
         if p.button then
-            p.button.sel:SetShown(selected)
-            if selected then
-                p.button.text:SetTextColor(1, 0.82, 0)
-            else
-                p.button.text:SetTextColor(0.85, 0.85, 0.85)
-            end
+            self:StyleMenuButton(p.button, selected)
         end
     end
     CRT.db.lastPage = page.key

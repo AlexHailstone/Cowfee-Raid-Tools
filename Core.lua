@@ -11,8 +11,9 @@ local defaults = {
     -- "minimal" (flat black), bgAlpha the main window background's opacity in percent. layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
     -- soundChannel is the game sound channel every sound the addon plays goes through (CRT:PlaySound).
+    -- modern is the Modern look (UI:ApplyStyle in UI/Panel.lua); off is the Classic look.
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
-    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false },
+    ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false, modern = false },
     lastPage = "groups",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },

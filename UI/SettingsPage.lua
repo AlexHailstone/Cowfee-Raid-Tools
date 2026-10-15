@@ -229,7 +229,14 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "Window Scale applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.\n\nMinimal black swaps the game's stone and marble window art for a flat black background. Background opacity fades the window's background and frame art, never the text or buttons.")
+    heading(pf, x, -44, "Window", "Modern look gives the whole addon a flat dark window with teal accents, the menu in grouped blocks, and teal page tabs. Unticked, it uses the Classic look, with the Style choice below.\n\nWindow Scale applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.\n\nIn the Classic look, Minimal black swaps the game's stone and marble window art for a flat black background. Background opacity fades the window's background and frame art, never the text or buttons.")
+    checkbox(pf, x, -62, "Modern look (unticked: Classic)", function()
+        return ui().modern
+    end, function(on)
+        ui().modern = on
+        UI:ApplyStyle()
+        refresh()
+    end)
     add(UI.Slider(pf, "Window scale", {
         min = UI.MIN_SCALE,
         max = UI.MAX_SCALE,
@@ -244,9 +251,9 @@ local function buildLeft(pf)
         set = function(v)
             UI:SetScale(v)
         end,
-    }), x, -62)
+    }), x, -90)
     local resetScale = button(pf, "Reset scale to 100%", 140)
-    resetScale:SetPoint("TOPLEFT", x + LABEL_W + 5, -96)
+    resetScale:SetPoint("TOPLEFT", x + LABEL_W + 5, -124)
     resetScale:SetScript("OnClick", function()
         UI:SetScale(100)
     end)
@@ -254,6 +261,9 @@ local function buildLeft(pf)
         options = STYLES,
         labelWidth = LABEL_W,
         width = CONTROL_W,
+        enabledIf = function()
+            return not ui().modern
+        end,
         get = function()
             return ui().style
         end,
@@ -262,7 +272,7 @@ local function buildLeft(pf)
             UI:ApplyStyle()
             refresh()
         end,
-    }), x, -120)
+    }), x, -148)
     add(UI.Slider(pf, "Background opacity", {
         min = 0,
         max = 100,
@@ -277,9 +287,9 @@ local function buildLeft(pf)
             ui().bgAlpha = v
             UI:ApplyStyle()
         end,
-    }), x, -152)
+    }), x, -180)
 
-    heading(pf, x, -196, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Game default keeps the game's font, which also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
+    heading(pf, x, -224, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Game default keeps the game's font, which also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
         labelWidth = LABEL_W,
@@ -288,9 +298,9 @@ local function buildLeft(pf)
             return ui().font
         end,
         set = confirmFont,
-    }), x, -214)
+    }), x, -242)
     local warning = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    warning:SetPoint("TOPLEFT", x + LABEL_W + 5, -244)
+    warning:SetPoint("TOPLEFT", x + LABEL_W + 5, -272)
     warning:SetWidth(CONTROL_W + 40)
     warning:SetJustifyH("LEFT")
     warning:SetTextColor(1, 0.55, 0.1)
@@ -307,7 +317,7 @@ local function buildLeft(pf)
             CRT:ApplyFonts()
             refresh()
         end,
-    }), x, -258)
+    }), x, -286)
     add(UI.Slider(pf, "Text size", {
         min = 80,
         max = 150,
@@ -323,9 +333,9 @@ local function buildLeft(pf)
             ui().textSize = v
             CRT:ApplyFonts()
         end,
-    }), x, -290)
+    }), x, -318)
 
-    heading(pf, x, -334, "Sound", "Every sound the addon plays goes through this game sound channel, so it follows that channel's volume and mute in the game's Sound settings.\n\nTwo sounds are played by the game instead and keep its own outputs: the low-health pulse (Combat Audio Alerts, with its own volume on Quality of Life) and text to speech for your next spell (its volume is on Raid Notes).")
+    heading(pf, x, -362, "Sound", "Every sound the addon plays goes through this game sound channel, so it follows that channel's volume and mute in the game's Sound settings.\n\nTwo sounds are played by the game instead and keep its own outputs: the low-health pulse (Combat Audio Alerts, with its own volume on Quality of Life) and text to speech for your next spell (its volume is on Raid Notes).")
     add(UI.Dropdown(pf, "Sound channel", {
         options = CRT.SOUND_CHANNELS,
         labelWidth = LABEL_W,
@@ -337,17 +347,17 @@ local function buildLeft(pf)
             ui().soundChannel = key
             refresh()
         end,
-    }), x, -352)
+    }), x, -380)
 
-    heading(pf, x, -396, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm: on their pages, in chat posts and in Discord exports. Unticked, a realm only shows for players from another realm, as the game shows it.\n\nThe Raid Groups grid always keeps realms, since it needs them to tell players apart.")
-    checkbox(pf, x, -414, "Leave realm names out of reports and Discord exports", function()
+    heading(pf, x, -424, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm: on their pages, in chat posts and in Discord exports. Unticked, a realm only shows for players from another realm, as the game shows it.\n\nThe Raid Groups grid always keeps realms, since it needs them to tell players apart.")
+    checkbox(pf, x, -442, "Leave realm names out of reports and Discord exports", function()
         return ui().hideRealms
     end, function(on)
         ui().hideRealms = on
     end)
 
-    heading(pf, x, -456, "Minimap", "Left-click the minimap button to open or close this window, and right-click it for General Settings. Drag it to move it around the minimap.\n\nThe addon is also listed in the game's addon menu beside the minimap, which works with the button hidden.")
-    checkbox(pf, x, -474, "Show the minimap button", function()
+    heading(pf, x, -484, "Minimap", "Left-click the minimap button to open or close this window, and right-click it for General Settings. Drag it to move it around the minimap.\n\nThe addon is also listed in the game's addon menu beside the minimap, which works with the button hidden.")
+    checkbox(pf, x, -502, "Show the minimap button", function()
         return not CRT.db.minimap.hide
     end, function(on)
         CRT.MinimapButton:SetHidden(not on)

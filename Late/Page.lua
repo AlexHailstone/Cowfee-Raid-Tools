@@ -550,8 +550,7 @@ local function selectTab(key)
     for _, tab in ipairs(TABS) do
         local on = tab.key == key
         tabFrames[tab.key]:SetShown(on)
-        tabButtons[tab.key].sel:SetShown(on)
-        tabButtons[tab.key].text:SetTextColor(on and 1 or 0.75, on and 0.82 or 0.75, on and 0 or 0.75)
+        UI:SetTabSelected(tabButtons[tab.key], on)
     end
 end
 
@@ -736,6 +735,7 @@ local function build(pf)
             selectTab(tab.key)
         end)
         tabButtons[tab.key] = b
+        UI:RegisterTab(b)
 
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, -66)
