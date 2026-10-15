@@ -8,7 +8,12 @@ local ADDON, CRT = ...
 -- lanes), dragging the track or its bar scrolls it, and hovering shows the time under the cursor.
 -- Icons come from a pool and are reused on every refresh, since frames cannot be deleted. With the
 -- overlay on, deaths from the pulls before the shown one are drawn faded by how old they are.
--- The page builds one with View.Create(parent) and hands it a pull with view:SetData.
+-- A reference timeline is drawn the same way, plus its phase lines and labels, a bar behind each
+-- cast that lasts a while, a thin line before each cast that has a lead time, and the row names in
+-- their own colors. A pull laid over a reference adds its deaths, a row of small ticks for its
+-- casts and a line where it ended. Bars, lines and ticks come from pools like the icons.
+-- The page builds one with View.Create(parent) and hands it a pull or { reference = ref }, and an
+-- optional pull to lay over it, with view:SetData.
 
 local View = {}
 CRT.TimelineView = View
@@ -22,7 +27,10 @@ local SCROLLBAR_W = 24 -- room for the lanes' up and down scroll bar
 local MIN_SPAN, MAX_SPAN = 60, 600
 local ZOOM = 1.25
 local TICK_GAP = 40 -- the fewest pixels between two axis labels
-local DEATH_RED = { 0.89, 0.29, 0.29 }
+local DEATH_RED = { 0.89, 0.29, 0.29 } -- also the phase lines
+local LEAD_GREEN = { 0.72, 0.88, 0.72 }
+local DUR_H = 12 -- the height of a duration bar
+local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
@@ -102,6 +110,19 @@ local function iconEnter(b)
         if settings().overlayOn and mark.pull and mark.pull.id then
             GameTooltip:AddLine("Pull " .. mark.pull.id, 0.85, 0.85, 0.85)
         end
+    elseif lane.kind == "reference" then
+        if lane.spellID and lane.spellID ~= 0 then
+            GameTooltip:SetSpellByID(lane.spellID)
+        else
+            GameTooltip:SetText(lane.label or "Unknown", 1, 0.82, 0)
+        end
+        GameTooltip:AddLine("Planned at " .. View.Format(mark.t), 1, 1, 1)
+        if type(mark.dur) == "number" and mark.dur > 0 then
+            GameTooltip:AddLine(string.format("Lasts %ds", mark.dur), 0.85, 0.85, 0.85)
+        end
+        if type(lane.lead) == "number" and lane.lead > 0 then
+            GameTooltip:AddLine(string.format("Cast starts %ds before", lane.lead), 0.85, 0.85, 0.85)
+        end
     elseif lane.kind == "unnamed" then
         GameTooltip:SetText("Boss cast (unnamed)", 1, 1, 1)
         GameTooltip:AddLine("Cast at " .. View.Format(mark.t), 0.85, 0.85, 0.85)
@@ -154,7 +175,10 @@ end
 
 function View.Create(parent)
     count = count + 1
-    local view = setmetatable({ icons = {}, labels = {}, lines = {}, ticks = {}, texts = {}, lanes = {}, unknown = {}, trackW = 1 }, Methods)
+    local view = setmetatable({
+        icons = {}, labels = {}, lines = {}, ticks = {}, texts = {}, lanes = {}, unknown = {}, trackW = 1,
+        bars = {}, leads = {}, phaseLines = {}, phaseTexts = {}, pullTicks = {}, extra = { phases = {}, length = 0 },
+    }, Methods)
     local f = CreateFrame("Frame", nil, parent)
     f:SetAllPoints(parent)
     view.frame = f
@@ -256,10 +280,16 @@ function View.Create(parent)
     return view
 end
 
-function Methods:SetData(pull, encounterID)
-    self.pull, self.encounterID = pull, encounterID
+-- base is a recorded pull or { reference = ref }; overlay is a pull laid over a reference.
+function Methods:SetData(base, encounterID, overlay)
+    self.pull, self.encounterID, self.overlay = base, encounterID, overlay
     self:Refresh()
     self:ScrollTo(0)
+end
+
+-- The phases, length and end line of what is shown, from the last refresh.
+function Methods:Extra()
+    return self.extra
 end
 
 function Methods:SetSpan(seconds)
@@ -421,17 +451,116 @@ function Methods:DrawAxis(length, height)
     hideFrom(self.texts, n + 1)
 end
 
+-- A texture on the track from one of the pools, made in this layer and color the first time.
+function Methods:Tex(list, n, layer, r, g, b, a)
+    return pooled(list, n, function()
+        local tex = self.track:CreateTexture(nil, layer)
+        tex:SetColorTexture(r, g, b, a)
+        return tex
+    end)
+end
+
+-- Draws a 2 px red line over all the lanes for each phase, with its label on the axis just right
+-- of it. The implied first phase at 0:00 gets no line.
+function Methods:DrawPhases(phases, length, height)
+    local n = 0
+    for _, phase in ipairs(phases or {}) do
+        if type(phase.t) == "number" and phase.t > 0 and phase.t <= length then
+            n = n + 1
+            local x = View.TimeToX(phase.t, length, self.trackW)
+            local line = self:Tex(self.phaseLines, n, "ARTWORK", DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
+            line:ClearAllPoints()
+            line:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - 1, 0)
+            line:SetSize(2, height)
+            local text = pooled(self.phaseTexts, n, function()
+                local fs = self.axis:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+                fs:SetTextColor(mocha("latte"))
+                return fs
+            end)
+            text:ClearAllPoints()
+            text:SetPoint("TOPLEFT", self.axis, "TOPLEFT", x + 3, -1)
+            text:SetText(phase.label or "")
+        end
+    end
+    hideFrom(self.phaseLines, n + 1)
+    hideFrom(self.phaseTexts, n + 1)
+end
+
+-- Draws the 2 px line where the overlaid pull ended, or hides it when there is none.
+function Methods:DrawEndLine(t, length, height)
+    if type(t) ~= "number" then
+        if self.endLine then
+            self.endLine:Hide()
+        end
+        return
+    end
+    if not self.endLine then
+        self.endLine = self.track:CreateTexture(nil, "ARTWORK")
+        self.endLine:SetColorTexture(mocha("caramel"))
+    end
+    self.endLine:ClearAllPoints()
+    self.endLine:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(math.min(t, length), length, self.trackW) - 1, 0)
+    self.endLine:SetSize(2, height)
+    self.endLine:Show()
+end
+
+-- A reference lane's bars (as long as each cast lasts) and lead lines (from the cast's start to
+-- its icon), drawn behind the icons. Returns the new counts of bars and lead lines used.
+function Methods:DrawPlan(lane, mid, length, bars, leads)
+    local c = lane.color
+    for _, mark in ipairs(lane.marks) do
+        local x = View.TimeToX(mark.t, length, self.trackW)
+        if type(mark.dur) == "number" and mark.dur > 0 and mark.t < length then
+            bars = bars + 1
+            local bar = self:Tex(self.bars, bars, "BORDER", 1, 1, 1, 1)
+            if c then
+                bar:SetColorTexture(c[1], c[2], c[3], 0.35)
+            else
+                bar:SetColorTexture(mocha("caramel", 0.35))
+            end
+            bar:ClearAllPoints()
+            bar:SetSize(math.max(1, View.TimeToX(math.min(mark.t + mark.dur, length), length, self.trackW) - x), DUR_H)
+            bar:SetPoint("LEFT", self.track, "TOPLEFT", x, mid)
+        end
+        if type(lane.lead) == "number" and lane.lead > 0 and mark.t > 0 then
+            leads = leads + 1
+            local line = self:Tex(self.leads, leads, "BORDER", LEAD_GREEN[1], LEAD_GREEN[2], LEAD_GREEN[3], 1)
+            local from = View.TimeToX(math.max(0, mark.t - lane.lead), length, self.trackW)
+            line:ClearAllPoints()
+            line:SetSize(math.max(1, x - from), 1)
+            line:SetPoint("LEFT", self.track, "TOPLEFT", from, mid)
+        end
+    end
+    return bars, leads
+end
+
+-- An overlaid pull's casts: small caramel bars with no tooltip, since their spells are unknown.
+-- Returns the new count of ticks used.
+function Methods:DrawTicks(lane, mid, length, ticks)
+    for _, mark in ipairs(lane.marks) do
+        ticks = ticks + 1
+        local tick = self:Tex(self.pullTicks, ticks, "ARTWORK", mocha("caramel"))
+        tick:ClearAllPoints()
+        tick:SetSize(TICK_W, TICK_H)
+        tick:SetPoint("CENTER", self.track, "TOPLEFT", View.TimeToX(mark.t, length, self.trackW), mid)
+    end
+    return ticks
+end
+
 function Methods:Refresh()
     local s = settings()
     local pull = self.pull
+    local extra
     if pull then
-        self.lanes, self.unknown = View.Lanes(pull, CRT.TimelineJournal:Rows(self.encounterID), s, self.encounterID)
+        local rows = CRT.TimelineJournal:Rows(self.encounterID)
+        self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay)
     else
         self.lanes, self.unknown = {}, {}
     end
+    self.extra = extra or { phases = {}, length = 0 }
     local lanes = self.lanes
     local width = self:VisibleWidth()
-    local length = pull and math.max(1, pull.length or 0) or 1
+    local length = pull and math.max(1, self.extra.length or 0) or 1
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1
     local height = math.max(1, #lanes * ROW_H)
     self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), height)
@@ -447,9 +576,11 @@ function Methods:Refresh()
         hideFrom(self.ticks, 1)
         hideFrom(self.texts, 1)
     end
+    self:DrawPhases(pull and self.extra.phases, length, height)
+    self:DrawEndLine(pull and self.extra.endLine, length, height)
 
     local size = s.iconSize or 22
-    local used = 0
+    local used, bars, leads, ticks = 0, 0, 0, 0
     for i, lane in ipairs(lanes) do
         local y = -(i - 1) * ROW_H
         local l = self:Label(i)
@@ -462,11 +593,22 @@ function Methods:Refresh()
         l.text:SetText(lane.label or "")
         if lane.class then
             l.text:SetTextColor(CRT.Groups.ClassColor(lane.label, lane.class))
+        elseif lane.color then
+            l.text:SetTextColor(lane.color[1], lane.color[2], lane.color[3])
+        elseif lane.kind == "ticks" then
+            l.text:SetTextColor(mocha("latte"))
         else
             l.text:SetTextColor(mocha("cream"))
         end
-        -- older marks first, so the shown pull's deaths are drawn on top
-        for m = #lane.marks, 1, -1 do
+        local mid = y - ROW_H / 2
+        if lane.kind == "reference" then
+            bars, leads = self:DrawPlan(lane, mid, length, bars, leads)
+        end
+        if lane.kind == "ticks" then
+            ticks = self:DrawTicks(lane, mid, length, ticks)
+        end
+        -- older marks first, so the shown pull's deaths are drawn on top; ticks have no icons
+        for m = #lane.marks, lane.kind == "ticks" and #lane.marks + 1 or 1, -1 do
             local mark = lane.marks[m]
             used = used + 1
             local b = self:Icon(used)
@@ -501,6 +643,9 @@ function Methods:Refresh()
         self.labels[i].stripe:Hide()
     end
     hideFrom(self.icons, used + 1)
+    hideFrom(self.bars, bars + 1)
+    hideFrom(self.leads, leads + 1)
+    hideFrom(self.pullTicks, ticks + 1)
 
     local names = {}
     for _, death in ipairs(self.unknown) do
