@@ -9,7 +9,10 @@ local ADDON, CRT = ...
 --       { name = "Mechanic name", spells = { <spell ID>, <spell ID> } },
 --   } },
 --
--- boss      The name shown in the boss dropdown on the Mechanics tab.
+-- boss      The name shown in the boss dropdown on the Mechanics tab. Write it as the game names
+--           the encounter, so the History filter can count the pulls on that boss.
+-- encounterID  Optional, after boss: the encounter's ID. When given, pulls are matched by it
+--           instead of by name, which also works in other game languages.
 -- name      The mechanic's name in every report. All its spell IDs are added together under it,
 --           so a mechanic with a different ID per difficulty or per hit is still one line.
 -- spells    The IDs of the spells that do its damage, as the damage meter shows them. To find
@@ -21,7 +24,7 @@ local ADDON, CRT = ...
 
 CRT.TattleDB = {
     bosses = {
-        -- { boss = "Example Boss", mechanics = {
+        -- { boss = "Example Boss", encounterID = 3001, mechanics = {
         --     { name = "Falling Debris", spells = { 123456, 123457 } },
         --     { name = "Void Pool", spells = { 234567 } },
         -- } },

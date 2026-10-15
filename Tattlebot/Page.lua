@@ -98,17 +98,24 @@ local function trackingWarning()
     end
 end
 
--- The per-player totals for a set of nights, as text lines.
-local function summaryLines(nights, lines)
-    local rowsOut, pulls = Tattle.Summary(nights)
+-- The per-player totals for a set of nights, as text lines. With mechKey, only that mechanic: one
+-- line per player with the average damage per pull it hit them in.
+local function summaryLines(nights, lines, mechKey)
+    local rowsOut, pulls = Tattle.Summary(nights, mechKey)
     if #rowsOut == 0 then
-        lines[#lines + 1] = "  Nobody took damage from a tracked mechanic."
+        lines[#lines + 1] = mechKey and "  Nobody took damage from this mechanic." or "  Nobody took damage from a tracked mechanic."
         return
     end
     for _, row in ipairs(rowsOut) do
-        lines[#lines + 1] = format("  %s  |cffff8060%s|r, hit in %d of %d pulls", name(row.key, row.class), Tattle.Short(row.damage), row.hits, pulls)
-        for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
-            lines[#lines + 1] = format("      |cffbbbbbb%s  %s  (%d %s)|r", m.name, Tattle.Short(m.damage), m.hits, m.hits == 1 and "pull" or "pulls")
+        local line = format("  %s  |cffff8060%s|r, hit in %d of %d pulls", name(row.key, row.class), Tattle.Short(row.damage), row.hits, pulls)
+        if mechKey then
+            line = line .. format(", |cffbbbbbb%s a hit pull|r", Tattle.Short(row.damage / math.max(1, row.hits)))
+        end
+        lines[#lines + 1] = line
+        if not mechKey then
+            for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
+                lines[#lines + 1] = format("      |cffbbbbbb%s  %s  (%d %s)|r", m.name, Tattle.Short(m.damage), m.hits, m.hits == 1 and "pull" or "pulls")
+            end
         end
     end
 end
@@ -177,28 +184,75 @@ local function tonightLines(night)
     return table.concat(lines, "\n")
 end
 
+-- History filters --------------------------------------------------------------------------
+-- The Season dropdown picks whose nights the list and totals use: the current season (the default),
+-- another one, or all. The Mechanic dropdown narrows the totals, the nights and the export to one
+-- mechanic, which makes Totals that mechanic's record for the season.
+
+local ALL = "all"
+local CURRENT = "current"
+local seasonFilter = CURRENT -- CURRENT, ALL or a season name
+local mechFilter = ALL -- ALL or a mechanic key
+
+local function filterSeason()
+    if seasonFilter == CURRENT then
+        return Tattle:Settings().season
+    elseif seasonFilter == ALL then
+        return nil
+    end
+    return seasonFilter
+end
+
+local function filterMech()
+    return mechFilter ~= ALL and mechFilter or nil
+end
+
+local function filteredNights()
+    return Tattle:NightsIn(filterSeason())
+end
+
+local function seasonText()
+    local season = filterSeason()
+    return season and ("\"" .. season .. "\"") or "all seasons"
+end
+
+local function mechText()
+    local key = filterMech()
+    return key and Tattle.MechanicLabel(Tattle.MechanicByKey(key)) or nil
+end
+
 local function nightLines(night)
+    local mechKey = filterMech()
     local lines = {
         format("%s, %s to %s, %d pulls. Ended when %s.", day(night.startedAt), clock(night.startedAt), clock(night.endedAt), #night.pulls, ENDED[night.endReason] or "it ended"),
         "",
-        "|cffffd100Totals|r",
+        mechKey and ("|cffffd100" .. mechText() .. "|r") or "|cffffd100Totals|r",
     }
-    summaryLines({ night }, lines)
-    lines[#lines + 1] = ""
-    lines[#lines + 1] = "|cffffd100Pulls|r"
-    for i, pull in ipairs(night.pulls) do
-        pullLines(pull, i, lines)
+    summaryLines({ night }, lines, mechKey)
+    if not mechKey then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "|cffffd100Pulls|r"
+        for i, pull in ipairs(night.pulls) do
+            pullLines(pull, i, lines)
+        end
     end
     return table.concat(lines, "\n")
 end
 
 local function totalsLines()
-    local history = Tattle:History()
-    if #history == 0 then
-        return "No finished nights yet. Each night is added here when it ends."
+    local nights = filteredNights()
+    if #nights == 0 then
+        return "No finished nights in " .. seasonText() .. " yet. Each night is added here when it ends."
     end
-    local lines = { format("All %d saved nights, most damage first.", #history), "" }
-    summaryLines(history, lines)
+    local mechKey = filterMech()
+    local lines = {}
+    if mechKey then
+        lines[1] = format("|cffffd100%s|r, %s, %d %s, most damage first.", mechText(), seasonText(), #nights, #nights == 1 and "night" or "nights")
+    else
+        lines[1] = format("All mechanics, %s, %d %s, most damage first.", seasonText(), #nights, #nights == 1 and "night" or "nights")
+    end
+    lines[2] = ""
+    summaryLines(nights, lines, mechKey)
     return table.concat(lines, "\n")
 end
 
@@ -209,7 +263,8 @@ end
 
 -- Discord export ----------------------------------------------------------------------------
 -- A bold title and a code block so the columns line up in Discord's fixed-width font. No color
--- codes and no pipe characters, which the game's text box treats as escape codes.
+-- codes and no pipe characters, which the game's text box treats as escape codes. It follows the
+-- History filters.
 
 local function pad(s, width)
     s = tostring(s)
@@ -220,18 +275,27 @@ local function pad(s, width)
 end
 
 local function summaryExport(title, nights)
-    local rowsOut, pulls = Tattle.Summary(nights)
+    local mechKey = filterMech()
+    local rowsOut, pulls = Tattle.Summary(nights, mechKey)
     local lines = { title }
     if #rowsOut == 0 then
-        lines[#lines + 1] = "Nobody took damage from a tracked mechanic."
+        lines[#lines + 1] = mechKey and "Nobody took damage from this mechanic." or "Nobody took damage from a tracked mechanic."
         return table.concat(lines, "\n")
     end
     lines[#lines + 1] = "```"
-    lines[#lines + 1] = pad("Player", 24) .. pad("Damage", 10) .. "Pulls hit"
+    if mechKey then
+        lines[#lines + 1] = pad("Player", 24) .. pad("Damage", 10) .. pad("Pulls hit", 12) .. "Per hit pull"
+    else
+        lines[#lines + 1] = pad("Player", 24) .. pad("Damage", 10) .. "Pulls hit"
+    end
     for _, row in ipairs(rowsOut) do
-        lines[#lines + 1] = pad(Groups.Display(row.key), 24) .. pad(Tattle.Short(row.damage), 10) .. row.hits .. " of " .. pulls
-        for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
-            lines[#lines + 1] = pad("  " .. m.name, 24) .. pad(Tattle.Short(m.damage), 10) .. m.hits
+        if mechKey then
+            lines[#lines + 1] = pad(Groups.Display(row.key), 24) .. pad(Tattle.Short(row.damage), 10) .. pad(row.hits .. " of " .. pulls, 12) .. Tattle.Short(row.damage / math.max(1, row.hits))
+        else
+            lines[#lines + 1] = pad(Groups.Display(row.key), 24) .. pad(Tattle.Short(row.damage), 10) .. row.hits .. " of " .. pulls
+            for _, m in ipairs(Tattle.SortedMechanics(row.mechanics)) do
+                lines[#lines + 1] = pad("  " .. m.name, 24) .. pad(Tattle.Short(m.damage), 10) .. m.hits
+            end
         end
     end
     lines[#lines + 1] = "```"
@@ -239,19 +303,26 @@ local function summaryExport(title, nights)
 end
 
 local function totalsExport()
-    local history = Tattle:History()
-    if #history == 0 then
-        return "No finished nights yet."
+    local nights = filteredNights()
+    if #nights == 0 then
+        return "No finished nights in " .. seasonText() .. " yet."
     end
-    local first, last = history[1].startedAt, history[1].startedAt
-    for _, night in ipairs(history) do
+    local first, last = nights[1].startedAt, nights[1].startedAt
+    for _, night in ipairs(nights) do
         first, last = math.min(first, night.startedAt), math.max(last, night.startedAt)
     end
-    return summaryExport(format("**Tattlebot totals**: %d nights, %s to %s", #history, day(first), day(last)), history)
+    local what = mechText() or "Tattlebot totals"
+    local season = filterSeason() or "All seasons"
+    return summaryExport(format("**%s**, %s: %d nights, %s to %s", what, season, #nights, day(first), day(last)), nights)
 end
 
 local function nightExport(night)
-    return summaryExport(format("**Tattlebot, %s**: %d pulls", day(night.startedAt), #night.pulls), { night })
+    local what = mechText()
+    local title = format("**Tattlebot, %s**: %d pulls", day(night.startedAt), #night.pulls)
+    if what then
+        title = title .. ", " .. what
+    end
+    return summaryExport(title, { night })
 end
 
 local function export()
@@ -321,11 +392,16 @@ local function getRow(i)
 end
 
 local function refreshList()
-    local history = Tattle:History()
-    if selected ~= TOTALS and not Tattle:Find(selected) then
+    local history = filteredNights()
+    local inList = false
+    for _, night in ipairs(history) do
+        inList = inList or night.id == selected
+    end
+    if selected ~= TOTALS and not inList then
         selected = TOTALS
     end
-    local entries = { { value = TOTALS, text = "|cffffd100Totals (all nights)|r" } }
+    local season = filterSeason()
+    local entries = { { value = TOTALS, text = "|cffffd100Totals (" .. (season or "all seasons") .. ")|r" } }
     for i = #history, 1, -1 do
         local night = history[i]
         entries[#entries + 1] = { value = night.id, text = format("%s %s  (%d pulls)", day(night.startedAt), clock(night.startedAt), #night.pulls) }
@@ -546,9 +622,58 @@ local function buildTonight(f)
     tonightBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
 end
 
+local function seasonOptions()
+    local out = { { key = CURRENT, label = "Current (" .. Tattle:Settings().season .. ")" } }
+    for _, season in ipairs(Tattle:Seasons()) do
+        if season ~= Tattle:Settings().season then
+            out[#out + 1] = { key = season, label = season }
+        end
+    end
+    out[#out + 1] = { key = ALL, label = "All seasons" }
+    return out
+end
+
+local function mechOptions()
+    local out = { { key = ALL, label = "All mechanics" } }
+    for _, o in ipairs(Tattle.MechanicOptions(Tattle:History())) do
+        out[#out + 1] = o
+    end
+    return out
+end
+
 local function buildHistory(f)
+    local seasonDropdown = UI.Dropdown(f, "Season", {
+        options = seasonOptions,
+        labelWidth = 60,
+        width = 190,
+        get = function()
+            return seasonFilter
+        end,
+        set = function(key)
+            seasonFilter = key
+            refresh()
+        end,
+    })
+    seasonDropdown:SetPoint("TOPLEFT", 8, -4)
+    controls[#controls + 1] = seasonDropdown
+    local mechDropdown = UI.Dropdown(f, "Mechanic", {
+        options = mechOptions,
+        labelWidth = 76,
+        width = 250,
+        get = function()
+            return mechFilter
+        end,
+        set = function(key)
+            mechFilter = key
+            refresh()
+        end,
+    })
+    mechDropdown:SetPoint("LEFT", seasonDropdown, "RIGHT", 16, 0)
+    controls[#controls + 1] = mechDropdown
+    UI.Help(f, "History filters", "Season picks which nights are listed and added up: the current season (set on the Settings tab), an earlier one, or all of them.\n\nMechanic narrows Totals, each night and the Discord export to one mechanic. Totals then becomes that mechanic's record for the season: each player's damage from it, how many of the pulls on its boss it hit them in, and the average damage in a pull it hit them."):SetPoint("LEFT", mechDropdown, "RIGHT", 6, 0)
+
     local listBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    listBox:SetPoint("TOPLEFT", 8, -8)
+    listBox:SetPoint("TOPLEFT", 8, -40)
     listBox:SetPoint("BOTTOMLEFT", 8, 8)
     listBox:SetWidth(LIST_W)
     skin(listBox, 0.4)
@@ -631,6 +756,19 @@ local function makeCheck(f, x, y, text, field, enabledIf)
     return check
 end
 
+local function editBox(parent, width, letters, numeric)
+    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(CRTFontEdit)
+    edit:SetNumeric(numeric and true or false)
+    edit:SetMaxLetters(letters)
+    edit:SetSize(width, 20)
+    edit:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    return edit
+end
+
 local function buildSettings(f)
     local function trackingOn()
         return Tattle:Settings().enabled
@@ -672,19 +810,32 @@ local function buildSettings(f)
     maxPlayers:SetPoint("TOPLEFT", 8, -144)
     controls[#controls + 1] = maxPlayers
     UI.Help(f, "Players in a post", "Chat posts list the players who took the most damage first, up to this many, so a post does not flood the chat. The Discord export always lists everyone."):SetPoint("LEFT", maxPlayers, "RIGHT", 6, 0)
-end
 
-local function editBox(parent, width, letters, numeric)
-    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(CRTFontEdit)
-    edit:SetNumeric(numeric and true or false)
-    edit:SetMaxLetters(letters)
-    edit:SetSize(width, 20)
-    edit:SetScript("OnEscapePressed", function(self)
+    -- The season new nights are filed under. Typing a new name starts a new season.
+    local seasonLabel = label(f, "Season", "CRTFontSmall")
+    seasonLabel:SetPoint("TOPLEFT", 8, -188)
+    seasonLabel:SetWidth(120)
+    local season = editBox(f, 200, 40, false)
+    season:SetPoint("LEFT", seasonLabel, "RIGHT", 10, 0)
+    local function save(self)
+        local text = strtrim(self:GetText() or "")
+        if text ~= "" and text ~= Tattle:Settings().season then
+            Tattle:Set("season", text)
+            CRT:Print("Tattlebot: new nights now go under the season \"" .. text .. "\".")
+        end
+        self:SetText(Tattle:Settings().season)
+    end
+    season:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()
     end)
-    return edit
+    season:SetScript("OnEditFocusLost", save)
+    season.refresh = function()
+        if not season:HasFocus() then
+            season:SetText(Tattle:Settings().season)
+        end
+    end
+    controls[#controls + 1] = season
+    UI.Help(f, "Season", "New nights are filed under this season, and the History tab adds up a season's nights. Type a new name and press Enter to start a new season, for example at the start of a new raid tier. Earlier seasons stay in the history. A night already running keeps its season."):SetPoint("LEFT", season, "RIGHT", 6, 0)
 end
 
 local function buildMechanics(f)

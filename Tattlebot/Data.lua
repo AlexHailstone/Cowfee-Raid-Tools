@@ -94,7 +94,7 @@ local function buildIndex()
     for _, boss in ipairs(Tattle.Bosses()) do
         for _, mech in ipairs(boss.mechanics or {}) do
             local name = mech.name or "?"
-            local entry = { key = (boss.boss or "") .. "/" .. name:lower(), name = name, boss = boss.boss }
+            local entry = { key = (boss.boss or "") .. "/" .. name:lower(), name = name, boss = boss.boss, encounterID = boss.encounterID }
             for _, id in ipairs(mech.spells or {}) do
                 index[id] = index[id] or entry
             end
@@ -337,7 +337,7 @@ function Tattle:AddPull(pull, info, now)
         night = nil
     end
     if not night then
-        night = { id = s.nextId, startedAt = now, pulls = {} }
+        night = { id = s.nextId, startedAt = now, season = s.season, pulls = {} }
         s.nextId = s.nextId + 1
         s.current = night
     end
@@ -369,33 +369,181 @@ function Tattle.ByMechanic(spells)
     return out
 end
 
+-- Seasons and mechanics, for the History filters --------------------------------------------------
+
+-- A night's season. Nights saved before seasons existed count as the first season's default name.
+function Tattle.SeasonOf(night)
+    return night.season or Tattle.DEFAULT_SEASON
+end
+Tattle.DEFAULT_SEASON = "Season 1"
+
+-- Every season name in the history and the current one, oldest first.
+function Tattle:Seasons()
+    local out, seen = {}, {}
+    local function add(name)
+        if name and name ~= "" and not seen[name] then
+            seen[name] = true
+            out[#out + 1] = name
+        end
+    end
+    for _, night in ipairs(tdb().history) do
+        add(Tattle.SeasonOf(night))
+    end
+    add(tdb().season)
+    return out
+end
+
+-- The saved nights of one season, or all of them when season is nil.
+function Tattle:NightsIn(season)
+    local out = {}
+    for _, night in ipairs(tdb().history) do
+        if not season or Tattle.SeasonOf(night) == season then
+            out[#out + 1] = night
+        end
+    end
+    return out
+end
+
+-- The mechanic with this key: from the lists, or rebuilt from the key of a spell counted only as
+-- avoidable damage.
+function Tattle.MechanicByKey(key)
+    for _, mech in pairs(Tattle.List()) do
+        if mech.key == key then
+            return mech
+        end
+    end
+    local id = tonumber(key:match("^spell/(%d+)$"))
+    if id then
+        return { key = key, name = Tattle.SpellName(id) }
+    end
+    return { key = key, name = key }
+end
+
+-- "Boss: Mechanic", "Your own: Mechanic" or "Avoidable: Spell", for the filter.
+function Tattle.MechanicLabel(mech)
+    if mech.boss then
+        return mech.boss .. ": " .. mech.name
+    elseif mech.own then
+        return "Your own: " .. mech.name
+    end
+    return "Avoidable: " .. mech.name
+end
+
+-- The mechanics to filter by: every tracked one in the shipped list's order, then your own, then
+-- any other the nights given recorded. { key, label } each.
+function Tattle.MechanicOptions(nights)
+    local out, seen = {}, {}
+    local function add(mech)
+        if not seen[mech.key] then
+            seen[mech.key] = true
+            out[#out + 1] = { key = mech.key, label = Tattle.MechanicLabel(mech) }
+        end
+    end
+    local list = Tattle.List()
+    for _, boss in ipairs(Tattle.Bosses()) do
+        for _, mech in ipairs(boss.mechanics or {}) do
+            local first = mech.spells and mech.spells[1]
+            if first and list[first] then
+                add(list[first])
+            end
+        end
+    end
+    local own = {}
+    for _, mech in pairs(list) do
+        if mech.own and not seen[mech.key] then
+            seen[mech.key] = true
+            own[#own + 1] = mech
+        end
+    end
+    table.sort(own, function(a, b)
+        return a.name:lower() < b.name:lower()
+    end)
+    for _, mech in ipairs(own) do
+        out[#out + 1] = { key = mech.key, label = Tattle.MechanicLabel(mech) }
+    end
+    local other = {}
+    for _, night in ipairs(nights or {}) do
+        for _, pull in ipairs(night.pulls) do
+            for _, p in pairs(pull.players) do
+                for id in pairs(p.spells) do
+                    local mech = Tattle.Mechanic(id)
+                    if not seen[mech.key] then
+                        seen[mech.key] = true
+                        other[#other + 1] = mech
+                    end
+                end
+            end
+        end
+    end
+    table.sort(other, function(a, b)
+        return a.name:lower() < b.name:lower()
+    end)
+    for _, mech in ipairs(other) do
+        out[#out + 1] = { key = mech.key, label = Tattle.MechanicLabel(mech) }
+    end
+    return out
+end
+
+-- Whether a pull was on the mechanic's boss: by the shipped list's encounterID when it has one,
+-- otherwise by the boss name. Own and avoidable mechanics count on every pull.
+local function onBoss(pull, mech)
+    if mech.encounterID then
+        return pull.encounterID == mech.encounterID
+    end
+    if mech.boss then
+        return type(pull.name) == "string" and pull.name:lower() == mech.boss:lower()
+    end
+    return true
+end
+
 -- One row per player over the nights given: { key, class, damage, hits (pulls hit), mechanics =
 -- { [key] = { name, damage, hits } } }, most damage first, plus the number of pulls. A mechanic
 -- counts once per pull, however many of its spells hit.
-function Tattle.Summary(nights)
+-- With mechKey, only that mechanic counts, and the pulls are only those on its boss. If no pull
+-- matches the boss (its name in the list differs from the game's), every pull counts instead.
+function Tattle.Summary(nights, mechKey)
     local byKey, rows, pulls = {}, {}, 0
+    local mech = mechKey and Tattle.MechanicByKey(mechKey)
+    local matchBoss = false
+    if mech then
+        for _, night in ipairs(nights) do
+            for _, pull in ipairs(night.pulls) do
+                matchBoss = matchBoss or onBoss(pull, mech)
+            end
+        end
+    end
     for _, night in ipairs(nights) do
         for _, pull in ipairs(night.pulls) do
-            pulls = pulls + 1
-            for key, p in pairs(pull.players) do
-                local lower = key:lower()
-                local row = byKey[lower]
-                if not row then
-                    row = { key = key, damage = 0, hits = 0, mechanics = {} }
-                    byKey[lower] = row
-                    rows[#rows + 1] = row
+            -- With a mechanic picked, pulls on other bosses don't count at all.
+            local counts = not mech or not matchBoss or onBoss(pull, mech)
+            if counts then
+                pulls = pulls + 1
+            end
+            for key, p in pairs(counts and pull.players or {}) do
+                local mechanics = Tattle.ByMechanic(p.spells)
+                if mech then
+                    mechanics = { [mechKey] = mechanics[mechKey] }
                 end
-                row.class = p.class or row.class
-                row.hits = row.hits + 1
-                for mkey, m in pairs(Tattle.ByMechanic(p.spells)) do
-                    local total = row.mechanics[mkey]
-                    if not total then
-                        total = { name = m.name, damage = 0, hits = 0 }
-                        row.mechanics[mkey] = total
+                if next(mechanics) then
+                    local lower = key:lower()
+                    local row = byKey[lower]
+                    if not row then
+                        row = { key = key, damage = 0, hits = 0, mechanics = {} }
+                        byKey[lower] = row
+                        rows[#rows + 1] = row
                     end
-                    total.damage = total.damage + m.damage
-                    total.hits = total.hits + 1
-                    row.damage = row.damage + m.damage
+                    row.class = p.class or row.class
+                    row.hits = row.hits + 1
+                    for mkey, m in pairs(mechanics) do
+                        local total = row.mechanics[mkey]
+                        if not total then
+                            total = { name = m.name, damage = 0, hits = 0 }
+                            row.mechanics[mkey] = total
+                        end
+                        total.damage = total.damage + m.damage
+                        total.hits = total.hits + 1
+                        row.damage = row.damage + m.damage
+                    end
                 end
             end
         end
@@ -609,6 +757,11 @@ function Tattle:ScanText()
         format("-- Damage taken in the last fight (%s), most first. Copy the lines you want into a", pull.duration and (pull.duration .. " s") or "length unknown"),
         "-- boss's mechanics in Tattlebot/Database.lua, or add the IDs on the Mechanics tab.",
     }
+    local night = self:Current()
+    local last = night and night.pulls[#night.pulls]
+    if last and last.encounterID then
+        lines[#lines + 1] = format("-- Last boss pull Tattlebot read: %s, encounterID = %d", last.name or "?", last.encounterID)
+    end
     for _, s in ipairs(list) do
         local notes = { Tattle.Short(s.damage) .. " on " .. players(s.players) }
         if avoidable[s.id] then
