@@ -185,35 +185,45 @@ local function tonightLines(night)
 end
 
 -- History filters --------------------------------------------------------------------------
--- The Season dropdown picks whose nights the list and totals use: the current season (the default),
--- another one, or all. The Mechanic dropdown narrows the totals, the nights and the export to one
--- mechanic, which makes Totals that mechanic's record for the season.
+-- The Season dropdown picks which nights the list and totals use: every saved night (All seasons,
+-- the default) or the current night: tonight's while one is running, otherwise the last one saved.
+-- The Mechanic dropdown narrows the totals, the nights and the export to one mechanic, which makes
+-- Totals that mechanic's record.
 
 local ALL = "all"
-local CURRENT = "current"
-local seasonFilter = CURRENT -- CURRENT, ALL or a season name
+local NIGHT = "night"
+local seasonFilter = ALL -- ALL or NIGHT
 local mechFilter = ALL -- ALL or a mechanic key
-
-local function filterSeason()
-    if seasonFilter == CURRENT then
-        return Tattle:Settings().season
-    elseif seasonFilter == ALL then
-        return nil
-    end
-    return seasonFilter
-end
 
 local function filterMech()
     return mechFilter ~= ALL and mechFilter or nil
 end
 
+-- Tonight's running night, or else the last saved one, or nil.
+local function currentNight()
+    local history = Tattle:History()
+    return Tattle:Current() or history[#history]
+end
+
 local function filteredNights()
-    return Tattle:NightsIn(filterSeason())
+    if seasonFilter == NIGHT then
+        local night = currentNight()
+        return night and { night } or {}
+    end
+    return Tattle:History()
 end
 
 local function seasonText()
-    local season = filterSeason()
-    return season and ("\"" .. season .. "\"") or "all seasons"
+    if seasonFilter ~= NIGHT then
+        return "all seasons"
+    end
+    local night = currentNight()
+    if night and night == Tattle:Current() then
+        return "tonight"
+    elseif night then
+        return "the last night, " .. day(night.startedAt)
+    end
+    return "the current night"
 end
 
 local function mechText()
@@ -242,7 +252,10 @@ end
 local function totalsLines()
     local nights = filteredNights()
     if #nights == 0 then
-        return "No finished nights in " .. seasonText() .. " yet. Each night is added here when it ends."
+        if seasonFilter == NIGHT then
+            return "No night yet. A night starts with the first boss pull Tattlebot reads."
+        end
+        return "No finished nights yet. Each night is added here when it ends."
     end
     local mechKey = filterMech()
     local lines = {}
@@ -305,15 +318,18 @@ end
 local function totalsExport()
     local nights = filteredNights()
     if #nights == 0 then
-        return "No finished nights in " .. seasonText() .. " yet."
+        return "No nights yet."
     end
     local first, last = nights[1].startedAt, nights[1].startedAt
     for _, night in ipairs(nights) do
         first, last = math.min(first, night.startedAt), math.max(last, night.startedAt)
     end
     local what = mechText() or "Tattlebot totals"
-    local season = filterSeason() or "All seasons"
-    return summaryExport(format("**%s**, %s: %d nights, %s to %s", what, season, #nights, day(first), day(last)), nights)
+    if seasonFilter == NIGHT then
+        local pulls = #nights[1].pulls
+        return summaryExport(format("**%s**, %s: %d %s", what, day(first), pulls, pulls == 1 and "pull" or "pulls"), nights)
+    end
+    return summaryExport(format("**%s**, all seasons: %d nights, %s to %s", what, #nights, day(first), day(last)), nights)
 end
 
 local function nightExport(night)
@@ -392,7 +408,8 @@ local function getRow(i)
 end
 
 local function refreshList()
-    local history = filteredNights()
+    -- Current night shows only its totals: the running night is not in the saved list yet.
+    local history = seasonFilter == NIGHT and {} or filteredNights()
     local inList = false
     for _, night in ipairs(history) do
         inList = inList or night.id == selected
@@ -400,8 +417,7 @@ local function refreshList()
     if selected ~= TOTALS and not inList then
         selected = TOTALS
     end
-    local season = filterSeason()
-    local entries = { { value = TOTALS, text = "|cffffd100Totals (" .. (season or "all seasons") .. ")|r" } }
+    local entries = { { value = TOTALS, text = "|cffffd100Totals (" .. (seasonFilter == NIGHT and "current night" or "all seasons") .. ")|r" } }
     for i = #history, 1, -1 do
         local night = history[i]
         entries[#entries + 1] = { value = night.id, text = format("%s %s  (%d pulls)", day(night.startedAt), clock(night.startedAt), #night.pulls) }
@@ -622,16 +638,7 @@ local function buildTonight(f)
     tonightBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
 end
 
-local function seasonOptions()
-    local out = { { key = CURRENT, label = "Current (" .. Tattle:Settings().season .. ")" } }
-    for _, season in ipairs(Tattle:Seasons()) do
-        if season ~= Tattle:Settings().season then
-            out[#out + 1] = { key = season, label = season }
-        end
-    end
-    out[#out + 1] = { key = ALL, label = "All seasons" }
-    return out
-end
+local SEASON_OPTIONS = { { key = ALL, label = "All seasons" }, { key = NIGHT, label = "Current night" } }
 
 local function mechOptions()
     local out = { { key = ALL, label = "All mechanics" } }
@@ -643,7 +650,7 @@ end
 
 local function buildHistory(f)
     local seasonDropdown = UI.Dropdown(f, "Season", {
-        options = seasonOptions,
+        options = SEASON_OPTIONS,
         labelWidth = 60,
         width = 190,
         get = function()
@@ -670,7 +677,7 @@ local function buildHistory(f)
     })
     mechDropdown:SetPoint("LEFT", seasonDropdown, "RIGHT", 16, 0)
     controls[#controls + 1] = mechDropdown
-    UI.Help(f, "History filters", "Season picks which nights are listed and added up: the current season (set on the Settings tab), an earlier one, or all of them.\n\nMechanic narrows Totals, each night and the Discord export to one mechanic. Totals then becomes that mechanic's record for the season: each player's damage from it, how many of the pulls on its boss it hit them in, and the average damage in a pull it hit them."):SetPoint("LEFT", mechDropdown, "RIGHT", 6, 0)
+    UI.Help(f, "History filters", "Season picks what is added up: All seasons is every saved night, and Current night is tonight's night while one is running, or the last saved night when none is.\n\nMechanic narrows Totals, each night and the Discord export to one mechanic. Totals then becomes that mechanic's record: each player's damage from it, how many of the pulls on its boss it hit them in, and the average damage in a pull it hit them."):SetPoint("LEFT", mechDropdown, "RIGHT", 6, 0)
 
     local listBox = CreateFrame("Frame", nil, f, "BackdropTemplate")
     listBox:SetPoint("TOPLEFT", 8, -40)
@@ -835,7 +842,7 @@ local function buildSettings(f)
         end
     end
     controls[#controls + 1] = season
-    UI.Help(f, "Season", "New nights are filed under this season, and the History tab adds up a season's nights. Type a new name and press Enter to start a new season, for example at the start of a new raid tier. Earlier seasons stay in the history. A night already running keeps its season."):SetPoint("LEFT", season, "RIGHT", 6, 0)
+    UI.Help(f, "Season", "New nights are stored with this season name. Type a new name and press Enter to start a new season, for example at the start of a new raid tier. Earlier seasons stay in the history. A night already running keeps its season."):SetPoint("LEFT", season, "RIGHT", 6, 0)
 end
 
 local function buildMechanics(f)
