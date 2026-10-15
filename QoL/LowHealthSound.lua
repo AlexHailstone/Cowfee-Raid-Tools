@@ -37,6 +37,7 @@ local PREVIEW_SECONDS = 3
 -- starts the timer that ends its own 3-second volume preview, and the addon's copy of that preview
 -- was never told to stop. At 1% the game plays and ends it as usual.
 local MUTED_VOLUME = 1
+local WATCH_SECONDS = 0.5
 
 -- The sounds to choose from: the game's pulse, then game alert sounds by their SOUNDKIT name (checked
 -- in Blizzard_SharedXML/Mainline/SoundKitConstants.lua, with the ID there as a fallback).
@@ -77,9 +78,26 @@ local function getCVar(name)
 end
 
 local function setCVar(name, value)
-    if value ~= nil and C_CVar and C_CVar.SetCVar then
+    if value == nil or not (C_CVar and C_CVar.SetCVar) then
+        return
+    end
+    -- Only when it differs: every change makes the game refresh its pulse, and a volume change makes it
+    -- play a 3-second preview.
+    if getCVar(name) ~= tostring(value) then
         pcall(C_CVar.SetCVar, name, tostring(value))
     end
+end
+
+local function setPulseVolume(volume)
+    if not (C_CombatAudioAlert and C_CombatAudioAlert.SetCategoryVolume) then
+        return
+    end
+    local category = Enum.CombatAudioAlertCategory.PlayerHealthPulse
+    local ok, current = pcall(C_CombatAudioAlert.GetCategoryVolume, category)
+    if ok and current == volume then
+        return
+    end
+    pcall(C_CombatAudioAlert.SetCategoryVolume, category, volume)
 end
 
 local function sayIfTargeted()
@@ -178,9 +196,7 @@ function Sound:Apply()
     else
         self:StopOurs()
     end
-    if C_CombatAudioAlert.SetCategoryVolume then
-        pcall(C_CombatAudioAlert.SetCategoryVolume, Enum.CombatAudioAlertCategory.PlayerHealthPulse, custom and MUTED_VOLUME or (s.soundVolume or 100))
-    end
+    setPulseVolume(custom and MUTED_VOLUME or (s.soundVolume or 100))
 end
 
 -- True when the addon plays the sound: any sound or output other than the game's pulse on its own.
@@ -210,6 +226,9 @@ local function stopEntry(entry)
     end
     if entry.timer then
         entry.timer:Cancel()
+    end
+    if entry.watch then
+        entry.watch:Cancel()
     end
 end
 
@@ -307,6 +326,21 @@ local function onPulse(_, kit)
     Sound:StopOurs()
     if kit then
         following = begin(kit)
+        -- Every half second, check the game is really still holding this pulse, and stop ours the
+        -- moment it isn't. The game's own stop is not enough: when it can't play its pulse (such as
+        -- its volume preview while muted) it never sends one, and ours would repeat forever.
+        local mine = following
+        mine.watch = C_Timer.NewTicker(WATCH_SECONDS, function()
+            local manager = _G.CombatAudioAlertManager
+            local current = manager and manager.healthPulseSoundKitID
+            if following ~= mine or (issecretvalue and issecretvalue(current)) or current ~= mine.kit then
+                if following == mine then
+                    Sound:StopOurs()
+                else
+                    stopEntry(mine)
+                end
+            end
+        end)
     end
 end
 
