@@ -198,6 +198,7 @@ function UI:ApplyStyle()
     f.menuLine:SetColorTexture(mocha("caramel", alpha))
     f.menuLine:SetShown(modern)
     self:LayoutMenu()
+    self:StyleMinimizeButton()
     for _, b in ipairs(self.tabs) do
         self:StyleTab(b, b.selected)
     end
@@ -670,6 +671,63 @@ function UI:Create()
     end)
     UI.previewButton = pb
 
+    -- Minimize, like a desktop window: the button left of Previews, or a double-click on the title
+    -- bar, shrinks the window to its title bar; the same again, /crt or opening a page restores it.
+    local mb = CreateFrame("Button", nil, f, "BackdropTemplate")
+    mb:SetSize(20, 18)
+    mb:SetPoint("RIGHT", pb, "LEFT", -4, 0)
+    mb:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    -- A line for minimize, a small square for restore, drawn with plain textures.
+    mb.line = mb:CreateTexture(nil, "OVERLAY")
+    mb.line:SetSize(10, 2)
+    mb.line:SetPoint("BOTTOM", 0, 4)
+    mb.square = {}
+    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true }, { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
+        local e = mb:CreateTexture(nil, "OVERLAY")
+        e:SetPoint(side[1], mb, "CENTER", side[1]:find("LEFT") and -4 or 4, side[1]:find("TOP") and 4 or -4)
+        e:SetPoint(side[2], mb, "CENTER", side[2]:find("LEFT") and -4 or 4, side[2]:find("TOP") and 4 or -4)
+        if side[3] then
+            e:SetHeight(side[1]:find("TOP") and 2 or 1)
+        else
+            e:SetWidth(1)
+        end
+        mb.square[#mb.square + 1] = e
+    end
+    mb:SetScript("OnClick", function()
+        UI:SetMinimized(not UI.minimized)
+    end)
+    mb:SetScript("OnEnter", function(self)
+        self.hover = true
+        UI:StyleMinimizeButton()
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(UI.minimized and "Restore" or "Minimize", 1, 1, 1)
+        GameTooltip:AddLine("Double-clicking the title bar does the same.", 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    mb:SetScript("OnLeave", function(self)
+        self.hover = false
+        UI:StyleMinimizeButton()
+        GameTooltip:Hide()
+    end)
+    f.minimizeButton = mb
+
+    -- The title bar: drag it to move the window, double-click it to minimize or restore.
+    local titleBar = CreateFrame("Button", nil, f)
+    titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    titleBar:SetPoint("RIGHT", mb, "LEFT", -4, 0)
+    titleBar:SetHeight(24)
+    titleBar:RegisterForClicks("LeftButtonUp")
+    titleBar:RegisterForDrag("LeftButton")
+    titleBar:SetScript("OnDragStart", function()
+        f:GetScript("OnDragStart")(f)
+    end)
+    titleBar:SetScript("OnDragStop", function()
+        f:GetScript("OnDragStop")(f)
+    end)
+    titleBar:SetScript("OnDoubleClick", function()
+        UI:SetMinimized(not UI.minimized)
+    end)
+
     local w = CRT.db.window
     f:SetScale(UI:Scale() / 100)
     f:ClearAllPoints()
@@ -742,14 +800,76 @@ function UI:SelectPage(key)
     CRT.db.lastPage = page.key
 end
 
+-- Minimize -------------------------------------------------------------------------------------
+-- Minimized, the window keeps only its title bar (the version, the title, minimize, Previews and
+-- close). Its top-left corner stays where it is, so it shrinks upwards to the bar and grows back
+-- down. It isn't saved: the window always opens full size after a /reload.
+
+local TITLE_H = 26
+
+function UI:StyleMinimizeButton()
+    local mb = self.frame and self.frame.minimizeButton
+    if not mb then
+        return
+    end
+    local modern = self:IsModern()
+    local r, g, b
+    if modern then
+        local c = CRT.MOCHA[mb.hover and "caramel" or "cream"]
+        r, g, b = c[1], c[2], c[3]
+        mb:SetBackdropColor(0, 0, 0, 0)
+        mb:SetBackdropBorderColor(0, 0, 0, 0)
+    else
+        r, g, b = 1, 0.82, 0
+        if not mb.hover then
+            r, g, b = 0.9, 0.9, 0.9
+        end
+        mb:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+        mb:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    end
+    mb.line:SetColorTexture(r, g, b, 1)
+    mb.line:SetShown(not self.minimized)
+    for _, e in ipairs(mb.square) do
+        e:SetColorTexture(r, g, b, 1)
+        e:SetShown(self.minimized and true or false)
+    end
+end
+
+function UI:SetMinimized(on)
+    local f = self.frame
+    if not f then
+        return
+    end
+    on = on and true or false
+    if on == (self.minimized or false) then
+        return
+    end
+    -- Pin the top-left corner first, so the window shrinks and grows from the top.
+    local left, top = f:GetLeft(), f:GetTop()
+    if left and top then
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
+    self.minimized = on
+    f:SetHeight(on and TITLE_H or FRAME_H)
+    f.menu:SetShown(not on)
+    f.content:SetShown(not on)
+    if type(f.Inset) == "table" then
+        f.Inset:SetShown(not on)
+    end
+    self:StyleMinimizeButton()
+end
+
 function UI:Show(key)
     local f = self:Create()
+    self:SetMinimized(false)
     self:SelectPage(key or CRT.db.lastPage)
     f:Show()
 end
 
+-- /crt: opens the window, restores it when it is minimized, and closes it when it is open.
 function UI:Toggle()
-    if self.frame and self.frame:IsShown() then
+    if self.frame and self.frame:IsShown() and not self.minimized then
         self.frame:Hide()
     else
         self:Show()
