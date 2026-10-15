@@ -17,7 +17,7 @@ local function printHelp()
     print("  |cffffd100/crt late export|r - the late totals as text to paste into Discord")
     print("  |cffffd100/crt tattle|r - open the Tattlebot page")
     print("  |cffffd100/crt tattle post|r, |cffffd100night|r, |cffffd100end|r - post the last pull or tonight's totals, or end the night")
-    print("  |cffffd100/crt tattle scan|r - list every spell that damaged the group in the last fight, for the spell list")
+    print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
     print("  |cffffd100/crt qol|r - open the Quality of Life page")
     print("  |cffffd100/crt settings|r - open Addon Settings: window scale and style, fonts, layers")
@@ -107,6 +107,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("No Tattlebot night is running.")
         end
+    elseif msg == "tattle scan text" then
+        CRT.TattlePage.ScanText()
     elseif msg == "tattle scan" then
         CRT.TattlePage.Scan()
     elseif msg == "tattle export" then
