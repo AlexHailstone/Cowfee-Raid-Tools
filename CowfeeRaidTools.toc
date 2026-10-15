@@ -47,6 +47,7 @@ Tattlebot\Data.lua
 Tattlebot\Page.lua
 Timeline\Data.lua
 Timeline\Journal.lua
+Timeline\View.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua
