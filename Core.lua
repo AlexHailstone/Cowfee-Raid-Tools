@@ -182,6 +182,26 @@ local defaults = {
         history = {},
         nextId = 1,
     },
+    -- Timeline. Boss pulls recorded for the Timeline page (Timeline/Data.lua). bosses[encounterID] =
+    -- { name, pulls = { newest last } }, and each pull has the boss casts and the deaths in seconds
+    -- from the pull start. rows[encounterID] holds the player's hidden and added spell rows.
+    timeline = {
+        record = true,
+        minPull = 15, -- seconds; shorter pulls are not kept
+        keep = 10, -- pulls kept per boss
+        bosses = {},
+        rows = {}, -- [encounterID] = { hidden = { [spellID] = true }, custom = { spellID, ... } }
+        span = 300, -- seconds visible
+        grid = 30,
+        iconSize = 22,
+        deathRows = "combined", -- or "player"
+        roles = { TANK = true, HEALER = true, DAMAGER = true },
+        firstDeaths = 0, -- show only the first N deaths, 0 for all
+        overlay = 3, -- how many pulls the death overlay covers
+        overlayOn = false, -- draw the deaths of recent pulls over the shown one
+        hideEmpty = false, -- hide rows that have no casts in the shown pull
+        nextId = 1,
+    },
 }
 
 -- Profiles.lua reads these to know which keys a profile holds and to start a profile afresh.
