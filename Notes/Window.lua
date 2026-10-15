@@ -18,7 +18,7 @@ local REFRESH_SECONDS = 0.1
 local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 
--- The same list as the Addon Settings page's font choice, in Core.lua.
+-- The same list as the General Settings page's font choice, in Core.lua.
 NoteWindow.FONTS = CRT.FONTS
 
 local previewOn = false

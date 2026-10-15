@@ -178,7 +178,7 @@ local function build(pf)
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", 8, -236)
     lookTitle:SetText("Look")
-    UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. It writes their timer in its own shared small font, so their font and text size can't be changed without changing text all over the game. The font setting on the Addon Settings page changes everything else.\n\nTimer: the game's timer text beside or on the icon, or its countdown numbers on the swipe, never both.\n\nBorder size: the game's colored debuff border, the icon plus 5 pixels for each step.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
+    UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. It writes their timer in its own shared small font, so their font and text size can't be changed without changing text all over the game. The font setting on the General Settings page changes everything else.\n\nTimer: the game's timer text beside or on the icon, or its countdown numbers on the swipe, never both.\n\nBorder size: the game's colored debuff border, the icon plus 5 pixels for each step.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
     local timer = lookDropdown(pf, -254, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")

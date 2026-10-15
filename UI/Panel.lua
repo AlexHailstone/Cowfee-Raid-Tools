@@ -64,7 +64,7 @@ end
 
 -- Layers -----------------------------------------------------------------------------------------
 -- Each kind of window registers its frames with RegisterLayer, which draws them in the frame strata
--- chosen on the Addon Settings page, or in the window's default. The choice is saved per kind in
+-- chosen on the General Settings page, or in the window's default. The choice is saved per kind in
 -- CRTDB.ui.layers, and only while it differs from the default.
 
 UI.STRATA = {
@@ -232,7 +232,7 @@ function UI:Create()
     f:SetSize(FRAME_W, FRAME_H)
     UI:RegisterLayer("panel", f)
 
-    -- The template's art, for the Addon Settings page's style and opacity: every texture it made.
+    -- The template's art, for the General Settings page's style and opacity: every texture it made.
     f.art = {}
     for _, region in ipairs({ f:GetRegions() }) do
         if region:GetObjectType() == "Texture" then

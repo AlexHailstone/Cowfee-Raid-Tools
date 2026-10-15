@@ -6,7 +6,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 
 local defaults = {
     window = { point = "CENTER", x = 0, y = 0, scale = 100 }, -- the main panel; scale is a percent, 50 to 200
-    -- The Addon Settings page. font is "default" (the game's own) or a name from CRT.FONTS, outline is
+    -- The General Settings page. font is "default" (the game's own) or a name from CRT.FONTS, outline is
     -- "", "OUTLINE" or "THICKOUTLINE", textSize a percent. style is "game" (the game's window art) or
     -- "minimal" (flat black), bgAlpha the main window background's opacity in percent. layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
@@ -14,6 +14,8 @@ local defaults = {
     -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
     ui = { font = "default", outline = "", textSize = 100, style = "game", bgAlpha = 100, layers = {}, soundChannel = "Master", hideRealms = false },
     lastPage = "groups",
+    -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
+    minimap = { hide = false, angle = 225 },
     classCache = {},
     roleCache = {},
     groups = {
@@ -181,6 +183,9 @@ local defaults = {
     },
 }
 
+-- Profiles.lua reads these to know which keys a profile holds and to start a profile afresh.
+CRT.defaults = defaults
+
 local function copyDefaults(src, dst)
     for k, v in pairs(src) do
         if type(v) == "table" then
@@ -194,7 +199,7 @@ local function copyDefaults(src, dst)
     end
 end
 
--- The fonts the addon offers: on the Addon Settings page for all its text, and for each note window.
+-- The fonts the addon offers: on the General Settings page for all its text, and for each note window.
 -- These four ship with the game. CRT:FontList adds the fonts other addons share through
 -- LibSharedMedia-3.0, when one of them has loaded it. Cowfee Raid Tools does not ship the library.
 CRT.FONTS = {
@@ -273,7 +278,7 @@ local function makeFont(name, source, scale)
     return font
 end
 
--- Applies the Addon Settings page's font, outline and text size to every shared font. Text drawn
+-- Applies the General Settings page's font, outline and text size to every shared font. Text drawn
 -- with them changes straight away.
 function CRT:ApplyFonts()
     local s = self.db and self.db.ui
@@ -295,7 +300,7 @@ function CRT:ApplyFonts()
     end
 end
 
--- Sets the font for everything the addon draws, the note windows included, from the Addon Settings
+-- Sets the font for everything the addon draws, the note windows included, from the General Settings
 -- page after its confirmation box. Each note window can still be given its own font afterwards.
 function CRT:SetAddonFont(name)
     self.db.ui.font = name
@@ -315,7 +320,7 @@ makeFont("CRTFontSmall", GameFontHighlightSmall)
 makeFont("CRTFontDisableSmall", GameFontDisableSmall)
 makeFont("CRTFontLarge", GameFontNormalLarge)
 -- The game's own sizes, unscaled, for the small title-bar and page buttons, the standard buttons,
--- the dropdown and slider text, and the edit boxes. They follow the Addon Settings font too.
+-- the dropdown and slider text, and the edit boxes. They follow the General Settings font too.
 makeFont("CRTFontButtonSmall", GameFontNormalSmall, 1)
 makeFont("CRTFontButtonSmallHighlight", GameFontHighlightSmall, 1)
 makeFont("CRTFontButtonSmallDisable", GameFontDisableSmall, 1)
@@ -324,7 +329,7 @@ makeFont("CRTFontStandardHighlight", GameFontHighlight, 1)
 makeFont("CRTFontStandardDisable", GameFontDisable, 1)
 makeFont("CRTFontEdit", ChatFontNormal, 1)
 
--- The game's sound channels a sound can play through, for the Addon Settings page.
+-- The game's sound channels a sound can play through, for the General Settings page.
 CRT.SOUND_CHANNELS = {
     { key = "Master", label = "Master" },
     { key = "SFX", label = "Sound effects" },
@@ -334,7 +339,7 @@ CRT.SOUND_CHANNELS = {
     { key = "Talking Head", label = "Talking head" },
 }
 
--- Plays a sound kit through the channel chosen on the Addon Settings page. Every sound the addon plays
+-- Plays a sound kit through the channel chosen on the General Settings page. Every sound the addon plays
 -- goes through here. Returns the sound handle, to stop it with StopSound.
 function CRT:PlaySound(kit)
     local channel = (self.db and self.db.ui and self.db.ui.soundChannel) or "Master"
@@ -354,6 +359,8 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON then
         CRTDB = CRTDB or {}
+        -- Puts this character's profile on top of CRTDB before anything reads it.
+        CRT.Profiles:Load()
         copyDefaults(defaults, CRTDB)
         CRT.db = CRTDB
         CRT:ApplyFonts()

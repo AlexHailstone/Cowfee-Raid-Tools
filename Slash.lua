@@ -20,7 +20,8 @@ local function printHelp()
     print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
     print("  |cffffd100/crt qol|r - open the Quality of Life page")
-    print("  |cffffd100/crt settings|r - open Addon Settings: window scale and style, fonts, layers")
+    print("  |cffffd100/crt settings|r - open General Settings: window, fonts, sound, minimap button, layers, profiles")
+    print("  |cffffd100/crt minimap|r - show or hide the minimap button")
     print("  |cffffd100/crt lowhp off|r, |cffffd100on|r, |cffffd100info|r, |cffffd100stop|r - turn the experimental low-health alert off or on, print its diagnostics, or stop any sound it is playing")
     print("  |cffffd100/crt perf|r - this addon's CPU use since the last /reload, from the game's profiler")
     print("  |cffffd100/crt previews|r - toggle the panel previews, same as the button in the main window")
@@ -137,6 +138,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.UI:Show("qol")
     elseif msg == "settings" then
         CRT.UI:Show("settings")
+    elseif msg == "minimap" then
+        local hide = not CRT.db.minimap.hide
+        CRT.MinimapButton:SetHidden(hide)
+        CRT:Print(hide and "Minimap button hidden. Type /crt minimap to show it again." or "Minimap button shown.")
     elseif msg == "perf" then
         CRT.Perf:Report()
     elseif msg == "previews" then

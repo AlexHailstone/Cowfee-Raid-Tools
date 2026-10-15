@@ -4,9 +4,13 @@
 ## Author: Solex
 ## Version: 0.15.1
 ## SavedVariables: CRTDB
+## SavedVariablesPerCharacter: CRTDBChar
+## IconTexture: Interface\Icons\inv_drink_31_embalmingfluid
+## AddonCompartmentFunc: CowfeeRaidTools_OnAddonCompartmentClick
 ## Category: Dungeons & Raids
 
 Core.lua
+Profiles.lua
 Slash.lua
 Perf.lua
 UI\Panel.lua
@@ -44,6 +48,7 @@ Tattlebot\Page.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua
+UI\Minimap.lua
 UI\SettingsPage.lua
 #@do-not-package@
 Dev\LayoutEditor.lua

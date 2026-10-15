@@ -38,7 +38,7 @@ function Groups.Display(key)
 end
 
 -- A name for reports, chat posts and Discord exports (the Late Tracker and Tattlebot): without its
--- realm when "Leave realm names out" is ticked on Addon Settings, else as Display shows it.
+-- realm when "Leave realm names out" is ticked on General Settings, else as Display shows it.
 function Groups.ReportName(key)
     if not key or key == "" then
         return ""
