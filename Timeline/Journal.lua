@@ -12,6 +12,15 @@ local Journal = {}
 CRT.TimelineJournal = Journal
 
 local cache = {}
+-- bosses the Journal could not be asked about in this zone; only your own rows are listed for them
+local missed = {}
+
+local zoneFrame = CreateFrame("Frame")
+zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+zoneFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+zoneFrame:SetScript("OnEvent", function()
+    missed = {}
+end)
 
 local function settings()
     return CRT.Timeline:Settings()
@@ -60,10 +69,13 @@ local function findRoot(encounterID)
     if not (EJ_SelectInstance and EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo) then
         return nil
     end
+    -- the instance the Journal has selected now, to put back afterwards
     local previous
     if EJ_GetCurrentInstance then
         local ok, id = pcall(EJ_GetCurrentInstance)
         previous = ok and id or nil
+    elseif EncounterJournal then
+        previous = EncounterJournal.instanceID
     end
     local root
     -- the instance of the map we stand on
@@ -93,9 +105,13 @@ local function findRoot(encounterID)
             i = i + 1
         end
     end
-    if previous and previous ~= 0 and EJ_GetCurrentInstance then
-        local ok, now = pcall(EJ_GetCurrentInstance)
-        if not ok or now ~= previous then
+    if previous and previous ~= 0 then
+        local now
+        if EJ_GetCurrentInstance then
+            local ok, id = pcall(EJ_GetCurrentInstance)
+            now = ok and id or nil
+        end
+        if now ~= previous then
             pcall(EJ_SelectInstance, previous)
         end
     end
@@ -132,8 +148,8 @@ local function collect(root, rows, seen)
 end
 
 -- The rows of a boss: Journal abilities, then your own. Empty in combat or while the Journal is
--- open (nothing cached then), and when the Journal does not know the boss (not cached either, so
--- it is tried again later), in which case only your own spells are listed.
+-- open (nothing cached then). When the Journal does not know the boss only your own spells are
+-- listed, and that miss is remembered until the zone changes so the Journal is not walked again.
 function Journal:Rows(encounterID)
     if cache[encounterID] then
         return cache[encounterID]
@@ -142,7 +158,13 @@ function Journal:Rows(encounterID)
         return {}
     end
     local rows, seen = {}, {}
-    local root = findRoot(encounterID)
+    local root
+    if not missed[encounterID] then
+        root = findRoot(encounterID)
+        if not root then
+            missed[encounterID] = true
+        end
+    end
     if root then
         collect(root, rows, seen)
     end
