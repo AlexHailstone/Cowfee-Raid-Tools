@@ -53,6 +53,7 @@ Timeline\Lanes.lua
 Timeline\View.lua
 Timeline\ReferencePage.lua
 Timeline\Page.lua
+Alerts\Rules.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua
