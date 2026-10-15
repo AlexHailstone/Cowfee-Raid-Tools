@@ -15,7 +15,7 @@ local ADDON, CRT = ...
 -- sound is turned off.
 --
 -- Your own sound and output: with the game's pulse on the game's output, the game plays it as usual.
--- Otherwise the game's pulse still runs, muted (its volume set to 0), and the addon follows it: the
+-- Otherwise the game's pulse still runs, muted (its volume set to 1%), and the addon follows it: the
 -- game calls CombatAudioAlertManager:SetHealthPulseSoundKit(kit) when the pulse starts, changes tier
 -- or stops (kit nil), and StopHealthPulse on a loading screen. A hook on those plays your choice through
 -- your channel instead, so your health is never read by the addon. The game's pulse kits loop by
@@ -32,7 +32,11 @@ local SPEECH_CVARS = {
     "CAAInterruptCast", "CAAInterruptCastSuccess", "CAASayYourDebuffs", "CAADebuffSelfAlert",
 }
 local ENABLED, PULSE = "CAAEnabled", "CAAPulsePlayerHealthPercent"
-local TEST_SECONDS = 3
+local PREVIEW_SECONDS = 3
+-- The game's pulse volume while the addon plays yours. Not 0: at 0 the game plays nothing, so it never
+-- starts the timer that ends its own 3-second volume preview, and the addon's copy of that preview
+-- was never told to stop. At 1% the game plays and ends it as usual.
+local MUTED_VOLUME = 1
 
 -- The sounds to choose from: the game's pulse, then game alert sounds by their SOUNDKIT name (checked
 -- in Blizzard_SharedXML/Mainline/SoundKitConstants.lua, with the ID there as a fallback).
@@ -148,7 +152,7 @@ function Sound:Apply()
     end
     local s = settings()
     if not (s.enabled and s.sound) then
-        self:StopOurs()
+        self:StopAll()
         restore()
         return
     end
@@ -175,7 +179,7 @@ function Sound:Apply()
         self:StopOurs()
     end
     if C_CombatAudioAlert.SetCategoryVolume then
-        pcall(C_CombatAudioAlert.SetCategoryVolume, Enum.CombatAudioAlertCategory.PlayerHealthPulse, custom and 0 or (s.soundVolume or 100))
+        pcall(C_CombatAudioAlert.SetCategoryVolume, Enum.CombatAudioAlertCategory.PlayerHealthPulse, custom and MUTED_VOLUME or (s.soundVolume or 100))
     end
 end
 
@@ -187,24 +191,51 @@ end
 
 -- Playing your sound -----------------------------------------------------------------------------
 
-local playing -- { handle, ticker, kit } while the addon's sound plays
+-- Two kinds of playing, kept apart so a stop always finds its sound:
+--   following  the addon's copy of the game's pulse, started and stopped by the game's own calls
+--   preview    a Play button or Test sound, which always stops by itself after PREVIEW_SECONDS
+-- Each holds every handle, repeat ticker and timer it started, and stopping one stops all of them.
 
-local function channel()
-    local c = settings().soundChannel or "game"
-    return c == "game" and "Voice" or c
+local following, preview
+
+local function stopEntry(entry)
+    if not entry then
+        return
+    end
+    for _, handle in ipairs(entry.handles) do
+        pcall(StopSound, handle)
+    end
+    if entry.ticker then
+        entry.ticker:Cancel()
+    end
+    if entry.timer then
+        entry.timer:Cancel()
+    end
 end
 
--- Plays a sound kit on your output at your volume. Returns its handle.
-local function play(kit)
+-- The channel for an output key: "game" is the game's voice output, like its pulse.
+local function channelFor(output)
+    output = output or settings().soundChannel or "game"
+    return output == "game" and "Voice" or output
+end
+
+-- Plays a sound kit on an output at your volume, adding its handle to the entry.
+local function play(entry, kit, output)
     local volume = (settings().soundVolume or 100) / 100
+    local handle
     if C_Sound and C_Sound.PlaySoundWithOptions then
-        local ok, success, handle = pcall(C_Sound.PlaySoundWithOptions, { soundKitID = kit, uiSoundSubType = channel(), volumeOverride = volume })
+        local ok, success, h = pcall(C_Sound.PlaySoundWithOptions, { soundKitID = kit, uiSoundSubType = channelFor(output), volumeOverride = volume })
         if ok and success then
-            return handle
+            handle = h
         end
     end
-    local ok, willPlay, handle = pcall(PlaySound, kit, channel())
-    return ok and willPlay and handle or nil
+    if not handle then
+        local ok, willPlay, h = pcall(PlaySound, kit, channelFor(output))
+        handle = ok and willPlay and h or nil
+    end
+    if handle then
+        entry.handles[#entry.handles + 1] = handle
+    end
 end
 
 -- The tier a game pulse kit belongs to (90 down to 10), from the game's own table.
@@ -217,40 +248,45 @@ local function tierOf(kit)
     return 50
 end
 
-local function chosenKit()
-    local c = choiceByKey[settings().soundChoice or "pulse"]
+-- The sound kit for a choice, or nil for the game's pulse.
+local function alertKit(choice)
+    local c = choiceByKey[choice or settings().soundChoice or "pulse"]
     if not c or c.key == "pulse" then
         return nil
     end
     return (SOUNDKIT and SOUNDKIT[c.key]) or c.id
 end
 
-function Sound:StopOurs()
-    if playing then
-        if playing.handle then
-            pcall(StopSound, playing.handle)
-        end
-        if playing.ticker then
-            playing.ticker:Cancel()
-        end
-        playing = nil
+-- Starts a choice for a game pulse kit: the same looping kit on the output, or the alert sound
+-- repeating every 2.4 seconds at 90% down to every 0.8 seconds at 10%.
+local function begin(kit, choice, output)
+    local entry = { kit = kit, handles = {} }
+    local alert = alertKit(choice)
+    if not alert then
+        play(entry, kit, output)
+        return entry
     end
+    play(entry, alert, output)
+    entry.ticker = C_Timer.NewTicker(0.6 + tierOf(kit) / 50, function()
+        play(entry, alert, output)
+    end)
+    return entry
 end
 
--- Starts your sound for a game pulse kit: the same kit on your output, or your chosen sound repeating,
--- every 2.4 seconds at 90% down to every 0.8 seconds at 10%.
-local function start(kit)
-    local alert = chosenKit()
-    if not alert then
-        playing = { kit = kit, handle = play(kit) }
-        return
-    end
-    local tier = tierOf(kit)
-    local every = 0.6 + tier / 50
-    playing = { kit = kit, handle = play(alert) }
-    playing.ticker = C_Timer.NewTicker(every, function()
-        play(alert)
-    end)
+function Sound:StopOurs()
+    stopEntry(following)
+    following = nil
+end
+
+function Sound:StopPreview()
+    stopEntry(preview)
+    preview = nil
+end
+
+-- Stops every sound the addon is playing. The game's own pulse is left to the game.
+function Sound:StopAll()
+    self:StopOurs()
+    self:StopPreview()
 end
 
 local function onPulse(_, kit)
@@ -265,12 +301,12 @@ local function onPulse(_, kit)
         Sound.hidden = true
         return
     end
-    if playing and playing.kit == kit then
+    if following and following.kit == kit then
         return
     end
     Sound:StopOurs()
     if kit then
-        start(kit)
+        following = begin(kit)
     end
 end
 
@@ -286,31 +322,50 @@ function Sound:Hook()
     end
     self.hooked = true
     hooksecurefunc(CombatAudioAlertManager, "SetHealthPulseSoundKit", onPulse)
+    -- The game ends its pulse here: when it changes tier (SetHealthPulseSoundKit then starts ours again),
+    -- when its 3-second volume preview ends, and on a loading screen.
     hooksecurefunc(CombatAudioAlertManager, "StopHealthPulse", function()
-        if not (playing and playing.kit) then
-            return
-        end
-        -- SetHealthPulseSoundKit stops the old pulse before it starts a new one, and its own hook then
-        -- starts ours again, so this only ends ours for good on a loading screen.
         Sound:StopOurs()
     end)
 end
 
--- Plays your sound for your threshold for a few seconds, on your output at your volume.
-function Sound:Test()
+-- Plays a choice on an output for PREVIEW_SECONDS, at the tier of your threshold. Calling it again for
+-- the same choice and output while it plays stops it. onStop, if given, is called when it ends.
+function Sound:Preview(choice, output, onStop)
+    local key = tostring(choice) .. "|" .. tostring(output)
+    local wasPlaying = preview and preview.key == key
+    self:StopPreview()
+    if wasPlaying then
+        return false
+    end
     local kits = _G.CombatAudioAlertPulseSoundData
     local kit = kits and kits[self:StepPercent()]
     if not kit then
         CRT:Print("This client has no low-health pulse sound.")
-        return
+        return false
     end
-    self:StopOurs()
-    start(kit)
-    C_Timer.After(TEST_SECONDS, function()
-        if playing and playing.kit == kit then
-            Sound:StopOurs()
+    preview = begin(kit, choice, output)
+    preview.key = key
+    local mine = preview
+    preview.timer = C_Timer.NewTimer(PREVIEW_SECONDS, function()
+        if preview == mine then
+            Sound:StopPreview()
+        end
+        if onStop then
+            onStop()
         end
     end)
+    return true
+end
+
+function Sound:IsPreviewing(choice, output)
+    return preview ~= nil and preview.key == (tostring(choice) .. "|" .. tostring(output))
+end
+
+-- Test sound: your current choice on your current output.
+function Sound:Test(onStop)
+    local s = settings()
+    return self:Preview(s.soundChoice or "pulse", s.soundChannel or "game", onStop)
 end
 
 -- Lines for /crt lowhp info.

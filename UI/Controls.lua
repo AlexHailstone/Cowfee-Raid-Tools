@@ -42,6 +42,9 @@ end
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
+--   decorate(button, option)  optional: adds to each item in the open menu, such as a Play button.
+--                             It may return the item's width and height. Anything it attaches with
+--                             button:AttachFrame or AttachFontString is removed when the menu closes.
 -- Returns the row, with row.refresh() to call when the setting may have changed.
 function UI.Dropdown(parent, text, opts)
     local labelWidth, width = opts.labelWidth or LABEL_W, opts.width or 200
@@ -58,11 +61,16 @@ function UI.Dropdown(parent, text, opts)
     dropdown:SetupMenu(function(_, root)
         local list = type(opts.options) == "function" and opts.options() or opts.options
         for _, option in ipairs(list) do
-            root:CreateRadio(option.label, function(key)
+            local radio = root:CreateRadio(option.label, function(key)
                 return opts.get() == key
             end, function(key)
                 opts.set(key)
             end, option.key)
+            if opts.decorate then
+                radio:AddInitializer(function(button)
+                    return opts.decorate(button, option)
+                end)
+            end
         end
     end)
     row.Dropdown = dropdown

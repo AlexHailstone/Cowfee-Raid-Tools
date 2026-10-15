@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.3</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.4</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -136,6 +136,7 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert |
 | `/crt settings` | Addon Settings: window scale and style, background opacity, fonts and layers |
 | `/crt lowhp off`, `/crt lowhp on` | Turns the experimental low-health alert off or on |
+| `/crt lowhp stop` | Stops any low-health sound the addon is playing |
 | `/crt perf` | Shows the addon's CPU use since the last `/reload`, from the game's profiler |
 | `/crt help` | Lists the commands |
 

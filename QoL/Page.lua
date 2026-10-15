@@ -23,6 +23,7 @@ local TEXT = {
     lowHealthOutput = "Output",
     lowHealthOutputNote = "Game default plays the sound on the game's voice output, like its own pulse. Pick a channel to follow that channel's volume and mute in the game's Sound settings instead.\n\nAny sound other than the game's pulse, or any channel, is played by the addon: the game's pulse runs silently and the addon plays yours whenever it starts or stops, so it still works in combat.",
     lowHealthTest = "Test sound",
+    lowHealthStop = "Stop sound",
     lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
     resetPosition = "Reset position",
 }
@@ -148,8 +149,53 @@ local function buildLowHealth(pf, top)
     local function soundOn()
         return alertOn() and settings().sound
     end
+    -- A Play button inside each item of the Sound and Output menus: the Sound menu plays each sound on
+    -- your output, the Output menu plays your sound on each output. Click again to stop; it stops by
+    -- itself after 3 seconds.
+    local function playButton(choiceOf, outputOf)
+        return function(button, option)
+            local choiceKey, outputKey = choiceOf(option), outputOf(option)
+            local hit = button:AttachFrame("Button")
+            hit:SetSize(40, 18)
+            hit:SetPoint("RIGHT", -4, 0)
+            hit:EnableMouse(true)
+            local label = button:AttachFontString()
+            label:SetFontObject(CRTFontButtonSmall)
+            label:SetPoint("CENTER", hit, "CENTER")
+            local token = {}
+            hit.crtToken = token
+            local function show()
+                if Sound:IsPreviewing(choiceKey, outputKey) then
+                    label:SetText("|cffff6060Stop|r")
+                else
+                    label:SetText("|cff80c0ffPlay|r")
+                end
+            end
+            show()
+            hit:SetScript("OnClick", function()
+                Sound:Preview(choiceKey, outputKey, function()
+                    -- The menu reuses its pieces, so only update this label if it is still this item's.
+                    if hit.crtToken == token then
+                        show()
+                    end
+                end)
+                show()
+            end)
+            if button.fontString then
+                button.fontString:SetPoint("RIGHT", hit, "LEFT", -6, 0)
+            end
+            local textWidth = button.fontString and button.fontString:GetUnboundedStringWidth() or 120
+            return textWidth + 80, 20
+        end
+    end
+
     local choice = UI.Dropdown(pf, TEXT.lowHealthChoice, {
         options = Sound.CHOICES,
+        decorate = playButton(function(option)
+            return option.key
+        end, function()
+            return settings().soundChannel or "game"
+        end),
         labelWidth = SLIDER_LABEL_W,
         width = 200,
         get = function()
@@ -167,6 +213,11 @@ local function buildLowHealth(pf, top)
 
     local output = UI.Dropdown(pf, TEXT.lowHealthOutput, {
         options = Sound.Outputs,
+        decorate = playButton(function()
+            return settings().soundChoice or "pulse"
+        end, function(option)
+            return option.key
+        end),
         labelWidth = SLIDER_LABEL_W,
         width = 200,
         get = function()
@@ -204,8 +255,12 @@ local function buildLowHealth(pf, top)
 
     local test = smallButton(pf, TEXT.lowHealthTest)
     test:SetPoint("LEFT", volume, "RIGHT", 12, 0)
+    -- Test sound plays your choice for 3 seconds; while it plays the button stops it.
     test:SetScript("OnClick", function()
-        Sound:Test()
+        local started = Sound:Test(function()
+            test:SetText(TEXT.lowHealthTest)
+        end)
+        test:SetText(started and TEXT.lowHealthStop or TEXT.lowHealthTest)
     end)
 
 end
@@ -222,6 +277,10 @@ local function build(pf)
     buildLowHealth(pf, -42)
 
     pf:SetScript("OnShow", refresh)
+    -- Leaving the page stops any sound being tried out.
+    pf:SetScript("OnHide", function()
+        CRT.LowHealthSound:StopPreview()
+    end)
 end
 
 UI:RegisterPage("qol", TEXT.title, build)
