@@ -19,6 +19,7 @@ local function printHelp()
     print("  |cffffd100/crt tattle post|r, |cffffd100night|r, |cffffd100end|r - post the last pull or tonight's totals, or end the night")
     print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
+    print("  |cffffd100/crt timeline|r - open the Timeline page")
     print("  |cffffd100/crt qol|r - open the Quality of Life page")
     print("  |cffffd100/crt settings|r - open General Settings: window, fonts, sound, minimap button, layers, profiles")
     print("  |cffffd100/crt minimap|r - show or hide the minimap button")
@@ -95,6 +96,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("No raid night is running.")
         end
+    elseif msg == "timeline" then
+        CRT.UI:Show("timeline")
     elseif msg == "tattle" then
         CRT.UI:Show("tattle")
     elseif msg == "tattle post" then
