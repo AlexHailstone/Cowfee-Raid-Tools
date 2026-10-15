@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 -- encounter, so share before the pull.
 --
 -- Message under the prefix CRTNote2: "<hash>|<part>|<total>|<data>". hash is a fingerprint of the
--- note text, so a raider who already has that exact note ignores it. data is the compressed note,
+-- note text, so a raider who already has that exact note skips the download and makes their stored
+-- copy the active note. Sharing a note always makes it the active note for everyone, the sender too,
+-- so notes can be shared ahead of time and shared again to switch the raid to one. data is the compressed note,
 -- with byte 0 (not allowed in addon messages) and the escape byte 1 written as two bytes each.
 -- Version 0.12 and earlier sent plain text under CRTNote, "<id>|<part>|<total>|<text>", which is
 -- still received so older senders keep working. Only a raid leader or assistant can share, and by
@@ -73,16 +75,16 @@ Comm.Fingerprint = fingerprint
 
 local known = {} -- raw text -> fingerprint, so stored notes are not hashed again and again
 
--- Whether a stored note already has exactly this text.
+-- The stored note with exactly this text, or nil.
 local function haveNote(hash)
-    for _, record in pairs(CRT.db.notes.list) do
+    for id, record in pairs(CRT.db.notes.list) do
         local raw = record.raw or ""
         known[raw] = known[raw] or fingerprint(raw)
         if known[raw] == hash then
-            return true
+            return id
         end
     end
-    return false
+    return nil
 end
 
 -- Escaping ---------------------------------------------------------------------------------------
@@ -212,6 +214,10 @@ function Comm:Share(id)
         return
     end
 
+    -- Sharing makes it the active note, here and for everyone who receives it.
+    if Notes:Active() ~= id then
+        Notes:SetActive(id)
+    end
     outgoing = {
         prefix = prefix,
         hash = prefix == PREFIX and fingerprint(text) or format("%04x", math.random(0, 65535)),
@@ -261,8 +267,9 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     local key = prefix .. sender .. ":" .. hash
     local buffer = incoming[key]
     if not buffer then
-        -- Already have this exact note: ignore all of its parts, with no import and no redraw.
-        buffer = { total = total, parts = {}, count = 0, skip = prefix == PREFIX and haveNote(hash) }
+        -- Already have this exact note: skip its parts (no download, no import), then make the stored
+        -- copy active once the share has finished arriving.
+        buffer = { total = total, parts = {}, count = 0, skip = prefix == PREFIX and haveNote(hash) or nil }
         incoming[key] = buffer
     end
     if not buffer.parts[part] then
@@ -274,6 +281,11 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     end
     incoming[key] = nil
     if buffer.skip then
+        local id = buffer.skip
+        if CRT.db.notes.list[id] and Notes:Active() ~= id then
+            Notes:SetActive(id)
+            CRT:Print(short .. " shared " .. (CRT.db.notes.list[id].name or "a note") .. ", which you already have. It is now your active note.")
+        end
         return
     end
 
