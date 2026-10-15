@@ -9,7 +9,8 @@ local UI = CRT.UI
 local Minimap_ = {}
 CRT.MinimapButton = Minimap_
 
-local ICON = "Interface\\Icons\\inv_drink_31_embalmingfluid"
+-- The addon's own coffee cup, a round 128 x 128 TGA in the Media folder.
+local ICON = "Interface\\AddOns\\CowfeeRaidTools\\Media\\Icon"
 
 local button
 
@@ -58,9 +59,8 @@ local function create()
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(ICON)
-    icon:SetSize(17, 17)
-    icon:SetPoint("TOPLEFT", 7, -6)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    icon:SetSize(20, 20)
+    icon:SetPoint("TOPLEFT", 6, -5)
 
     local border = button:CreateTexture(nil, "OVERLAY")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")

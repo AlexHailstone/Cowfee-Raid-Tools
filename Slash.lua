@@ -9,7 +9,6 @@ local function printHelp()
     print("  |cffffd100/crt check food|r, |cffffd100flask|r, |cffffd100rune|r, |cffffd100vantus|r, |cffffd100buffs|r or |cffffd100all|r - check the group, add |cffffd100chat|r to post it")
     print("  |cffffd100/crt rc|r - preview your ready check bar")
     print("  |cffffd100/crt debuffs|r - open the Debuffs page")
-    print("  |cffffd100/crt debuffs info|r - diagnostics for the debuff panel")
     print("  |cffffd100/crt notes|r - open the Raid Notes page (|cffffd100/crt notes settings|r opens its Settings tab)")
     print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
     print("  |cffffd100/crt late|r - open the Late Tracker page")
@@ -63,8 +62,6 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.ConsumablesTools:Check()
     elseif msg == "debuffs" then
         CRT.UI:Show("debuffs")
-    elseif msg == "debuffs info" then
-        CRT.DebuffPanel:ShowInfo()
     elseif msg == "notes" then
         CRT.NotesPage.Open("notes")
     elseif msg == "notes settings" then
@@ -126,6 +123,12 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         CRT.LowHealth:SetEnabled(msg == "lowhp on")
         CRT:Print("Low-health alert " .. (msg == "lowhp on" and "on." or "off."))
     --@do-not-package@
+    elseif msg == "dev debuffs" then
+        CRT.DebuffPanel:ShowInfo()
+    elseif msg == "dev reset" then
+        if CRT.Dev then
+            CRT.Dev:ResetAllPositions()
+        end
     elseif msg == "dev clear" then
         if CRT.Dev then
             CRT.Dev:ClearAll()

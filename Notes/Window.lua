@@ -281,6 +281,11 @@ local function createWindow(key, defaultPosition, build)
     hint:SetPoint("BOTTOMLEFT", 8, 6)
     hint:SetText("Unlocked: drag to move, drag the corner to resize")
 
+    local reset = CRT.UI.ResetButton(frame, function()
+        w:ResetPosition()
+    end)
+    reset:SetPoint("TOPRIGHT", -4, -4)
+
     local grip = CreateFrame("Button", nil, frame)
     grip:SetSize(16, 16)
     grip:SetPoint("BOTTOMRIGHT", -2, 2)
@@ -343,6 +348,7 @@ local function createWindow(key, defaultPosition, build)
         frame:EnableMouse(open)
         grip:SetShown(open)
         hint:SetShown(open)
+        reset:SetShown(open)
         self.lastText = nil
     end
 

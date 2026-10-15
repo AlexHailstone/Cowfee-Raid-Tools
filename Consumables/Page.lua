@@ -363,12 +363,6 @@ local function build(pf)
     line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
     marker:Hide()
 
-    local resetBar = makeButton(pf, "Reset bar position", 170)
-    resetBar:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -176, -10)
-    resetBar:SetScript("OnClick", function()
-        CRT.ConsumablesDisplay:ResetPosition()
-    end)
-
     local preview = makeButton(pf, "Preview on screen", 160)
     preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -10)
     preview:SetScript("OnClick", function()

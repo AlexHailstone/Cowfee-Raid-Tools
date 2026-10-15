@@ -74,6 +74,9 @@ local function build()
     local handleText = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     handleText:SetPoint("CENTER")
     handleText:SetText("Consumables: drag to move")
+    CRT.UI.ResetButton(handle, function()
+        Display:ResetPosition()
+    end):SetPoint("RIGHT", -2, 0)
     handle:SetScript("OnDragStart", function()
         if InCombatLockdown() then
             return

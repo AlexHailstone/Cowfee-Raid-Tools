@@ -32,7 +32,6 @@ local TEXT = {
     lowHealthTest = "Test sound",
     lowHealthStop = "Stop sound",
     lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
-    resetPosition = "Reset position",
 }
 
 local page
@@ -120,12 +119,6 @@ local function buildLowHealth(pf, top)
     })
     slider:SetPoint("TOPLEFT", 10, top - 42)
     controls[#controls + 1] = slider
-
-    local reset = smallButton(pf, TEXT.resetPosition)
-    reset:SetPoint("LEFT", slider, "RIGHT", 12, 0)
-    reset:SetScript("OnClick", function()
-        LowHealth:ResetPosition()
-    end)
 
     -- The sound: the game's own low-health pulse.
     local Sound = CRT.LowHealthSound

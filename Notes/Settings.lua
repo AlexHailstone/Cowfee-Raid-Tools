@@ -25,7 +25,6 @@ local TEXT = {
     windowAlpha = "Window alpha %",
     backgroundAlpha = "Background alpha %",
     font = "Font",
-    resetPosition = "Reset position",
 
     -- Alerts.
     alerts = "Alerts",
@@ -214,16 +213,6 @@ local function buildColumn(pf, index, def, top)
     })
     font:SetPoint("TOPLEFT", x, y - 70)
     controls[#controls + 1] = font
-
-    local reset = makeButton(pf, TEXT.resetPosition, COLUMN_W - 16)
-    reset:SetPoint("TOPLEFT", x, y - 104)
-    reset:SetScript("OnClick", function()
-        CRT.NoteWindow:ResetPosition(def.key)
-    end)
-    reset.refresh = function()
-        reset:SetEnabled(shown())
-    end
-    controls[#controls + 1] = reset
 end
 
 local function refresh()

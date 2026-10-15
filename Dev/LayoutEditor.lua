@@ -533,9 +533,38 @@ local function build()
     end)
     local done = makeButton(info, "Done", 104)
     done:SetPoint("BOTTOMLEFT", 8, 6)
+    local diag = makeButton(info, "Debuff diags", 104)
+    diag:SetPoint("LEFT", done, "RIGHT", 6, 0)
+    diag:SetScript("OnClick", function()
+        CRT.DebuffPanel:ShowInfo()
+    end)
+    local resetAll = makeButton(info, "Reset all pos.", 104)
+    resetAll:SetPoint("LEFT", diag, "RIGHT", 6, 0)
+    resetAll:SetScript("OnClick", function()
+        Dev:ResetAllPositions()
+    end)
     done:SetScript("OnClick", function()
         Dev:Toggle(false)
     end)
+end
+
+-- /crt dev reset: puts every movable window and the main panel back where they start.
+function Dev:ResetAllPositions()
+    CRT.ConsumablesDisplay:ResetPosition()
+    CRT.DebuffPanel:ResetPosition()
+    CRT.NoteAlert:ResetPosition()
+    for _, key in ipairs({ "window", "assignments", "personal" }) do
+        CRT.NoteWindow:ResetPosition(key)
+    end
+    CRT.LowHealth:ResetPosition()
+    CRT.ReadyCheckWindow:ResetPosition()
+    local w = CRT.db.window
+    w.point, w.x, w.y = "CENTER", 0, 0
+    if UI.frame then
+        UI.frame:ClearAllPoints()
+        UI.frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+    CRT:Print("Every window is back in its starting position.")
 end
 
 -- /crt dev clear: drops every saved change, for after they have been written into the code.

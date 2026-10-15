@@ -299,7 +299,7 @@ function UI:SkinTree(frame)
     end
 end
 
--- The menu: one list in Classic, grouped blocks in Modern.
+-- The menu: one list in Classic, grouped blocks in Modern, in the same order (UI.MENU_GROUPS).
 local MENU_ROW, MENU_GAP = 30, 2
 
 local function menuGroups()
@@ -332,7 +332,14 @@ function UI:LayoutMenu()
         bg:Hide()
     end
     if not self:IsModern() then
-        for i, key in ipairs(self.order) do
+        -- Classic lists the pages in the same order as Modern's blocks, as one list.
+        local order = {}
+        for _, keys in ipairs(menuGroups()) do
+            for _, key in ipairs(keys) do
+                order[#order + 1] = key
+            end
+        end
+        for i, key in ipairs(order) do
             local b = self.pages[key].button
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -(i - 1) * 32)
@@ -457,6 +464,38 @@ function UI.Help(parent, title, text)
                 GameTooltip:AddLine(paragraph, 0.85, 0.85, 0.85, true)
             end
         end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    return b
+end
+
+-- A small "Reset" button for the header bar of a window you can drag. It puts the window back where
+-- it starts, and is shown with the bar (or by the window, during Previews). onClick does the reset.
+function UI.ResetButton(parent, onClick)
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    b:SetSize(44, 16)
+    b:SetFrameLevel((parent:GetFrameLevel() or 1) + 5)
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    b:SetBackdropColor(0, 0, 0, 0.6)
+    b:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    local text = b:CreateFontString(nil, "OVERLAY", "CRTFontButtonSmall")
+    text:SetPoint("CENTER")
+    text:SetText("Reset")
+    b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8")
+    local highlight = b:GetHighlightTexture()
+    if highlight then
+        highlight:SetVertexColor(1, 1, 1, 0.15)
+    end
+    b:SetScript("OnClick", function()
+        onClick()
+    end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Reset position", 1, 1, 1)
+        GameTooltip:AddLine("Puts this window back where it starts.", 0.85, 0.85, 0.85, true)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function()
