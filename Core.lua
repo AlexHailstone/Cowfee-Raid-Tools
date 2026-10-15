@@ -141,14 +141,11 @@ local defaults = {
     -- Quality of Life options. lowHealth is the experimental low-health alert: threshold is the health
     -- percent at or under which the banner shows. position is added when the banner is moved.
     qol = {
-        -- sound turns on the game's own low-health pulse (QoL/LowHealthSound.lua), soundVolume is its
-        -- volume, and caaSaved holds the game settings it changed, to put back when it is turned off.
-        -- soundChoice is "pulse" (the game's own) or a key of LowHealthSound.CHOICES, soundChannel is
-        -- "game" (the game's own output) or a sound channel from CRT.SOUND_CHANNELS.
-        -- soundOnce plays the sound one time, in full, each time your health drops under the threshold
-        -- (off: it repeats). customSounds lists file names in the addon's Sounds folder that the player
-        -- added. A soundLength key from a 0.14.0 test build may remain and is ignored.
-        lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100, soundChoice = "pulse", soundChannel = "game", soundOnce = true, customSounds = {} },
+        -- sound turns on the game's own low-health warning (QoL/LowHealthSound.lua), soundVolume is its
+        -- volume, soundChoice is "pulse" (the game's own) or a key of LowHealthSound.CHOICES, the game
+        -- sound put into it, and caaSaved holds the game settings it changed, to put back when it is
+        -- turned off. soundChannel, soundOnce, soundLength and customSounds from 0.14.0 are ignored.
+        lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100, soundChoice = "pulse" },
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout

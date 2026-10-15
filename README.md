@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.14.0</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.14.1</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -43,7 +43,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Ready Check** | Your own consumables bar on every ready check. A raid report of everyone's food, flask, augment rune, Vantus rune and the raid buffs your group can give, shown to you or posted to chat. A ready check window for leaders with every player's answer, consumables, buffs and durability |
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
 | **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
-| **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider, and optionally a low-health sound at the same threshold: the game's own pulse, a game alert sound, a sound shared by another addon through LibSharedMedia, or your own .ogg or .mp3 file from the addon's Sounds folder, on the output channel you choose, played once each time your health drops under or repeating. Off by default |
+| **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider, and optionally a sound at the same threshold, played by the game's own low-health warning (Combat Audio Alerts): its pulse, or one of the game's alert sounds played once each time your health drops under. Off by default |
 | **Addon Settings** | Settings for the whole addon: the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, and the sound channel the addon's sounds play through |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
@@ -203,7 +203,6 @@ CowfeeRaidTools/
   UI/Panel.lua           main window, left menu, page registry, previews
   UI/Controls.lua        Edit Mode style dropdowns and sliders shared by the pages
   UI/SettingsPage.lua    the Addon Settings page
-  Sounds/                your own low-health sound files (see its README.txt)
   Groups/                Raid Groups: data, Apply, page
   Consumables/           your ready check bar and the consumables list
   ReadyCheck/            the Ready Check page, raid report and ready check window

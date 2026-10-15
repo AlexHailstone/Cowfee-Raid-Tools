@@ -16,18 +16,11 @@ local TEXT = {
     lowHealthTag = "(experimental)",
     lowHealthEnable = "Show a LOW HEALTH banner when my health is low",
     lowHealthThreshold = "Show it at or under this much health:",
-    lowHealthSound = "Also play the game's low-health pulse sound",
-    lowHealthSoundNote = "Turns on the game's own low-health pulse (Combat Audio Alerts, in the game's Accessibility options): a sound that loops while your health is under your threshold, faster as it drops. The game compares your health itself, so it works in combat, where an addon can't.\n\nThe pulse works in 10% steps, so your threshold is rounded to the nearest one (35% becomes 40%).\n\nIf you weren't using Combat Audio Alerts, its spoken alerts are switched off so only the pulse plays. Unticking this puts every game setting it changed back.",
+    lowHealthSound = "Also play a sound when my health is low",
+    lowHealthSoundNote = "Turns on the game's own low-health warning (Combat Audio Alerts, in the game's Accessibility options), which plays a sound while your health is under your threshold. The game compares your health itself, so it works in combat, where an addon can't.\n\nIt works in 10% steps, so your threshold is rounded to the nearest one (35% becomes 40%).\n\nIf you weren't using Combat Audio Alerts, its spoken alerts are switched off so only this sound plays. Unticking this puts every game setting it changed back.",
+    lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops. Any other sound plays once each time you drop under the threshold.\n\nThe game plays the sound itself, so only the game's own sounds can be used, on its voice output. Its volume follows Volume here and the Dialog volume in the game's Sound settings.",
     lowHealthVolume = "Volume",
     lowHealthChoice = "Sound",
-    lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops. Any other sound repeats, faster at each lower 10%.\n\nShared sounds come from other addons through LibSharedMedia, when one of them is installed.\n\nYour own sounds: put an .ogg or .mp3 file in Interface\\AddOns\\CowfeeRaidTools\\Sounds, /reload, then type its name below and press Add. Updating the addon by replacing its folder removes them, so keep a copy.\n\nVolume only changes the game's sounds. Shared and your own sounds play at the volume of their output channel.",
-    lowHealthOnce = "Play once each time my health drops under",
-    lowHealthOnceNote = "On: the sound plays one time, in full, each time your health drops under the threshold. Dropping lower during the same dip doesn't play it again; healing and dropping again does.\n\nOff: it repeats until you heal, faster as your health drops, each repeat cutting off the one before.\n\nThe game's pulse is a loop and keeps looping either way.",
-    lowHealthCustom = "Your sound file",
-    lowHealthAdd = "Add",
-    lowHealthRemove = "Remove",
-    lowHealthOutput = "Output",
-    lowHealthOutputNote = "Game default plays the sound on the game's voice output, like its own pulse. Pick a channel to follow that channel's volume and mute in the game's Sound settings instead.\n\nAny sound other than the game's pulse, or any channel, is played by the addon: the game's pulse runs silently and the addon plays yours whenever it starts or stops, so it still works in combat.",
     lowHealthTest = "Test sound",
     lowHealthStop = "Stop sound",
     lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Previews to place the banner.",
@@ -126,7 +119,7 @@ local function buildLowHealth(pf, top)
         LowHealth:ResetPosition()
     end)
 
-    -- The sound: the game's own low-health pulse.
+    -- The sound: the game's own low-health warning, with your choice of the game's sounds in it.
     local Sound = CRT.LowHealthSound
     local function alertOn()
         return settings().enabled
@@ -155,53 +148,45 @@ local function buildLowHealth(pf, top)
     local function soundOn()
         return alertOn() and settings().sound
     end
-    -- A Play button inside each item of the Sound and Output menus: the Sound menu plays each sound on
-    -- your output, the Output menu plays your sound on each output. Click again to stop; it stops by
-    -- itself after 3 seconds.
-    local function playButton(choiceOf, outputOf)
-        return function(button, option)
-            local choiceKey, outputKey = choiceOf(option), outputOf(option)
-            local hit = button:AttachFrame("Button")
-            hit:SetSize(40, 18)
-            hit:SetPoint("RIGHT", -4, 0)
-            hit:EnableMouse(true)
-            local label = button:AttachFontString()
-            label:SetFontObject(CRTFontButtonSmall)
-            label:SetPoint("CENTER", hit, "CENTER")
-            local token = {}
-            hit.crtToken = token
-            local function show()
-                if Sound:IsPreviewing(choiceKey, outputKey) then
-                    label:SetText("|cffff6060Stop|r")
-                else
-                    label:SetText("|cff80c0ffPlay|r")
-                end
+
+    -- A Play button inside each item of the Sound menu. Click again to stop.
+    local function playButton(button, option)
+        local hit = button:AttachFrame("Button")
+        hit:SetSize(40, 18)
+        hit:SetPoint("RIGHT", -4, 0)
+        hit:EnableMouse(true)
+        local label = button:AttachFontString()
+        label:SetFontObject(CRTFontButtonSmall)
+        label:SetPoint("CENTER", hit, "CENTER")
+        local token = {}
+        hit.crtToken = token
+        local function show()
+            if Sound:IsPreviewing(option.key) then
+                label:SetText("|cffff6060Stop|r")
+            else
+                label:SetText("|cff80c0ffPlay|r")
             end
-            show()
-            hit:SetScript("OnClick", function()
-                Sound:Preview(choiceKey, outputKey, function()
-                    -- The menu reuses its pieces, so only update this label if it is still this item's.
-                    if hit.crtToken == token then
-                        show()
-                    end
-                end)
-                show()
-            end)
-            if button.fontString then
-                button.fontString:SetPoint("RIGHT", hit, "LEFT", -6, 0)
-            end
-            local textWidth = button.fontString and button.fontString:GetUnboundedStringWidth() or 120
-            return textWidth + 80, 20
         end
+        show()
+        hit:SetScript("OnClick", function()
+            Sound:Preview(option.key, function()
+                -- The menu reuses its pieces, so only update this label if it is still this item's.
+                if hit.crtToken == token then
+                    show()
+                end
+            end)
+            show()
+        end)
+        if button.fontString then
+            button.fontString:SetPoint("RIGHT", hit, "LEFT", -6, 0)
+        end
+        local textWidth = button.fontString and button.fontString:GetUnboundedStringWidth() or 120
+        return textWidth + 80, 20
     end
 
     local choice = UI.Dropdown(pf, TEXT.lowHealthChoice, {
-        options = Sound.Choices,
-        decorate = playButton(function(option)
-            return option.key
-        end, function()
-            return settings().soundChannel or "game"
-        end),
+        options = Sound.CHOICES,
+        decorate = playButton,
         labelWidth = SLIDER_LABEL_W,
         width = 200,
         get = function()
@@ -217,29 +202,6 @@ local function buildLowHealth(pf, top)
     choice:SetPoint("TOPLEFT", 10, top - 100)
     controls[#controls + 1] = choice
     UI.Help(pf, TEXT.lowHealthChoice, TEXT.lowHealthChoiceNote):SetPoint("LEFT", choice, "RIGHT", 6, 0)
-
-    local output = UI.Dropdown(pf, TEXT.lowHealthOutput, {
-        options = Sound.Outputs,
-        decorate = playButton(function()
-            return settings().soundChoice or "pulse"
-        end, function(option)
-            return option.key
-        end),
-        labelWidth = SLIDER_LABEL_W,
-        width = 200,
-        get = function()
-            return settings().soundChannel or "game"
-        end,
-        set = function(key)
-            settings().soundChannel = key
-            Sound:Apply()
-            refresh()
-        end,
-        enabledIf = soundOn,
-    })
-    output:SetPoint("TOPLEFT", 10, top - 130)
-    controls[#controls + 1] = output
-    UI.Help(pf, TEXT.lowHealthOutput, TEXT.lowHealthOutputNote):SetPoint("LEFT", output, "RIGHT", 6, 0)
 
     local volume = UI.Slider(pf, TEXT.lowHealthVolume, {
         min = 0,
@@ -257,95 +219,18 @@ local function buildLowHealth(pf, top)
         end,
         enabledIf = soundOn,
     })
-    volume:SetPoint("TOPLEFT", 10, top - 160)
+    volume:SetPoint("TOPLEFT", 10, top - 130)
     controls[#controls + 1] = volume
 
-    -- Play once: the sound plays one time per dip under the threshold (not the game's looping pulse).
-    local once = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
-    once:SetSize(24, 24)
-    once:SetPoint("TOPLEFT", 6, top - 192)
-    local onceText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    onceText:SetPoint("LEFT", once, "RIGHT", 1, 0)
-    onceText:SetText(TEXT.lowHealthOnce)
-    UI.Help(pf, TEXT.lowHealthOnce, TEXT.lowHealthOnceNote):SetPoint("LEFT", onceText, "RIGHT", 6, 0)
-    once:SetScript("OnClick", function(self)
-        settings().soundOnce = self:GetChecked() and true or false
-        Sound:StopOurs()
-        refresh()
-    end)
-    once.refresh = function()
-        local on = soundOn() and (settings().soundChoice or "pulse") ~= "pulse"
-        once:SetChecked(settings().soundOnce ~= false)
-        once:SetEnabled(on and true or false)
-        local c = on and 1 or 0.5
-        onceText:SetTextColor(c, c, c)
-    end
-    controls[#controls + 1] = once
-
-    -- Your own sound files, added by name since the game can't list a folder.
-    local customLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    customLabel:SetPoint("TOPLEFT", 10, top - 228)
-    customLabel:SetWidth(SLIDER_LABEL_W)
-    customLabel:SetJustifyH("LEFT")
-    customLabel:SetText(TEXT.lowHealthCustom)
-    local customEdit = CreateFrame("EditBox", nil, pf, "InputBoxTemplate")
-    customEdit:SetAutoFocus(false)
-    customEdit:SetFontObject(CRTFontHighlight)
-    customEdit:SetMaxLetters(80)
-    customEdit:SetSize(190, 22)
-    customEdit:SetPoint("LEFT", customLabel, "RIGHT", 12, 0)
-    customEdit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    customEdit:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-    local add = smallButton(pf, TEXT.lowHealthAdd)
-    add:SetWidth(60)
-    add:SetPoint("LEFT", customEdit, "RIGHT", 8, 0)
-    add:SetScript("OnClick", function()
-        local ok, message = Sound:AddCustom(customEdit:GetText())
-        CRT:Print(message)
-        if ok then
-            local name = customEdit:GetText():gsub("^%s+", ""):gsub("%s+$", "")
-            customEdit:SetText("")
-            settings().soundChoice = "file:" .. name
-            Sound:Apply()
-        end
-        refresh()
-    end)
-    local remove = smallButton(pf, TEXT.lowHealthRemove)
-    remove:SetWidth(70)
-    remove:SetPoint("LEFT", add, "RIGHT", 6, 0)
-    remove:SetScript("OnClick", function()
-        local file = (settings().soundChoice or ""):match("^file:(.+)$")
-        if file and Sound:RemoveCustom(file) then
-            CRT:Print("Removed " .. file .. " from the list. The file itself stays in the Sounds folder.")
-            Sound:Apply()
-        end
-        refresh()
-    end)
-    controls[#controls + 1] = {
-        refresh = function()
-            local on = soundOn() and true or false
-            customEdit:SetEnabled(on)
-            add:SetEnabled(on)
-            remove:SetEnabled(on and (settings().soundChoice or ""):find("^file:") ~= nil)
-            local c = on and 1 or 0.5
-            customLabel:SetTextColor(c, c, c)
-        end,
-    }
-
+    -- Test sound plays your choice; while it plays the button stops it.
     local test = smallButton(pf, TEXT.lowHealthTest)
     test:SetPoint("LEFT", volume, "RIGHT", 12, 0)
-    -- Test sound plays your choice for 3 seconds; while it plays the button stops it.
     test:SetScript("OnClick", function()
         local started = Sound:Test(function()
             test:SetText(TEXT.lowHealthTest)
         end)
         test:SetText(started and TEXT.lowHealthStop or TEXT.lowHealthTest)
     end)
-
 end
 
 local function build(pf)
