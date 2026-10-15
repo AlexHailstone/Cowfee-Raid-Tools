@@ -171,9 +171,13 @@ local function build(pf)
         set = confirmFont,
     }), -188)
     local warning = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    -- Held between the dropdown and the page's right edge, so it wraps instead of running off the window.
     warning:SetPoint("LEFT", font, "RIGHT", 10, 0)
+    warning:SetPoint("RIGHT", pf, "RIGHT", -10, 0)
+    warning:SetJustifyH("LEFT")
+    warning:SetWordWrap(true)
     warning:SetTextColor(1, 0.55, 0.1)
-    warning:SetText("Changing this changes all other fonts in this addon.")
+    warning:SetText("Changes every font in this addon.")
     add(UI.Dropdown(pf, "Outline", {
         options = OUTLINES,
         labelWidth = LABEL_W,
