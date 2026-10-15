@@ -107,7 +107,8 @@ local function iconEnter(b)
         GameTooltip:AddLine(type(d.t) == "number" and ("Died at " .. View.Format(d.t)) or "time unknown", 1, 1, 1)
         local killer = spellName(d.spellID)
         GameTooltip:AddLine(killer and ("Killed by " .. killer) or "Killing blow unknown", 0.85, 0.85, 0.85)
-        if settings().overlayOn and mark.pull and mark.pull.id then
+        -- a pull laid over a reference always says which it is; the age overlay only when it is on
+        if (mark.overlay or settings().overlayOn) and mark.pull and mark.pull.id then
             GameTooltip:AddLine("Pull " .. mark.pull.id, 0.85, 0.85, 0.85)
         end
     elseif lane.kind == "reference" then

@@ -294,12 +294,19 @@ function Reference:ForBoss(encounterID, name)
 end
 
 -- The boss dropdown key of a reference: the listed boss it belongs to, else its own "ref:name" key.
--- listed is the bosses already in the dropdown, { { key, name } }.
+-- listed is the bosses already in the dropdown, { { key, name } }. The same rule as ForBoss: by
+-- encounter ID when the reference has one (never by name then), otherwise by name.
 function Reference:BossKey(entry, listed)
     local ref = entry.ref
     local want = norm(ref.boss)
     for _, l in ipairs(listed or {}) do
-        if (ref.encounterID and l.key == ref.encounterID) or norm(l.name) == want then
+        local match
+        if ref.encounterID then
+            match = l.key == ref.encounterID
+        else
+            match = norm(l.name) == want
+        end
+        if match then
             return l.key
         end
     end

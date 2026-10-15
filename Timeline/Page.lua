@@ -1,18 +1,26 @@
 local ADDON, CRT = ...
 
--- The Timeline page, with two tabs: Review (pick a boss and one of its saved pulls, see it drawn by
--- the timeline view) and Settings (the view, which rows to show, the deaths, and recording). Every
--- control writes through Timeline:Set or the Journal's setters, and the page redraws when either
--- tells it something changed. The boss list is the bosses with saved pulls plus the bosses of the
--- raid you are standing in, so a boss can be opened before its first pull.
+-- The Timeline page, with three tabs: Review (pick a boss and one of its references or saved
+-- pulls, see it drawn by the timeline view), References (Timeline/ReferencePage.lua: paste, edit
+-- and delete reference timelines) and Settings (the view, which rows to show, the deaths, and
+-- recording). Every control writes through Timeline:Set or the Journal's setters, and the page
+-- redraws when either tells it something changed. The boss list is the bosses with saved pulls,
+-- the bosses of the raid you are standing in, and the bosses that only have a reference, so a
+-- boss can be opened before its first pull. With a reference shown, the Recent pulls list beside
+-- it lays one of the boss's pulls over it; that choice is not saved.
 
 local Timeline = CRT.Timeline
 local Journal = CRT.TimelineJournal
 local View = CRT.TimelineView
+local Reference = CRT.TimelineReference
+local ReferencePage = CRT.TimelineReferencePage
 local UI = CRT.UI
 
 local ROW_H = 22
 local RIGHT_X = 360
+local RECENT_W = 150
+local RECENT_H = 32
+local DOT = " \194\183 "
 local EMPTY_BOSS = "No pulls recorded for this boss yet"
 local EMPTY_ALL = "No boss pulls recorded yet"
 
@@ -25,17 +33,22 @@ local BACKDROP = {
 
 local TABS = {
     { key = "review", label = "Review" },
+    { key = "references", label = "References" },
     { key = "settings", label = "Settings" },
 }
 
 local page, view, emptyLabel, unnamedHelp, bossLabel, deleteButton, rowsChild, addEdit
+local reviewFrame, holder, recentFrame, refTab
+local recentLines = {}
 local tabButtons, tabFrames = {}, {}
 local controls, rowPool = {}, {}
 local currentTab = "review"
 local selectedBoss, selectedPull
-local shownBoss, shownPull
+local shownBoss, shownPull, shownBase, shownOverlay
+local overlayID -- the pull laid over the shown reference, by id; not saved
 local raidCache = {}
 local bossList -- { { key, name, label } } for the dropdown and name lookups, rebuilt on each refresh
+local refsByBoss = {} -- boss key -> its references, { { key, ref, own, text } }, rebuilt with bossList
 local refresh
 
 local function settings()
@@ -144,10 +157,14 @@ local function raidBosses()
     return out
 end
 
--- Bosses with saved pulls first, then this raid's bosses that have none: { { key, name, label } },
--- the label being the name with the pull count for a boss that has pulls.
+-- Bosses with saved pulls first, then this raid's bosses that have none, then the bosses that only
+-- have a reference: { { key, name, label } }, the label being the name with the pull count for a
+-- boss that has pulls. Each reference goes to the boss Reference:BossKey gives it, so the boss list
+-- and each boss's references use one rule. A boss added for a reference has a text key, so a later
+-- reference finds it only by the same name, which is the key BossKey would give it anyway.
 local function buildBossList()
     local list, seen = {}, {}
+    refsByBoss = {}
     for _, boss in ipairs(Timeline:Bosses()) do
         seen[boss.encounterID] = true
         local name = boss.name ~= "" and boss.name or tostring(boss.encounterID)
@@ -159,6 +176,15 @@ local function buildBossList()
             list[#list + 1] = { key = boss.encounterID, name = boss.name, label = boss.name }
         end
     end
+    for _, entry in ipairs(Reference:List()) do
+        local key = Reference:BossKey(entry, list)
+        if not seen[key] then
+            seen[key] = true
+            list[#list + 1] = { key = key, name = entry.ref.boss, label = entry.ref.boss }
+        end
+        refsByBoss[key] = refsByBoss[key] or {}
+        table.insert(refsByBoss[key], entry)
+    end
     return list
 end
 
@@ -167,14 +193,38 @@ local function bossOptions()
     return bossList
 end
 
+-- The references of the selected boss, yours first.
+local function bossRefs()
+    bossOptions()
+    return selectedBoss and refsByBoss[selectedBoss] or {}
+end
+
+local function findRef(key)
+    for _, entry in ipairs(bossRefs()) do
+        if entry.key == key then
+            return entry
+        end
+    end
+end
+
+-- A reference is selected by its text key ("own:1", "ship:1"), a pull by its number.
+local function showingReference()
+    return type(selectedPull) == "string"
+end
+
+local function pullLabel(pull)
+    return "Pull " .. pull.id .. DOT .. View.Format(pull.length or 0) .. DOT .. (pull.kill and "kill" or "wipe")
+end
+
+-- The boss's references first, then its recorded pulls, newest first.
 local function pullOptions()
     local list = {}
+    for _, entry in ipairs(bossRefs()) do
+        list[#list + 1] = { key = entry.key, label = Reference.Label(entry.ref) }
+    end
     if selectedBoss then
         for _, pull in ipairs(Timeline:Pulls(selectedBoss)) do
-            list[#list + 1] = {
-                key = pull.id,
-                label = "Pull " .. pull.id .. " \194\183 " .. View.Format(pull.length or 0) .. " \194\183 " .. (pull.kill and "kill" or "wipe"),
-            }
+            list[#list + 1] = { key = pull.id, label = pullLabel(pull) }
         end
     end
     return list
@@ -192,7 +242,8 @@ local function bossName()
     end
 end
 
--- Keeps the selection valid: a boss that is still listed, and a pull that still exists (else the newest).
+-- Keeps the selection valid: a boss that is still listed, and a reference or pull that still exists
+-- (else the boss's first reference, else its newest pull). The overlay goes with a reference only.
 local function fixSelection()
     local options = bossOptions()
     local found = false
@@ -205,28 +256,86 @@ local function fixSelection()
         selectedBoss = options[1] and options[1].key or nil
         selectedPull = nil
     end
-    local pull = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull)
-    if not pull then
+    local valid
+    if showingReference() then
+        valid = findRef(selectedPull) ~= nil
+    else
+        valid = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull) ~= nil
+    end
+    if not valid then
+        local refs = bossRefs()
         local pulls = selectedBoss and Timeline:Pulls(selectedBoss) or {}
-        selectedPull = pulls[1] and pulls[1].id or nil
+        selectedPull = (refs[1] and refs[1].key) or (pulls[1] and pulls[1].id) or nil
+    end
+    if not showingReference() or not (overlayID and Timeline:Pull(selectedBoss, overlayID)) then
+        overlayID = nil
     end
 end
 
 -- The Review tab -------------------------------------------------------------------------------
 
+-- The Recent pulls list beside a reference: the boss's saved pulls, the overlaid one highlighted.
+local function updateRecent()
+    local pulls = showingReference() and Timeline:Pulls(selectedBoss) or {}
+    recentFrame:SetShown(showingReference())
+    for i, pull in ipairs(pulls) do
+        local line = recentLines[i]
+        if not line then
+            line = CreateFrame("Button", nil, recentFrame)
+            line:SetSize(RECENT_W, RECENT_H - 2)
+            line:SetPoint("TOPLEFT", recentFrame, "TOPLEFT", 0, -20 - (i - 1) * RECENT_H)
+            line.sel = line:CreateTexture(nil, "BACKGROUND")
+            line.sel:SetAllPoints()
+            line.sel:SetColorTexture(1, 0.82, 0, 0.18)
+            line.title = label(line, "", "CRTFontSmall")
+            line.title:SetPoint("TOPLEFT", 4, -2)
+            line.deaths = label(line, "", "CRTFontSmall")
+            line.deaths:SetPoint("TOPLEFT", 4, -16)
+            line.deaths:SetTextColor(1, 0.3, 0.3)
+            line:SetScript("OnClick", function(self)
+                overlayID = overlayID ~= self.pullID and self.pullID or nil
+                refresh()
+            end)
+            recentLines[i] = line
+        end
+        line.pullID = pull.id
+        line.title:SetText(pullLabel(pull))
+        local n = #(pull.deaths or {})
+        line.deaths:SetText(n == 1 and "1 death" or (n .. " deaths"))
+        line.sel:SetShown(pull.id == overlayID)
+        line:Show()
+    end
+    for i = #pulls + 1, #recentLines do
+        recentLines[i]:Hide()
+    end
+end
+
 local function updateView()
-    local pull = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull) or nil
-    if pull ~= shownPull or selectedBoss ~= shownBoss then
-        shownPull, shownBoss = pull, selectedBoss
-        view:SetData(pull, selectedBoss)
+    local base, sig
+    if showingReference() then
+        local entry = findRef(selectedPull)
+        base = entry and { reference = entry.ref }
+        sig = entry and entry.text -- each refresh parses afresh, so the text tells if it changed
+    else
+        base = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull) or nil
+        sig = base
+    end
+    local overlay = showingReference() and overlayID and Timeline:Pull(selectedBoss, overlayID) or nil
+    if sig ~= shownBase or selectedPull ~= shownPull or selectedBoss ~= shownBoss or overlay ~= shownOverlay then
+        shownBase, shownPull, shownBoss, shownOverlay = sig, selectedPull, selectedBoss, overlay
+        view:SetData(base, selectedBoss, overlay)
     else
         view:Refresh()
     end
     emptyLabel:SetText(selectedBoss and EMPTY_BOSS or EMPTY_ALL)
-    emptyLabel:SetShown(pull == nil)
+    emptyLabel:SetShown(base == nil)
+    -- the Recent pulls list takes the right edge while a reference is shown
+    holder:SetPoint("BOTTOMRIGHT", reviewFrame, "BOTTOMRIGHT", showingReference() and -(RECENT_W + 16) or -8, 8)
+    updateRecent()
 end
 
 local function buildReview(f)
+    reviewFrame = f
     local boss = UI.Dropdown(f, "Boss", {
         options = bossOptions,
         labelWidth = 40,
@@ -235,7 +344,7 @@ local function buildReview(f)
             return selectedBoss
         end,
         set = function(key)
-            selectedBoss, selectedPull = key, nil
+            selectedBoss, selectedPull, overlayID = key, nil, nil
             fixSelection()
             refresh()
         end,
@@ -249,7 +358,7 @@ local function buildReview(f)
             return selectedPull
         end,
         set = function(key)
-            selectedPull = key
+            selectedPull, overlayID = key, nil
             refresh()
         end,
         enabledIf = function()
@@ -273,7 +382,8 @@ local function buildReview(f)
 
     unnamedHelp = UI.Help(f, "Unnamed casts", function()
         local text = "Some boss casts come from the game without a readable spell, so they are drawn in the \"Boss casts (unnamed)\" row with only their time. That is the game hiding the name, not a missing record."
-        if view and view:CastCount() == 0 and selectedPull then
+        -- a reference has no casts of its own, so the hint is for recorded pulls only
+        if view and view:CastCount() == 0 and selectedPull and not showingReference() then
             text = text .. "\n\nThis pull has no casts at all. The game's Boss Timeline option may be off, so no boss events arrived. Check it in the game's options."
         end
         return text
@@ -293,7 +403,16 @@ local function buildReview(f)
         end,
     }), f, 8, -64)
 
-    local holder = CreateFrame("Frame", nil, f)
+    recentFrame = CreateFrame("Frame", nil, f)
+    recentFrame:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -96)
+    recentFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+    recentFrame:SetWidth(RECENT_W)
+    recentFrame:Hide()
+    local recentTitle = label(recentFrame, "Recent pulls")
+    recentTitle:SetPoint("TOPLEFT", 4, 0)
+    UI.Help(recentFrame, "Recent pulls", "This boss's saved pulls. Click one to lay it over the reference: its deaths go in the Deaths row, its casts are drawn as ticks in a row of their own (their spells are usually unreadable), and a line marks where it ended. Click it again to clear it."):SetPoint("LEFT", recentTitle, "RIGHT", 4, 0)
+
+    holder = CreateFrame("Frame", nil, f)
     holder:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -96)
     holder:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
     view = View.Create(holder)
@@ -332,9 +451,36 @@ local function settingSlider(parent, x, y, text, field, low, high, step, format)
     })
 end
 
+-- A reference row is hidden by its name (trimmed, lowercased, as the lanes read it), or by its
+-- [spell] when that spell's row is hidden.
+local function nameKey(name)
+    return (tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")):lower()
+end
+
+local function refRowHidden(row)
+    local mine = settings().rows and settings().rows[selectedBoss]
+    return (mine and mine.hiddenNames and mine.hiddenNames[nameKey(row.name)])
+        or (row.spellID and Journal:IsHidden(selectedBoss, row.spellID)) or false
+end
+
+local function setRefRowHidden(row, hidden)
+    local all = settings().rows or {}
+    settings().rows = all
+    all[selectedBoss] = all[selectedBoss] or {}
+    local mine = all[selectedBoss]
+    mine.hiddenNames = mine.hiddenNames or {}
+    mine.hiddenNames[nameKey(row.name)] = hidden or nil
+    if not hidden and row.spellID and Journal:IsHidden(selectedBoss, row.spellID) then
+        Journal:SetHidden(selectedBoss, row.spellID, false)
+    end
+    Timeline:Fire()
+end
+
 -- The rows of the selected boss, one line each: show or hide, the name, and Remove on your own.
+-- With a reference shown, they are the reference's rows instead.
 local function updateRows()
-    local rows = selectedBoss and Journal:Rows(selectedBoss) or {}
+    local entry = showingReference() and findRef(selectedPull)
+    local rows = entry and entry.ref.rows or (selectedBoss and Journal:Rows(selectedBoss)) or {}
     bossLabel:SetText(selectedBoss and ("Rows for " .. (bossName() or selectedBoss)) or "Pick a boss on the Review tab")
     for i, row in ipairs(rows) do
         local line = rowPool[i]
@@ -352,8 +498,14 @@ local function updateRows()
             line.text:SetWordWrap(false)
             line.remove = button(line, "Remove", 56)
             line.remove:SetPoint("RIGHT", 0, 0)
+            line.check.line = line
             line.check:SetScript("OnClick", function(self)
-                Journal:SetHidden(selectedBoss, line.spellID, not self:GetChecked())
+                local l = self.line
+                if l.refRow then
+                    setRefRowHidden(l.refRow, not self:GetChecked())
+                else
+                    Journal:SetHidden(selectedBoss, l.spellID, not self:GetChecked())
+                end
             end)
             line.remove:SetScript("OnClick", function()
                 Journal:RemoveCustom(selectedBoss, line.spellID)
@@ -361,10 +513,14 @@ local function updateRows()
             rowPool[i] = line
             UI:SkinTree(rowsChild) -- so the Modern look skins the new Remove button
         end
-        line.spellID = row.spellID
+        line.spellID, line.refRow = row.spellID, entry and row or nil
         line.text:SetText(row.name or tostring(row.spellID))
-        line.check:SetChecked(not Journal:IsHidden(selectedBoss, row.spellID))
-        line.remove:SetShown(row.own and true or false)
+        if entry then
+            line.check:SetChecked(not refRowHidden(row))
+        else
+            line.check:SetChecked(not Journal:IsHidden(selectedBoss, row.spellID))
+        end
+        line.remove:SetShown(not entry and row.own and true or false)
         line:Show()
     end
     for i = #rows + 1, #rowPool do
@@ -415,7 +571,7 @@ local function buildSettings(f)
 
     -- Rows
     label(f, "Rows"):SetPoint("TOPLEFT", f, "TOPLEFT", 8, -132)
-    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID (the number in its Wowhead address) to track a cast the Journal does not list. The Journal is read out of combat with the Journal window closed."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
+    UI.Help(f, "Rows", "The rows come from the boss's Encounter Journal abilities, then your own. Untick a row to hide it. Add a spell by its ID (the number in its Wowhead address) to track a cast the Journal does not list. The Journal is read out of combat with the Journal window closed.\n\nWith a reference shown, its own rows are listed instead, and unticking one hides it by name."):SetPoint("TOPLEFT", f, "TOPLEFT", 54, -133)
     bossLabel = label(f, "", "CRTFontSmall")
     bossLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -154)
     checkbox(f, 8, -172, "Hide rows with no casts in this pull", function()
@@ -515,6 +671,7 @@ refresh = function()
     end
     updateView()
     updateRows()
+    refTab:Refresh()
     deleteButton:SetEnabled(selectedBoss ~= nil and #Timeline:Pulls(selectedBoss) > 0)
 end
 
@@ -538,7 +695,7 @@ local function build(pf)
 
     local title = label(pf, "Timeline", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Timeline", "Every raid boss pull is saved automatically: when the boss cast its spells and when players died. Pick a boss and a pull on the Review tab to see it as a timeline, hover for the time, scroll the mouse wheel to zoom.\n\nThe Settings tab has the view, which rows are shown, the deaths filters and recording."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The Timeline", "Every raid boss pull is saved automatically: when the boss cast its spells and when players died. Pick a boss and a pull on the Review tab to see it as a timeline, hover for the time, scroll the mouse wheel to zoom.\n\nA reference is a boss's planned timeline. It is listed first in the pull list, and a recent pull can be laid over it. The References tab is where you paste your own.\n\nThe Settings tab has the view, which rows are shown, the deaths filters and recording."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
@@ -570,6 +727,16 @@ local function build(pf)
     line:SetPoint("TOPRIGHT", -8, -62)
 
     buildReview(tabFrames.review)
+    refTab = ReferencePage.Build(tabFrames.references, {
+        selectedBoss = function()
+            return selectedBoss
+        end,
+        bossName = bossName,
+        references = bossRefs,
+        refresh = function()
+            refresh()
+        end,
+    })
     buildSettings(tabFrames.settings)
 
     pf:SetScript("OnShow", function()

@@ -23,6 +23,7 @@ end
 
 -- Puts the deaths of each source on the lanes: one combined lane, or one lane per player. Deaths
 -- with no time go to unknown, but only the first source's (the shown pull's, not an older one's).
+-- A source laid over a reference marks its deaths, so their tooltip always names the pull.
 local function addDeaths(lanes, unknown, sources, settings, combined)
     local Timeline = CRT.Timeline
     local deathLane
@@ -48,7 +49,7 @@ local function addDeaths(lanes, unknown, sources, settings, combined)
                         lanes[#lanes + 1] = lane
                     end
                 end
-                lane.marks[#lane.marks + 1] = { t = death.t, spellID = death.spellID or 0, death = death, age = i - 1, pull = source.pull }
+                lane.marks[#lane.marks + 1] = { t = death.t, spellID = death.spellID or 0, death = death, age = i - 1, pull = source.pull, overlay = source.overlay }
             end
         end
     end
@@ -105,7 +106,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     local lanes, unknown = {}, {}
     local sources = {}
     if overlay then
-        sources[1] = { pull = overlay, deaths = overlay.deaths or {} }
+        sources[1] = { pull = overlay, deaths = overlay.deaths or {}, overlay = true }
     end
     addDeaths(lanes, unknown, sources, settings, settings.deathRows ~= "player")
 
