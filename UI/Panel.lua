@@ -140,11 +140,16 @@ end)
 -- Two looks, picked with the "Modern look" checkbox on General Settings (CRTDB.ui.modern):
 --   Classic  the menu as one list, and the style dropdown: "game" shows the window template's own
 --            art, "minimal" hides it for a flat black background with a thin border
---   Modern   a flat dark window with a teal line under the title and beside the menu, the menu in
---            grouped blocks (UI.MENU_GROUPS) with the selected page filled teal, and teal page tabs
+--   Modern   coffee colors (CRT.MOCHA in Core.lua): an espresso window with caramel lines under the
+--            title and beside the menu, the menu in grouped blocks (UI.MENU_GROUPS) with the
+--            selected page in mocha, mocha page tabs, flat dropdowns and buttons, and Arial Narrow
+--            text unless another font is picked (CRT:ApplyFonts)
 -- bgAlpha fades whichever background is showing, never the text or buttons.
 
-UI.TEAL = { 0.17, 0.54, 0.54 }
+local function mocha(key, alpha)
+    local c = CRT.MOCHA[key]
+    return c[1], c[2], c[3], alpha or 1
+end
 
 -- The Modern menu's blocks, top to bottom. A page not listed joins the last block.
 UI.MENU_GROUPS = {
@@ -175,10 +180,10 @@ function UI:ApplyStyle()
         texture:SetShown(flat)
     end
     if modern then
-        f.flatBg:SetColorTexture(0.055, 0.05, 0.047, 0.95 * alpha)
-        f.flatTitle:SetColorTexture(0.055, 0.05, 0.047, alpha)
+        f.flatBg:SetColorTexture(mocha("espresso", 0.96 * alpha))
+        f.flatTitle:SetColorTexture(mocha("espresso", alpha))
         for _, edge in ipairs(f.flatEdges) do
-            edge:SetColorTexture(0.17, 0.165, 0.157, alpha)
+            edge:SetColorTexture(mocha("edge", alpha))
         end
     else
         f.flatBg:SetColorTexture(0, 0, 0, 0.92 * alpha)
@@ -187,14 +192,110 @@ function UI:ApplyStyle()
             edge:SetColorTexture(0.3, 0.3, 0.3, alpha)
         end
     end
-    local t = self.TEAL
-    f.titleLine:SetColorTexture(t[1], t[2], t[3], alpha)
+    f.titleLine:SetColorTexture(mocha("caramel", alpha))
     f.titleLine:SetShown(modern)
-    f.menuLine:SetColorTexture(t[1], t[2], t[3], alpha)
+    f.menuLine:SetColorTexture(mocha("caramel", alpha))
     f.menuLine:SetShown(modern)
     self:LayoutMenu()
     for _, b in ipairs(self.tabs) do
         self:StyleTab(b, b.selected)
+    end
+    for _, control in ipairs(self.skinned) do
+        control.crtSkin(modern)
+    end
+end
+
+-- Flat controls for the Modern look. Each control gets its own flat background, a 1-pixel border and
+-- (for a dropdown) a small arrow, shown in Modern, while the game's art is faded out; Classic puts
+-- the game's art back. UI.skinned lists every control so ApplyStyle can switch them.
+UI.skinned = {}
+
+local function flatSkin(frame, inset)
+    inset = inset or 0
+    local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -6)
+    bg:SetPoint("TOPLEFT", inset, -inset)
+    bg:SetPoint("BOTTOMRIGHT", -inset, inset)
+    local edges = {}
+    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true }, { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
+        local e = frame:CreateTexture(nil, "BORDER", nil, -6)
+        e:SetPoint(side[1], bg, side[1])
+        e:SetPoint(side[2], bg, side[2])
+        if side[3] then
+            e:SetHeight(1)
+        else
+            e:SetWidth(1)
+        end
+        edges[#edges + 1] = e
+    end
+    return bg, edges
+end
+
+local function setFlat(bg, edges, shown, fill)
+    bg:SetShown(shown)
+    bg:SetColorTexture(mocha(fill or "roast"))
+    for _, e in ipairs(edges) do
+        e:SetShown(shown)
+        e:SetColorTexture(mocha("edge"))
+    end
+end
+
+-- A WowStyle1DropdownTemplate dropdown (UI.Dropdown makes them).
+function UI:SkinDropdown(d)
+    if d.crtSkin or not (d.Background and d.Arrow) then
+        return
+    end
+    local bg, edges = flatSkin(d, 0)
+    local arrow = d:CreateTexture(nil, "OVERLAY")
+    arrow:SetAtlas("auctionhouse-ui-dropdown-arrow-down")
+    arrow:SetSize(12, 8)
+    arrow:SetPoint("RIGHT", -7, 0)
+    d.crtSkin = function(modern)
+        d.Background:SetAlpha(modern and 0 or 1)
+        d.Arrow:SetAlpha(modern and 0 or 1)
+        setFlat(bg, edges, modern)
+        arrow:SetShown(modern)
+        arrow:SetVertexColor(mocha("caramel"))
+    end
+    self.skinned[#self.skinned + 1] = d
+    d.crtSkin(self:IsModern())
+end
+
+-- A UIPanelButtonTemplate button: its Left, Middle and Right art and its red highlight.
+function UI:SkinButton(b)
+    if b.crtSkin or not (b.Left and b.Middle and b.Right) then
+        return
+    end
+    local bg, edges = flatSkin(b, 1)
+    local hover = b:CreateTexture(nil, "HIGHLIGHT")
+    hover:SetAllPoints(bg)
+    hover:SetColorTexture(1, 1, 1, 0.08)
+    local highlight = b:GetHighlightTexture()
+    b.crtSkin = function(modern)
+        for _, art in ipairs({ b.Left, b.Middle, b.Right }) do
+            art:SetAlpha(modern and 0 or 1)
+        end
+        if highlight then
+            highlight:SetAlpha(modern and 0 or 1)
+        end
+        hover:SetAlpha(modern and 1 or 0)
+        setFlat(bg, edges, modern)
+    end
+    self.skinned[#self.skinned + 1] = b
+    b.crtSkin(self:IsModern())
+end
+
+-- Skins every panel button under a frame. Pages call nothing themselves: the panel runs this when a
+-- page is built or shown, and when a page tab changes, so buttons made later are caught too.
+function UI:SkinTree(frame)
+    for _, child in ipairs({ frame:GetChildren() }) do
+        if not child.crtSkin then
+            if child.Left and child.Middle and child.Right and child:GetObjectType() == "Button" then
+                self:SkinButton(child)
+            elseif child.Background and child.Arrow and child.SetupMenu then
+                self:SkinDropdown(child)
+            end
+        end
+        self:SkinTree(child)
     end
 end
 
@@ -248,7 +349,7 @@ function UI:LayoutMenu()
                     bg = menu:CreateTexture(nil, "BACKGROUND", nil, -1)
                     menu.blocks[g] = bg
                 end
-                bg:SetColorTexture(0.12, 0.11, 0.1, 0.9)
+                bg:SetColorTexture(mocha("roast", 0.95))
                 bg:ClearAllPoints()
                 bg:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, y)
                 bg:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -6, y)
@@ -279,12 +380,11 @@ function UI:StyleMenuButton(b, selected)
     b.selected = selected and true or false
     b.sel:SetShown(b.selected)
     if self:IsModern() then
-        local t = self.TEAL
-        b.sel:SetColorTexture(t[1] * 0.8, t[2] * 0.8, t[3] * 0.8, 0.9)
+        b.sel:SetColorTexture(mocha("mocha", 0.95))
         if b.selected then
-            b.text:SetTextColor(1, 1, 1)
+            b.text:SetTextColor(mocha("cream"))
         else
-            b.text:SetTextColor(0.85, 0.85, 0.85)
+            b.text:SetTextColor(mocha("latte"))
         end
     else
         b.sel:SetColorTexture(1, 0.82, 0, 0.18)
@@ -310,10 +410,8 @@ function UI:StyleTab(b, selected)
     b.sel:SetShown(b.selected)
     local modern = self:IsModern()
     if modern then
-        local t = self.TEAL
-        b.sel:SetColorTexture(t[1] * 0.8, t[2] * 0.8, t[3] * 0.8, 0.9)
-        local c = b.selected and 1 or 0.7
-        b.text:SetTextColor(c, c, c)
+        b.sel:SetColorTexture(mocha("mocha", 0.95))
+        b.text:SetTextColor(mocha(b.selected and "cream" or "latte"))
     else
         b.sel:SetColorTexture(1, 0.82, 0, 0.18)
         if b.selected then
@@ -324,8 +422,8 @@ function UI:StyleTab(b, selected)
     end
     if b.SetBackdropBorderColor then
         if modern then
-            b:SetBackdropColor(0.12, 0.11, 0.1, 0.9)
-            b:SetBackdropBorderColor(0.17, 0.165, 0.157, 1)
+            b:SetBackdropColor(mocha("roast", 0.95))
+            b:SetBackdropBorderColor(mocha("edge"))
         else
             b:SetBackdropColor(0, 0, 0, 0.4)
             b:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
@@ -335,6 +433,10 @@ end
 
 function UI:SetTabSelected(b, selected)
     self:StyleTab(b, selected)
+    -- A tab's content may be built only now, so its buttons are skinned here.
+    if selected and b:GetParent() then
+        self:SkinTree(b:GetParent())
+    end
 end
 
 -- A small blue (?) that shows an explanation as a tooltip, used for every bit of extra context so the
@@ -528,6 +630,7 @@ function UI:Create()
     end
 
     self.frame = f
+    self:SkinTree(f)
     self:ApplyStyle()
     f:Hide()
     return f
@@ -539,6 +642,7 @@ function UI:BuildPage(page)
     pf:Hide()
     page.frame = pf
     page.builder(pf)
+    self:SkinTree(pf)
 end
 
 function UI:SelectPage(key)

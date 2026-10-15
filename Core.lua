@@ -263,6 +263,20 @@ function CRT:FontPath(name)
     return nil
 end
 
+-- The Modern look's coffee colors, { r, g, b }. UI/Panel.lua paints the window with them and
+-- CRT:ApplyFonts colors the text.
+CRT.MOCHA = {
+    espresso = { 0.11, 0.078, 0.063 }, -- the window background
+    roast = { 0.165, 0.122, 0.098 }, -- menu blocks, fields and buttons
+    edge = { 0.30, 0.235, 0.188 }, -- borders
+    mocha = { 0.44, 0.31, 0.22 }, -- the selected page and tab
+    caramel = { 0.78, 0.56, 0.36 }, -- lines and accents
+    latte = { 0.87, 0.73, 0.56 }, -- headings and button text (the game's gold text)
+    cream = { 0.95, 0.90, 0.84 }, -- body text (the game's white text)
+}
+-- The Modern look's font, when the font setting is the default.
+CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"
+
 -- Shared font objects: Blizzard's fonts scaled up so every label, button and list is easier to read.
 -- Every text the addon draws uses one of these, so CRT:ApplyFonts changes all of it at once.
 CRT.FONT_SCALE = 1.2
@@ -275,7 +289,8 @@ local function makeFont(name, source, scale)
     size = math.floor(size * (scale or CRT.FONT_SCALE) + 0.5)
     -- SetFont's third argument is no longer optional (12.0.5), so pass "" when there are no flags.
     font:SetFont(path, size, flags or "")
-    fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "" }
+    local r, g, b = font:GetTextColor()
+    fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "", color = { r, g, b } }
     return font
 end
 
@@ -287,13 +302,28 @@ function CRT:ApplyFonts()
         return
     end
     local factor = (s.textSize or 100) / 100
+    local modern = s.modern
+    -- Arial Narrow is drawn smaller than the game's font at the same size, so Modern sizes it up a step.
+    local modernDefault = modern and not self:FontPath(s.font)
     for _, f in ipairs(fonts) do
-        local path = self:FontPath(s.font) or f.path
+        local path = self:FontPath(s.font) or (modern and self.MODERN_FONT) or f.path
         local flags = s.outline or ""
         if flags == "" then
             flags = f.flags
         end
-        f.object:SetFont(path, math.floor(f.size * factor + 0.5), flags)
+        local size = f.size * factor * (modernDefault and 1.1 or 1)
+        f.object:SetFont(path, math.floor(size + 0.5), flags)
+        -- Modern: the game's gold text turns latte and its white text cream; grey stays grey.
+        local r, g, b = f.color[1], f.color[2], f.color[3]
+        if modern and r and r > 0.9 then
+            local c = (g > 0.9 and b > 0.9) and self.MOCHA.cream or (b < 0.2 and self.MOCHA.latte) or nil
+            if c then
+                r, g, b = c[1], c[2], c[3]
+            end
+        end
+        if r then
+            f.object:SetTextColor(r, g, b)
+        end
     end
     -- The note windows keep their own font objects, so they redraw with the new font and outline.
     if self.Notes and self.Notes.Fire and self.ready then

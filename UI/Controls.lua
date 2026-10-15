@@ -74,6 +74,7 @@ function UI.Dropdown(parent, text, opts)
         end
     end)
     row.Dropdown = dropdown
+    UI:SkinDropdown(dropdown)
 
     row.refresh = function()
         -- Rebuilds the menu, which also updates the text shown on the closed dropdown.
