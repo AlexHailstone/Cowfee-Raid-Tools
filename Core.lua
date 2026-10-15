@@ -204,6 +204,17 @@ local defaults = {
         nextRef = 1,
         nextId = 1,
     },
+    -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).
+    -- reminders are the player's own timed reminders, phases the phase events they set up, overrides
+    -- their changes to shared packs, and nextId numbers them. The bars window position is added when moved.
+    alerts = {
+        bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
+        reminders = {},
+        phases = {},
+        overrides = {},
+        nextId = 1,
+    },
+
 }
 
 -- Profiles.lua reads these to know which keys a profile holds and to start a profile afresh.
