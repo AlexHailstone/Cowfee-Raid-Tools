@@ -64,8 +64,8 @@ function Alerts:Collect(run, opts)
             local ok, list = safe(def.Entries, run)
             if ok and type(list) == "table" then
                 for _, it in ipairs(list) do
-                    local keep = true
-                    if opts and opts.filter then
+                    local keep = type(it) == "table"
+                    if keep and opts and opts.filter then
                         local okF, res = safe(opts.filter, key, it)
                         keep = okF and res and true or false
                     end
@@ -140,11 +140,17 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
         end
     end
     -- A hook may have called Stop; only carry on if this run is still the current one.
-    if self.run == run then
-        self.items = self:Collect(run, opts)
-        self:StartPhase(self:Phases()[1], "start", GetTime())
-    end
+    -- Anything failing here must still clear `starting`, so it runs inside pcall.
+    local ok, err = pcall(function()
+        if self.run == run then
+            self.items = self:Collect(run, opts)
+            self:StartPhase(self:Phases()[1], "start", GetTime())
+        end
+    end)
     self.starting = false
+    if not ok and geterrorhandler then
+        geterrorhandler()(err)
+    end
     self:Fire()
 end
 
@@ -161,11 +167,11 @@ end
 -- Starts a phase now (or at `at`). False when no run is going or the phase already started.
 -- Every earlier phase that never started is marked skipped.
 function Alerts:StartPhase(ph, source, at)
-    if not self.running or type(ph) ~= "number" or self.starts[ph] then
+    -- A skipped phase never starts: its alerts must not fire once a later phase has begun.
+    if not self.running or type(ph) ~= "number" or self.starts[ph] or self.skipped[ph] then
         return false
     end
     self.starts[ph] = at or GetTime()
-    self.skipped[ph] = nil
     for _, p in ipairs(self:Phases()) do
         if p < ph and not self.starts[p] then
             self.skipped[p] = true
