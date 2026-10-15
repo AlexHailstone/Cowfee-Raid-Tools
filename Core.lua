@@ -46,6 +46,7 @@ local defaults = {
         raidsOnly = true,
         notLFR = true,
         include = { food = true, flask = true, rune = true, vantus = false, buffs = true },
+        buffLock = true, -- grey out your Ready button until everyone has your class's raid buff
         food = "any", -- before 0.13.2: "best" counted only the best food. Ignored now.
         flaskWarn = 5,
         lowFlask = true,

@@ -140,6 +140,8 @@ local function buildAuto(f)
     UI.Help(f, "What counts", "Food: any food buff counts, whatever was eaten.\n\nLower quality flasks need those marked in the built-in consumables list. Until they are, no flask is flagged.\n\nNot available: potions and healthstones used in the last fight (the combat log is closed to addons during boss fights in Midnight), and other players' weapon oils and armor kits (they aren't buffs, so the game doesn't show them to addons)."):SetPoint("LEFT", counts, "RIGHT", 6, 0)
     makeDropdown(f, 8, -240, "Flask and oil expiring warning", "flaskWarn", WARNS, nil, 200, 170)
     makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
+    local lock = makeCheck(f, 4, -304, "Lock my Ready button until everyone has my raid buff", "buffLock")
+    UI.Help(f, "Ready button lock", "When a ready check starts and someone in the group is missing your class's raid buff (Arcane Intellect, Fortitude, Battle Shout, Mark of the Wild, Skyfury or Blessing of the Bronze), your Ready button is greyed out until they have it. Hover it to see who.\n\nHold Shift and click Ready to ready anyway, and it unlocks by itself after 10 seconds, in case you can't buff.\n\nOnly players the game lets the addon read count. Anyone offline, out of sight, or whose buffs the game hides never locks you."):SetPoint("LEFT", lock, "RIGHT", 330, 0)
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.
     local Consumables = CRT.Consumables

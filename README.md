@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.2</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
+  <strong>Game version</strong> <code>12.1.5</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>Addon version</strong> <code>0.13.3</code> &nbsp;&nbsp;·&nbsp;&nbsp; <strong>License</strong> <code>MIT</code>
 </p>
 
 <!-- Add a screenshot taken with dummy names, then uncomment:
@@ -93,6 +93,7 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 - **Window.** A table that opens on a ready check for the raid leader and assistants: every player's ready answer, consumables, raid buffs and durability, for 30 seconds or until you right-click it. Arrange its columns by dragging the headings in the copy on this tab, and click a heading to hide it. Sort players by group, role or name, with a class color bar behind each row. Hover any cell to see the buff and how long it has left, or why it is missing.
 - **Your bar.** Five icons above the ready check for your own food, flask, potions, weapon oil and augment rune, with time left or bag count. Food, flask and weapon oil are clickable to use them. Drag items from your bags onto the bar to add your own, and drag the rows to set the icon order and which item is used first. Hover an icon to see the active buff or weapon oil and its time left.
 - **Settings.** Run the report automatically on a ready check or a pull timer, choose where it goes, and what counts (flask expiring warning, lower quality flasks). Any food buff counts as fed, whatever was eaten. The automatic report only goes to chat from whoever started the ready check, so it is posted once. Here you also turn your bar on or off, hide it on a ready check you started yourself, and set when it warns that a buff is running low.
+- **Ready button lock** (on by default). If your class gives a raid buff and someone in the group is missing it, your Ready button is greyed out until they have it; hover it to see who. Hold Shift and click Ready to ready anyway, and it unlocks by itself after 10 seconds. Players the game can't check never lock you.
 
 Durability and weapon oils in the window only show for players running Cowfee Raid Tools, since each one sends their own: the game never shows addons another player's weapon oil, because oils are weapon enchants, not buffs. Shift-clicking the Dur heading posts everyone under 30%.
 
