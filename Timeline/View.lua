@@ -272,8 +272,8 @@ function View.Create(parent)
             view:Zoom(delta)
         end
     end)
-    hscroll:SetScript("OnMouseDown", function()
-        view:StartDrag()
+    hscroll:SetScript("OnMouseDown", function(_, button)
+        view:StartDrag(button)
     end)
     hscroll:SetScript("OnMouseUp", function()
         view:StopDrag()
@@ -353,7 +353,12 @@ function Methods:ScrollLanes(delta)
     end
 end
 
-function Methods:StartDrag()
+-- Holding the right mouse button and moving scrolls the timeline sideways. The left button is
+-- left free for clicking on the timeline.
+function Methods:StartDrag(button)
+    if button ~= "RightButton" then
+        return
+    end
     self.dragX = GetCursorPosition() / self.hscroll:GetEffectiveScale()
     self.dragFrom = self.hscroll:GetHorizontalScroll()
 end
@@ -364,7 +369,7 @@ end
 
 function Methods:OnUpdate()
     if self.dragX then
-        if IsMouseButtonDown("LeftButton") then
+        if IsMouseButtonDown("RightButton") then
             local x = GetCursorPosition() / self.hscroll:GetEffectiveScale()
             self:ScrollTo(self.dragFrom - (x - self.dragX))
         else
@@ -397,8 +402,8 @@ function Methods:Icon(n)
         b.tex:SetPoint("BOTTOMRIGHT", -1, 1)
         b:SetScript("OnEnter", iconEnter)
         b:SetScript("OnLeave", hideTip)
-        b:SetScript("OnMouseDown", function()
-            self:StartDrag()
+        b:SetScript("OnMouseDown", function(_, button)
+            self:StartDrag(button)
         end)
         b:SetScript("OnMouseUp", function()
             self:StopDrag()
