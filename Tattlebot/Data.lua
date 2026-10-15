@@ -747,13 +747,17 @@ end
 local lastBoss -- { name, encounterID, combat }
 local combatCount = 0
 local lastRecorded -- { pull, boss }: the pull Tattlebot saved for the boss fight lastBoss was
+local scannedFight -- { pull, combat }: a fight saved from the Last fight view by AddScannedPull
 
--- The saved pull for the meter's current session, or nil when that fight was not a boss or no pull
--- was saved for it (tracking off, outside a raid, or the read failed).
+-- The saved pull for the meter's current session, or nil when none was saved for it: not a boss,
+-- tracking off, outside a raid, or the read failed, and not saved from the Last fight view either.
 function Tattle.LastFightPull()
     local boss = Tattle.LastFightBoss()
     if boss and lastRecorded and lastRecorded.boss == boss then
         return lastRecorded.pull
+    end
+    if scannedFight and scannedFight.combat == combatCount then
+        return scannedFight.pull
     end
     return nil
 end
@@ -783,6 +787,24 @@ function Tattle:Backfill(pull, players, ids)
     end
     self:Fire()
     return count
+end
+
+-- Saves a scanned fight that has no saved pull (not a boss, a training dummy, or a boss Tattlebot
+-- didn't read) as a pull holding the spells given, so spells added from the Last fight view show
+-- up at once. Returns the pull and how many players it holds damage for.
+function Tattle:AddScannedPull(scan, ids)
+    local boss = scan.boss
+    local pull = { players = {}, sources = 0, unnamed = scan.unnamed or 0, duration = scan.duration, scanned = true }
+    self:AddPull(pull, {
+        encounterID = boss and boss.encounterID,
+        name = boss and boss.name or "Not a boss",
+    })
+    scannedFight = { pull = pull, combat = combatCount }
+    local count = self:Backfill(pull, scan.players or {}, ids)
+    for _ in pairs(scan.players or {}) do
+        pull.sources = pull.sources + 1
+    end
+    return pull, count
 end
 
 -- The boss of the meter's current session, { name, encounterID }, or nil for a fight that was not
