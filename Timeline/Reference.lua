@@ -288,6 +288,59 @@ local function norm(name)
     return type(name) == "string" and fold(trim(name)):lower() or nil
 end
 
+local HEADERS = { boss = true, difficulty = true, length = true, encounter = true, phase = true }
+
+-- The Boss and Encounter lines of reference text, read loosely so a box that does not parse yet
+-- still says which boss it is for. Returns the boss name and encounter ID, either may be nil.
+function Reference.Header(text)
+    if type(text) ~= "string" then
+        return nil, nil
+    end
+    local boss, encounterID
+    for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
+        local key, val = trim((raw:gsub("\r", ""))):match("^(%a+)%s*:%s*(.*)$")
+        key = key and key:lower()
+        if key == "boss" and val ~= "" then
+            boss = trim((val:gsub("\194\160", " ")))
+        elseif key == "encounter" and val:match("^%d+$") then
+            encounterID = tonumber(val)
+        end
+    end
+    return boss, encounterID
+end
+
+-- Adds [spell N] to each ability line that has none and whose name matches one of rows (the boss's
+-- Journal abilities, { spellID, name }), by name in any case. Every other line is kept as it is.
+-- Returns the new text and how many lines got a spell ID.
+function Reference.FillSpellIDs(text, rows)
+    if type(text) ~= "string" then
+        return text, 0
+    end
+    local byName = {}
+    for _, row in ipairs(rows or {}) do
+        local key = norm(row.name)
+        if key and key ~= "" and type(row.spellID) == "number" and row.spellID > 0 and not byName[key] then
+            byName[key] = row.spellID
+        end
+    end
+    local out, filled = {}, 0
+    for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
+        local cr = raw:sub(-1) == "\r" and "\r" or ""
+        local line = cr == "" and raw or raw:sub(1, -2)
+        local indent, name, rest = line:match("^(%s*)([^:%[%(]+)(.*)$")
+        local key = name and line:match("^%s*(%a+)%s*:")
+        local id = name and byName[norm((name:gsub("\194\160", " ")))]
+        if id and not HEADERS[key and key:lower() or ""] and not rest:lower():find("%[%s*spell")
+            and line:sub(#indent + 1, #indent + 1) ~= "#" then
+            rest = trim(rest)
+            line = indent .. trim(name) .. " [spell " .. id .. "]" .. (rest:sub(1, 1) == ":" and "" or " ") .. rest
+            filled = filled + 1
+        end
+        out[#out + 1] = line .. cr
+    end
+    return table.concat(out, "\n"), filled
+end
+
 -- The references of a boss: by encounter ID when the reference has one, otherwise by boss name.
 function Reference:ForBoss(encounterID, name)
     local want = norm(name)
