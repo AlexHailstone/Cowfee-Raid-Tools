@@ -15,7 +15,7 @@ Rules.GROUP = 1.5          -- entries this close to the first of a run share one
 Rules.SPEECH_BEHIND = 1.5  -- a queued line this late makes the queue drop its lowest priority
 Rules.SPEECH_TIMEOUT = 4   -- seconds a line may play before the next starts without a finished event
 
-local LATE = 1  -- a speech item this many seconds past due is skipped, not spoken
+local LATE = 1  -- a speech item whose entry passed more than this many seconds ago is skipped, not spoken
 
 local LEVEL = { high = 3, normal = 2, low = 1 }
 
@@ -128,23 +128,35 @@ function Rules.Bars(lines, now, ahead, cap)
     return out, #list - #out
 end
 
--- Speech items that have come due and were not spoken yet. `spoken` is the caller's table of keys.
--- Every item returned or skipped as too late is marked, so it is considered once.
+-- Speech items that have come due and were not spoken yet, oldest first. `spoken` is the caller's table
+-- of keys, "<member id>#<index in that member's speech>", so a merged line changing members keeps its keys.
+-- Only members with their own speech output on contribute. Every item returned or skipped as too late is
+-- marked, so it is considered once. An item is skipped when its entry passed more than a second ago.
 function Rules.SpeechDue(lines, now, spoken)
     local items = {}
     for _, line in ipairs(lines) do
-        if line.outputs and line.outputs.speech then
-            for i, s in ipairs(line.speech or {}) do
-                local key = tostring(line.id) .. "#" .. i
-                if s.at <= now and not spoken[key] then
-                    spoken[key] = true
-                    if now - s.at <= LATE then
-                        items[#items + 1] = { key = key, at = s.at, text = s.text, priority = line.priority }
+        for _, member in ipairs(line.members or { line }) do
+            if member.outputs and member.outputs.speech then
+                for i, s in ipairs(member.speech or {}) do
+                    local key = tostring(member.id) .. "#" .. i
+                    if s.at <= now and not spoken[key] then
+                        spoken[key] = true
+                        -- Late is measured against the entry, as the note always did: a line whose speech
+                        -- time passed before the pull is still read out while the line itself is ahead.
+                        if now - (member.at or s.at) <= LATE then
+                            items[#items + 1] = { key = key, at = s.at, text = s.text,
+                                priority = member.priority or line.priority, seq = #items + 1 }
+                        end
                     end
                 end
             end
         end
     end
+    table.sort(items, function(a, b)
+        if a.at ~= b.at then return a.at < b.at end
+        return a.seq < b.seq
+    end)
+    for _, it in ipairs(items) do it.seq = nil end
     return items
 end
 

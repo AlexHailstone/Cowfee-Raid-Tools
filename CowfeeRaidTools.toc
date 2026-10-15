@@ -34,6 +34,7 @@ Debuffs\Panel.lua
 Debuffs\Page.lua
 Alerts\Rules.lua
 Alerts\Engine.lua
+Alerts\Speech.lua
 Notes\Parse.lua
 Notes\Data.lua
 Notes\Engine.lua

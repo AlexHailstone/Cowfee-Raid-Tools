@@ -15,46 +15,14 @@ local LINE_GAP = 2 -- between the name and the countdown
 local frame, handle, icon, block, label, countdown
 local previewOn = false
 local elapsed = 0
-local spoken = {} -- "runId:index" -> true once read out
 
 local function settings()
     return Notes:Alert()
 end
 
--- Text to speech ------------------------------------------------------------------------
-
-local function voiceId()
-    if C_TTSSettings and C_TTSSettings.GetVoiceOptionID then
-        local voiceType = (Enum and Enum.TtsVoiceType and Enum.TtsVoiceType.Standard) or 0
-        local ok, id = pcall(C_TTSSettings.GetVoiceOptionID, voiceType)
-        if ok and type(id) == "number" then
-            return id
-        end
-    end
-    if C_VoiceChat and C_VoiceChat.GetTtsVoices then
-        local ok, voices = pcall(C_VoiceChat.GetTtsVoices)
-        if ok and type(voices) == "table" and voices[1] then
-            return voices[1].voiceID
-        end
-    end
-    return nil
-end
-
+-- Text to speech is the alerts speech queue; the Settings tab's Test speech button speaks through here.
 function Alert:Speak(text)
-    if not (C_VoiceChat and C_VoiceChat.SpeakText) then
-        CRT:Print("Text to speech isn't available on this client.")
-        return
-    end
-    local id = voiceId()
-    if not id then
-        CRT:Print("No text to speech voice is installed. Check the game's Text to Speech settings.")
-        return
-    end
-    local s = settings()
-    local ok, err = pcall(C_VoiceChat.SpeakText, id, text, s.ttsRate or 0, s.ttsVolume or 100, false)
-    if not ok then
-        CRT:Print("Text to speech failed: " .. tostring(err))
-    end
+    CRT.AlertSpeech:SpeakNow(text)
 end
 
 -- The alert -------------------------------------------------------------------------------
@@ -142,25 +110,6 @@ function Alert:Refresh()
     if not (s.enabled and CRT.Alerts.running) then
         frame:Hide()
         return
-    end
-
-    -- Speech (until the alerts speech queue takes it over): each of your timers is read out once, as it
-    -- reaches the speech time. Any that passed long ago is skipped.
-    local note = Engine:Note()
-    for index, item in ipairs(note and note.timers or {}) do
-        if Engine:IsMine(item) then
-            local remaining = Engine:Remaining(item)
-            if remaining then
-                local key = Engine.runId .. ":" .. index
-                if s.tts and not spoken[key] and remaining <= (s.ttsSeconds or 3) then
-                    spoken[key] = true
-                    if remaining > -1 then
-                        local info = item.kind == "spell" and Notes:SpellInfo(item.spellId)
-                        self:Speak(info and info.name or item.text or "")
-                    end
-                end
-            end
-        end
     end
 
     -- The alert: the engine's line inside its warn and hold window, soonest first.
