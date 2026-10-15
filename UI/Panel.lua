@@ -299,7 +299,7 @@ function UI:SkinTree(frame)
     end
 end
 
--- The menu: one list in Classic, grouped blocks in Modern.
+-- The menu: one list in Classic, grouped blocks in Modern, in the same order (UI.MENU_GROUPS).
 local MENU_ROW, MENU_GAP = 30, 2
 
 local function menuGroups()
@@ -332,7 +332,14 @@ function UI:LayoutMenu()
         bg:Hide()
     end
     if not self:IsModern() then
-        for i, key in ipairs(self.order) do
+        -- Classic lists the pages in the same order as Modern's blocks, as one list.
+        local order = {}
+        for _, keys in ipairs(menuGroups()) do
+            for _, key in ipairs(keys) do
+                order[#order + 1] = key
+            end
+        end
+        for i, key in ipairs(order) do
             local b = self.pages[key].button
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -(i - 1) * 32)
