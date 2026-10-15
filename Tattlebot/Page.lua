@@ -436,17 +436,33 @@ local function refreshList()
 end
 
 -- Mechanics list ---------------------------------------------------------
--- The dropdown picks a boss from the shipped list, or the player's own spells. The list shows each
--- mechanic with its spell IDs. Own spells can be removed one by one and added below the list.
+-- The dropdown picks Last fight, a boss from the shipped list, or the player's own spells. Last fight
+-- lists every spell that damaged the group in the meter's current session, with a check box each,
+-- and Add checked adds them to the player's own spells, for that fight's boss. A boss shows its
+-- mechanics with their spell IDs. Own spells can be removed one by one and typed in below the list.
 
 local OWN = "own"
-local MECH_ROW_H = 20
-local shownBoss -- "boss:<index>" or OWN, nil until the tab is first shown
-local mechChild, addRow
+local SCAN = "scan"
+local MECH_ROW_H = 22
+local shownBoss -- SCAN, "boss:<index>" or OWN, nil until the tab is first shown
+local mechChild, addRow, scanBar
 local mechRows = {}
+local scanResult, scanError -- the last scan, and why the last try failed
+local checked = {} -- [spellID] = true for the ticked spells in the Last fight view
+
+-- Reads the meter again. A failed read (in combat) keeps the last good scan and says why.
+local function doScan()
+    local result, why = Tattle:Scan()
+    if result then
+        scanResult, scanError = result, nil
+        checked = {}
+    else
+        scanError = why
+    end
+end
 
 local function bossOptions()
-    local out = {}
+    local out = { { key = SCAN, label = "Last fight: pick spells to track" } }
     for i, boss in ipairs(Tattle.Bosses()) do
         out[#out + 1] = { key = "boss:" .. i, label = boss.boss or ("Boss " .. i) }
     end
@@ -455,8 +471,8 @@ local function bossOptions()
 end
 
 local function currentBoss()
-    if shownBoss == OWN then
-        return OWN
+    if shownBoss == OWN or shownBoss == SCAN then
+        return shownBoss
     end
     local i = shownBoss and tonumber(shownBoss:match("^boss:(%d+)$"))
     if i and Tattle.Bosses()[i] then
@@ -474,24 +490,76 @@ local function idList(ids)
     return table.concat(parts, ", ")
 end
 
+-- Where Add checked puts the spells: the scanned fight's boss, or any boss.
+local function scanTarget()
+    local boss = scanResult and scanResult.boss
+    return boss and boss.name or nil
+end
+
+-- The Last fight rows: a heading, then { text, check = spellID } for each spell not yet tracked.
+local function scanEntries()
+    local out = {}
+    if not scanResult then
+        out[1] = { text = "|cffff6060" .. (scanError or "No fight read yet. Press Rescan after a fight.") .. "|r" }
+        return out
+    end
+    local where = scanTarget()
+    out[1] = { text = format("|cffffd100Last fight|r: %s%s. Tick spells and press Add checked to track them %s.",
+        where or "not a boss", scanResult.duration and (", " .. duration(scanResult.duration)) or "",
+        where and ("on " .. where) or "on every boss") }
+    if scanError then
+        out[#out + 1] = { text = "|cffff6060" .. scanError .. " Showing the last fight read.|r" }
+    end
+    local tracked = Tattle.List()
+    for _, sp in ipairs(scanResult.spells) do
+        local tags = {}
+        if sp.avoidable then
+            tags[#tags + 1] = "|cffff9933avoidable|r"
+        end
+        local mech = tracked[sp.id]
+        if mech then
+            tags[#tags + 1] = "|cff80ff80tracked as " .. mech.name .. "|r"
+        end
+        local text = format("%s  |cff999999%d|r   |cffff8060%s|r on %d %s%s", sp.name, sp.id, Tattle.Short(sp.damage),
+            sp.players, sp.players == 1 and "player" or "players", #tags > 0 and ("   " .. table.concat(tags, ", ")) or "")
+        out[#out + 1] = { text = text, check = sp.id, tracked = mech ~= nil }
+    end
+    if #scanResult.spells == 0 then
+        out[#out + 1] = { text = "|cff999999Nobody in the group took damage in the last fight.|r" }
+    end
+    return out
+end
+
 -- Lines for the list: { text, id } where id is set for an own spell, which gets a Remove button.
 local function mechanicEntries()
     local key = currentBoss()
     local out = {}
+    if key == SCAN then
+        return scanEntries()
+    end
     if key == OWN then
         local list = {}
-        for id, name in pairs(Tattle:Settings().custom) do
+        local index = Tattle.List()
+        for id, v in pairs(Tattle:Settings().custom) do
+            local name, boss = v, nil
+            if type(v) == "table" then
+                name, boss = v.name, v.boss
+            end
             local label = (type(name) == "string" and name ~= "") and name or Tattle.SpellName(id)
-            list[#list + 1] = { id = id, label = label }
+            list[#list + 1] = { id = id, label = label, boss = boss or "", index = index[id] }
         end
         table.sort(list, function(a, b)
+            if a.boss:lower() ~= b.boss:lower() then
+                return a.boss:lower() < b.boss:lower()
+            end
             if a.label:lower() ~= b.label:lower() then
                 return a.label:lower() < b.label:lower()
             end
             return a.id < b.id
         end)
         for _, e in ipairs(list) do
-            local text = format("|cffffd100%s|r   %s", e.label, idList({ e.id }))
+            local where = e.boss ~= "" and ("|cffbbbbbb" .. e.boss .. ":|r ") or "|cffbbbbbbAny boss:|r "
+            local text = format("%s|cffffd100%s|r   %s", where, e.label, idList({ e.id }))
             -- A spell in the shipped list counts under that list's mechanic instead.
             local tracked = Tattle.List()[e.id]
             if tracked and not tracked.own then
@@ -500,7 +568,7 @@ local function mechanicEntries()
             out[#out + 1] = { text = text, id = e.id }
         end
         if #out == 0 then
-            out[1] = { text = "|cff999999None yet. Add a spell ID below.|r" }
+            out[1] = { text = "|cff999999None yet. Pick Last fight in the dropdown to add spells from a fight, or type a spell ID below.|r" }
         end
         return out
     end
@@ -530,8 +598,16 @@ local function getMechRow(i)
             Tattle:RemoveCustom(self.id)
         end
     end)
+    row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    row.check:SetSize(22, 22)
+    row.check:SetPoint("LEFT", 0, 0)
+    row.check:SetScript("OnClick", function(self)
+        if self.id then
+            checked[self.id] = self:GetChecked() and true or nil
+            refresh()
+        end
+    end)
     row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.text:SetPoint("LEFT", 4, 0)
     row.text:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
@@ -549,6 +625,14 @@ local function refreshMechanics()
         row.text:SetText(entry.text)
         row.remove.id = entry.id
         row.remove:SetShown(entry.id ~= nil)
+        -- Spells already tracked get no check box: they would add nothing.
+        local canCheck = entry.check ~= nil and not entry.tracked
+        row.check.id = canCheck and entry.check or nil
+        row.check:SetShown(canCheck)
+        row.check:SetChecked(canCheck and checked[entry.check] or false)
+        row.text:ClearAllPoints()
+        row.text:SetPoint("LEFT", entry.check and 26 or 4, 0)
+        row.text:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
         row:Show()
     end
     for i = #entries + 1, #mechRows do
@@ -556,6 +640,15 @@ local function refreshMechanics()
     end
     mechChild:SetHeight(#entries * MECH_ROW_H)
     addRow:SetShown(currentBoss() == OWN)
+    scanBar:SetShown(currentBoss() == SCAN)
+    if currentBoss() == SCAN then
+        local n = 0
+        for _ in pairs(checked) do
+            n = n + 1
+        end
+        scanBar.add:SetEnabled(n > 0)
+        scanBar.add:SetText(n > 0 and format("Add %d checked", n) or "Add checked")
+    end
 end
 
 -- Refresh ----------------------------------------------------------------
@@ -853,12 +946,15 @@ local function buildMechanics(f)
         get = currentBoss,
         set = function(key)
             shownBoss = key
+            if key == SCAN then
+                doScan()
+            end
             refresh()
         end,
     })
     bossDropdown:SetPoint("TOPLEFT", 8, -8)
     controls[#controls + 1] = bossDropdown
-    UI.Help(f, "Tracked mechanics", "Pick a boss to see the mechanics Tattlebot tracks for it, with their spell IDs. These ship with the addon, in Tattlebot/Database.lua.\n\nYour own spells adds spell IDs of your own, tracked on every boss.\n\nAll the spell IDs of one mechanic are added together in the reports, so each mechanic is one line however many IDs it has.\n\nTo find spell IDs, do a pull, leave combat and type /crt tattle scan. It lists every spell that damaged the group in the last fight."):SetPoint("LEFT", bossDropdown, "RIGHT", 6, 0)
+    UI.Help(f, "Tracked mechanics", "Last fight lists every spell that damaged the group in the last fight. Tick the ones to track and press Add checked. They go to Your own spells, for that fight's boss.\n\nA boss shows the mechanics that ship with the addon, in Tattlebot/Database.lua, with their spell IDs.\n\nYour own spells lists the spells you added, and can add one by its spell ID.\n\nAll the spell IDs of one mechanic are added together in the reports, so each mechanic is one line however many IDs it has. /crt tattle scan opens Last fight."):SetPoint("LEFT", bossDropdown, "RIGHT", 6, 0)
 
     local count = label(f, "", "CRTFontSmall")
     count:SetPoint("TOPRIGHT", -12, -16)
@@ -882,6 +978,58 @@ local function buildMechanics(f)
     scroll:SetScript("OnSizeChanged", function(_, w)
         mechChild:SetWidth(w)
     end)
+
+    -- Last fight: an optional mechanic name for the ticked spells, Add checked, Rescan, and the plain
+    -- text for the shipped list.
+    scanBar = CreateFrame("Frame", nil, f)
+    scanBar:SetPoint("BOTTOMLEFT", 8, 8)
+    scanBar:SetPoint("BOTTOMRIGHT", -8, 8)
+    scanBar:SetHeight(28)
+    local mechLabel = label(scanBar, "Mechanic", "CRTFontSmall")
+    mechLabel:SetPoint("LEFT", 0, 0)
+    local mechEdit = editBox(scanBar, 170, 40, false)
+    mechEdit:SetPoint("LEFT", mechLabel, "RIGHT", 10, 0)
+    mechEdit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    scanBar.add = makeButton(scanBar, "Add checked", 130)
+    scanBar.add:SetPoint("LEFT", mechEdit, "RIGHT", 8, 0)
+    UI.Help(scanBar, "Add checked", "Adds the ticked spells to Your own spells, tied to the boss of the fight, so History counts them against that boss's pulls. A fight that was not a boss adds them for every boss.\n\nLeave Mechanic empty to use each spell's own name, so spells that share a name become one mechanic. Type a name to put every ticked spell under it."):SetPoint("LEFT", scanBar.add, "RIGHT", 6, 0)
+    scanBar.add:SetScript("OnClick", function()
+        if not scanResult then
+            return
+        end
+        local ids, names = {}, {}
+        local typed = strtrim(mechEdit:GetText() or "")
+        for _, sp in ipairs(scanResult.spells) do
+            if checked[sp.id] then
+                ids[#ids + 1] = sp.id
+                names[sp.id] = typed ~= "" and typed or sp.name
+            end
+        end
+        if #ids == 0 then
+            return
+        end
+        local boss = scanResult.boss
+        checked = {}
+        mechEdit:SetText("")
+        mechEdit:ClearFocus()
+        Tattle:AddCustomMany(ids, names, boss and boss.name, boss and boss.encounterID)
+        CRT:Print(format("Tattlebot now tracks %d more %s%s.", #ids, #ids == 1 and "spell" or "spells", boss and boss.name and (" on " .. boss.name) or ""))
+    end)
+    local copy = makeButton(scanBar, "Copy as text", 110)
+    copy:SetPoint("RIGHT", 0, 0)
+    copy:SetScript("OnClick", function()
+        CRT.TattlePage.ScanText()
+    end)
+    tooltip(copy, "Copy as text", "Opens the last fight's spells as lines for the shipped list in Tattlebot/Database.lua.")
+    local rescan = makeButton(scanBar, "Rescan", 80)
+    rescan:SetPoint("RIGHT", copy, "LEFT", -4, 0)
+    rescan:SetScript("OnClick", function()
+        doScan()
+        refresh()
+    end)
+    tooltip(rescan, "Rescan", "Reads the damage meter again, for the fight that just ended. It can't be read during combat.")
 
     -- Adding an own spell: its ID and, optionally, the mechanic to count it under.
     addRow = CreateFrame("Frame", nil, f)
@@ -975,7 +1123,19 @@ UI:RegisterPage("tattle", "Tattlebot", build)
 
 -- For /crt tattle scan and export.
 CRT.TattlePage = {
+    -- Opens the Mechanics tab on Last fight, read fresh.
     Scan = function()
+        shownBoss = SCAN
+        currentTab = "mechanics"
+        doScan()
+        if page and page:IsShown() then
+            selectTab("mechanics")
+            refresh()
+        else
+            UI:Show("tattle")
+        end
+    end,
+    ScanText = function()
         local text, why = Tattle:ScanText()
         if not text then
             CRT:Print(why)

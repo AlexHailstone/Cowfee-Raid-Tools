@@ -78,7 +78,9 @@ function Tattle:Delete(id)
 end
 
 -- The tracked mechanics. The shipped list in Tattlebot/Database.lua is grouped by boss, and the
--- player's own spells (CRTDB.tattle.custom, [spellID] = mechanic name) are a group of their own.
+-- player's own spells are in CRTDB.tattle.custom: [spellID] = { name, boss, encounterID } when added
+-- from the Last fight view (boss and encounterID only when that fight was a boss), or a plain
+-- mechanic name string when typed in by hand.
 -- Every tracked spell ID maps to its mechanic, { key, name, boss, own }, and the reports add up all
 -- the spells of one mechanic under its name. Pulls store damage per spell ID, so a mechanic that
 -- gains or loses an ID later still adds up right in old nights.
@@ -100,10 +102,14 @@ local function buildIndex()
             end
         end
     end
-    for id, name in pairs(tdb().custom) do
+    for id, v in pairs(tdb().custom) do
         if not index[id] then
+            local name, boss, encounterID = v, nil, nil
+            if type(v) == "table" then
+                name, boss, encounterID = v.name, v.boss, v.encounterID
+            end
             local label = (type(name) == "string" and name ~= "") and name or Tattle.SpellName(id)
-            index[id] = { key = "own/" .. label:lower(), name = label, own = true }
+            index[id] = { key = "own/" .. (boss or ""):lower() .. "/" .. label:lower(), name = label, own = true, boss = boss, encounterID = encounterID }
         end
     end
     return index
@@ -128,9 +134,27 @@ function Tattle.Mechanic(id)
 end
 
 -- The player's own spells. name may be empty, and then the game's spell name is used. Spells given
--- the same name are reported as one mechanic.
-function Tattle:AddCustom(id, name)
-    tdb().custom[id] = name or ""
+-- the same name (and boss) are reported as one mechanic. boss and encounterID tie the mechanic to a
+-- boss, for the History filter's pull count; without them it counts on every pull.
+function Tattle:AddCustom(id, name, boss, encounterID)
+    if boss or encounterID then
+        tdb().custom[id] = { name = name or "", boss = boss, encounterID = encounterID }
+    else
+        tdb().custom[id] = name or ""
+    end
+    index = nil
+    self:Fire()
+end
+
+-- Adds several spells in one go, from the Last fight view. names[id] is each spell's mechanic name.
+function Tattle:AddCustomMany(ids, names, boss, encounterID)
+    for _, id in ipairs(ids) do
+        if boss or encounterID then
+            tdb().custom[id] = { name = names[id] or "", boss = boss, encounterID = encounterID }
+        else
+            tdb().custom[id] = names[id] or ""
+        end
+    end
     index = nil
     self:Fire()
 end
@@ -718,9 +742,24 @@ end
 
 -- The scan ---------------------------------------------------------------------------------------------
 
--- Every spell that damaged the group in the meter's current session, as lines to paste into
--- Tattlebot/Database.lua, most damage first.
-function Tattle:ScanText()
+-- The last boss fight and how many times combat has started, so a scan can tell whether the
+-- meter's current session is that boss: it is when no combat started after the boss ended.
+local lastBoss -- { name, encounterID, combat }
+local combatCount = 0
+
+-- The boss of the meter's current session, { name, encounterID }, or nil for a fight that was not
+-- a boss.
+function Tattle.LastFightBoss()
+    if lastBoss and lastBoss.combat == combatCount then
+        return lastBoss
+    end
+    return nil
+end
+
+-- Every spell that damaged the group in the meter's current session, most damage first: { spells =
+-- { { id, name, damage, players, avoidable, tracked } }, duration, unnamed, boss }, or nil and why.
+-- tracked is the mechanic the spell already counts under, if any.
+function Tattle:Scan()
     local why = self.Unavailable()
     if why then
         return nil, why
@@ -732,51 +771,64 @@ function Tattle:ScanText()
         end
         return nil, "The damage meter has no fight to read yet."
     end
-    local spells = {}
+    local byId = {}
     for _, p in pairs(pull.players) do
         for id, amount in pairs(p.spells) do
-            local s = spells[id]
+            local s = byId[id]
             if not s then
                 s = { id = id, damage = 0, players = 0 }
-                spells[id] = s
+                byId[id] = s
             end
             s.damage = s.damage + amount
             s.players = s.players + 1
         end
     end
+    local avoidable = avoidableSet()
+    local tracked = Tattle.List()
     local list = {}
-    for _, s in pairs(spells) do
+    for id, s in pairs(byId) do
+        s.name = Tattle.SpellName(id)
+        s.avoidable = avoidable[id] or false
+        s.tracked = tracked[id]
         list[#list + 1] = s
     end
     table.sort(list, function(a, b)
-        return a.damage > b.damage
+        if a.damage ~= b.damage then
+            return a.damage > b.damage
+        end
+        return a.id < b.id
     end)
-    local avoidable = avoidableSet()
-    local tracked = Tattle.List()
-    local lines = {
-        format("-- Damage taken in the last fight (%s), most first. Copy the lines you want into a", pull.duration and (pull.duration .. " s") or "length unknown"),
-        "-- boss's mechanics in Tattlebot/Database.lua, or add the IDs on the Mechanics tab.",
-    }
-    local night = self:Current()
-    local last = night and night.pulls[#night.pulls]
-    if last and last.encounterID then
-        lines[#lines + 1] = format("-- Last boss pull Tattlebot read: %s, encounterID = %d", last.name or "?", last.encounterID)
+    return { spells = list, duration = pull.duration, unnamed = pull.unnamed, boss = Tattle.LastFightBoss() }
+end
+
+-- The scan as lines to paste into Tattlebot/Database.lua.
+function Tattle:ScanText()
+    local scan, why = self:Scan()
+    if not scan then
+        return nil, why
     end
-    for _, s in ipairs(list) do
+    local lines = {
+        format("-- Damage taken in the last fight (%s), most first. Copy the lines you want into a", scan.duration and (scan.duration .. " s") or "length unknown"),
+        "-- boss's mechanics in Tattlebot/Database.lua.",
+    }
+    if scan.boss then
+        lines[#lines + 1] = format("-- The fight was %s, encounterID = %s", scan.boss.name or "?", tostring(scan.boss.encounterID or "?"))
+    end
+    for _, s in ipairs(scan.spells) do
         local notes = { Tattle.Short(s.damage) .. " on " .. players(s.players) }
-        if avoidable[s.id] then
+        if s.avoidable then
             notes[#notes + 1] = "the game marks it avoidable"
         end
-        if tracked[s.id] then
-            notes[#notes + 1] = "already tracked as " .. tracked[s.id].name
+        if s.tracked then
+            notes[#notes + 1] = "already tracked as " .. s.tracked.name
         end
-        lines[#lines + 1] = format("{ name = %q, spells = { %d } }, -- %s", Tattle.SpellName(s.id), s.id, table.concat(notes, ", "))
+        lines[#lines + 1] = format("{ name = %q, spells = { %d } }, -- %s", s.name, s.id, table.concat(notes, ", "))
     end
-    if #list == 0 then
+    if #scan.spells == 0 then
         lines[#lines + 1] = "-- Nobody in the group took damage in the last fight."
     end
-    if pull.unnamed > 0 then
-        lines[#lines + 1] = format("-- %s could not be named, so their damage is missing.", players(pull.unnamed))
+    if scan.unnamed > 0 then
+        lines[#lines + 1] = format("-- %s could not be named, so their damage is missing.", players(scan.unnamed))
     end
     return table.concat(lines, "\n")
 end
@@ -859,6 +911,7 @@ driver:RegisterEvent("ENCOUNTER_END")
 driver:SetScript("OnEvent", function(_, event, ...)
     if event == "PLAYER_REGEN_DISABLED" then
         inCombat = true
+        combatCount = combatCount + 1
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false
         if pending and pending.waiting then
@@ -866,10 +919,16 @@ driver:SetScript("OnEvent", function(_, event, ...)
             schedule(pending)
         end
     elseif event == "ENCOUNTER_END" then
+        local encounterID, encounterName, difficultyID, _, success = ...
+        -- Remembered even when not tracking, for the Last fight view.
+        lastBoss = {
+            name = readable(encounterName) and encounterName or nil,
+            encounterID = readable(encounterID) and encounterID or nil,
+            combat = combatCount,
+        }
         if not shouldTrack() then
             return
         end
-        local encounterID, encounterName, difficultyID, _, success = ...
         local info = {
             encounterID = readable(encounterID) and encounterID or nil,
             name = readable(encounterName) and encounterName or nil,
