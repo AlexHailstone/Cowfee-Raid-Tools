@@ -94,10 +94,18 @@ function Speech:Tick(now)
 
     local due = Rules.SpeechDue(Alerts:Lines(now), now, self.spoken)
     if #due > 0 then
+        local noteOn = settings().enabled
         for _, item in ipairs(due) do
-            arrivals = arrivals + 1
-            item.seq = arrivals
-            self.queue[#self.queue + 1] = item
+            -- The raid note's speech also follows the alert switch (checked live); an empty or unreadable
+            -- text is skipped.
+            local text = item.text
+            local readable = not (CRT.Timeline and CRT.Timeline.readable) or CRT.Timeline.readable(text)
+            if readable and type(text) == "string" and text ~= "" and (item.block ~= "note" or noteOn) then
+                arrivals = arrivals + 1
+                item.seq = arrivals
+                item.text = text
+                self.queue[#self.queue + 1] = item
+            end
         end
         table.sort(self.queue, before)
     end
@@ -129,6 +137,7 @@ end)
 
 -- Only the event itself matters: the speaker is free again. If this client does not know the event,
 -- the timeout above keeps the queue moving.
+-- This event can fire for any game speech, not only ours, so the timeout is the real guard.
 driver:SetScript("OnEvent", function()
     Speech.playing = false
     if Alerts.running then

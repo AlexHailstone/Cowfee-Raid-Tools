@@ -145,7 +145,7 @@ function Rules.SpeechDue(lines, now, spoken)
                         -- time passed before the pull is still read out while the line itself is ahead.
                         if now - (member.at or s.at) <= LATE then
                             items[#items + 1] = { key = key, at = s.at, text = s.text,
-                                priority = member.priority or line.priority, seq = #items + 1 }
+                                priority = member.priority or line.priority, block = member.block or line.block, seq = #items + 1 }
                         end
                     end
                 end

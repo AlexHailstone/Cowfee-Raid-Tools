@@ -246,7 +246,7 @@ local function entries(run)
             item.outputs = {
                 alert = s.enabled and true or false,
                 bar = (bars.shown and bars.noteLines) and true or false,
-                speech = s.tts and true or false,
+                speech = (s.enabled and s.tts) and true or false,
             }
             item.priority = Rules.Priority(2, "normal")
             item.warn = s.seconds or 10
