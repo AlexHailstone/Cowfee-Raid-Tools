@@ -127,12 +127,15 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     end
     addDeaths(lanes, unknown, sources, settings, settings.deathRows ~= "player")
 
-    -- a boss listed only by its reference has a string key; the reference's own encounter ID then
-    -- stands in for the Journal lookups
+    -- a boss listed only by its reference has a string key; the reference's Encounter line, or its
+    -- boss found in the Journal by name, then stands in for the Journal lookups
     local eid = encounterID
-    if type(eid) ~= "number" and type(ref.encounterID) == "number" then
-        eid = ref.encounterID
-        rows = CRT.TimelineJournal:Rows(eid)
+    if type(eid) ~= "number" then
+        local found = CRT.TimelineJournal:ResolveID(encounterID, ref)
+        if found then
+            eid = found
+            rows = CRT.TimelineJournal:Rows(eid)
+        end
     end
     local byID = {}
     for _, row in ipairs(rows or {}) do

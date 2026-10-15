@@ -436,10 +436,10 @@ end
 
 -- A reference row is hidden by its name (as the lanes read it), or by the spell the lanes give it
 -- (its [spell] or its Journal match by name) when that spell is hidden. A boss with a text key
--- uses the reference's own encounter ID for the Journal, like the lanes do.
+-- asks the Journal under the same id the lanes use (Journal:ResolveID).
 local function journalKey(entry)
-    if type(selectedBoss) ~= "number" and entry and type(entry.ref.encounterID) == "number" then
-        return entry.ref.encounterID
+    if type(selectedBoss) ~= "number" and entry then
+        return Journal:ResolveID(selectedBoss, entry.ref) or selectedBoss
     end
     return selectedBoss
 end
@@ -689,7 +689,7 @@ local function build(pf)
 
     local title = label(pf, "Timeline", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.Help(pf, "The Timeline", "Every raid boss pull is saved automatically: when the boss cast its spells and when players died. Pick a boss and a pull on the Review tab to see it as a timeline, hover for the time, scroll the mouse wheel to zoom.\n\nA reference is a boss's planned timeline. It is listed first in the pull list, and a recent pull can be laid over it. The References tab is where you paste your own.\n\nThe Settings tab has the view, which rows are shown, the deaths filters and recording."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The Timeline", "Every raid boss pull is saved automatically: when the boss cast its spells and when players died. Pick a boss and a pull on the Review tab to see it as a timeline, hover for the time, scroll the mouse wheel to zoom, hold the right mouse button and drag to move left and right, and use Shift with the mouse wheel to scroll the rows.\n\nA reference is a boss's planned timeline. It is listed first in the pull list, and a recent pull can be laid over it. The References tab is where you paste your own.\n\nThe Settings tab has the view, which rows are shown, the deaths filters and recording."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

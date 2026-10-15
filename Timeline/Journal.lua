@@ -6,7 +6,9 @@ local ADDON, CRT = ...
 -- through the map you stand on first, then by looking through the current tier's raids; the
 -- Journal's own selected instance is put back afterwards so its window is not disturbed. Nothing
 -- is looked up during combat or while the Journal window is open, and what is found is kept for
--- the rest of the session. Hiding a row only sets a flag: the page decides what to draw.
+-- the rest of the session. Hiding a row only sets a flag: the page decides what to draw. A
+-- reference timeline that only knows its boss by name finds the boss the same way, by the name
+-- the Journal gives it (EncounterByName), so its rows get icons and tooltips anywhere.
 
 local Journal = {}
 CRT.TimelineJournal = Journal
@@ -14,13 +16,26 @@ CRT.TimelineJournal = Journal
 local cache = {}
 -- bosses the Journal could not be asked about in this zone; only your own rows are listed for them
 local missed = {}
+-- boss names looked up in the Journal: [name] = dungeon encounter id, or false when not found
+local byName = {}
 
 local zoneFrame = CreateFrame("Frame")
 zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 zoneFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 zoneFrame:SetScript("OnEvent", function()
     missed = {}
+    for name, id in pairs(byName) do
+        if id == false then
+            byName[name] = nil
+        end
+    end
 end)
+
+-- A boss name made comparable: trimmed, lower case, curly apostrophes made straight.
+local function nameKey(s)
+    s = tostring(s or ""):gsub("\226\128\153", "'"):gsub("\226\128\152", "'")
+    return (s:gsub("^%s+", ""):gsub("%s+$", "")):lower()
+end
 
 local function settings()
     return CRT.Timeline:Settings()
@@ -48,24 +63,26 @@ local function changed(encounterID)
     CRT.Timeline:Fire()
 end
 
--- The Journal root section of the boss in the instance that is selected right now, or nil.
-local function rootInSelected(encounterID)
+-- The boss in the instance that is selected right now that match(name, dungeonEncounterID)
+-- accepts: its Journal root section and dungeon encounter id, or nil.
+local function rootInSelected(match)
     local j = 1
     while j < 100 do
         local ok, _, _, journalID = pcall(EJ_GetEncounterInfoByIndex, j)
         if not ok or not journalID then
             return nil
         end
-        local ok2, _, _, _, rootSectionID, _, _, dungeonEncounterID = pcall(EJ_GetEncounterInfo, journalID)
-        if ok2 and dungeonEncounterID == encounterID then
-            return rootSectionID
+        local ok2, name, _, _, rootSectionID, _, _, dungeonEncounterID = pcall(EJ_GetEncounterInfo, journalID)
+        if ok2 and match(name, dungeonEncounterID) then
+            return rootSectionID, dungeonEncounterID
         end
         j = j + 1
     end
 end
 
--- The Journal root section of a boss (by dungeon encounter id), or nil when it cannot be found.
-local function findRoot(encounterID)
+-- The Journal root section and dungeon encounter id of the boss match accepts, or nil when it
+-- cannot be found.
+local function findRoot(match)
     if not (EJ_SelectInstance and EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo) then
         return nil
     end
@@ -77,7 +94,7 @@ local function findRoot(encounterID)
     elseif EncounterJournal then
         previous = EncounterJournal.instanceID
     end
-    local root
+    local root, found
     -- the instance of the map we stand on
     if EJ_GetInstanceForMap and C_Map and C_Map.GetBestMapForUnit then
         local okMap, map = pcall(C_Map.GetBestMapForUnit, "player")
@@ -85,7 +102,7 @@ local function findRoot(encounterID)
             local okInst, instanceID = pcall(EJ_GetInstanceForMap, map)
             if okInst and instanceID and instanceID ~= 0 then
                 pcall(EJ_SelectInstance, instanceID)
-                root = rootInSelected(encounterID)
+                root, found = rootInSelected(match)
             end
         end
     end
@@ -98,7 +115,7 @@ local function findRoot(encounterID)
                 break
             end
             pcall(EJ_SelectInstance, instanceID)
-            root = rootInSelected(encounterID)
+            root, found = rootInSelected(match)
             if root then
                 break
             end
@@ -115,7 +132,13 @@ local function findRoot(encounterID)
             pcall(EJ_SelectInstance, previous)
         end
     end
-    return root
+    return root, found
+end
+
+local function byEncounter(encounterID)
+    return function(_, dungeonEncounterID)
+        return dungeonEncounterID == encounterID
+    end
 end
 
 -- Every ability section under root, depth first in Journal order: children, then siblings.
@@ -164,7 +187,7 @@ function Journal:Rows(encounterID)
     local rows, seen = {}, {}
     local root
     if not missed[encounterID] then
-        root = findRoot(encounterID)
+        root = findRoot(byEncounter(encounterID))
         if not root then
             missed[encounterID] = true
         end
@@ -187,6 +210,42 @@ function Journal:Rows(encounterID)
         cache[encounterID] = rows
     end
     return rows
+end
+
+-- The dungeon encounter id of a boss found in the Journal by its name, or nil. Looked up out of
+-- combat with the Journal closed; a name that is not found is tried again after a zone change.
+function Journal:EncounterByName(name)
+    local key = nameKey(name)
+    if key == "" then
+        return nil
+    end
+    local known = byName[key]
+    if known ~= nil then
+        return known or nil
+    end
+    if InCombatLockdown() or (EncounterJournal and EncounterJournal:IsShown()) then
+        return nil
+    end
+    local _, id = findRoot(function(bossName)
+        return type(bossName) == "string" and nameKey(bossName) == key
+    end)
+    byName[key] = type(id) == "number" and id or false
+    return byName[key] or nil
+end
+
+-- The encounter id to ask the Journal about for a boss key: the key itself when it is a number,
+-- else a reference's Encounter line, else the reference's boss found in the Journal by name.
+function Journal:ResolveID(encounterID, ref)
+    if type(encounterID) == "number" then
+        return encounterID
+    end
+    if ref then
+        if type(ref.encounterID) == "number" then
+            return ref.encounterID
+        end
+        return self:EncounterByName(ref.boss)
+    end
+    return nil
 end
 
 function Journal:AddCustom(encounterID, spellID)
