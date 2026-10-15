@@ -86,6 +86,7 @@ UI.LAYERS = {
     { key = "bar", label = "Your consumables bar", default = "HIGH" },
     { key = "debuffs", label = "Debuff panel", default = "HIGH" },
     { key = "lowhealth", label = "Low-health banner", default = "DIALOG" },
+    { key = "timeline", label = "Timeline window", default = "HIGH" },
 }
 
 local layerDefaults, layerFrames = {}, {}
