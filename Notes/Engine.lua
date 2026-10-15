@@ -1,15 +1,17 @@
 local ADDON, CRT = ...
 
--- Runs a note's timers. ENCOUNTER_START starts the clock for the note that matches the boss, and every
--- timer counts down from the start of its phase. There is no phase-change event an addon can use in
--- Midnight, so phases after the first start when someone presses Next phase (or /crt note next).
--- /crt note test starts the active note at once, to try it out of an encounter.
+-- Runs a note's timers on the alerts engine (Alerts/Engine.lua). On ENCOUNTER_START the engine asks this
+-- file for the note that matches the boss, and every timer counts down from the start of its phase.
+-- There is no phase-change event an addon can use in Midnight, so phases after the first start when
+-- someone presses Next phase (or /crt note next). /crt note test starts the active note at once, to try
+-- it out of an encounter. The note is the engine's "note" block: one item per timer.
 
 local Notes = CRT.Notes
-local Engine = { running = false }
+local Alerts = CRT.Alerts
+local Rules = CRT.AlertRules
+local Engine = { running = false, runId = 0 }
 CRT.NoteEngine = Engine
 
-local starts = {} -- phase -> GetTime() when it began
 local note -- the parsed note being run
 
 -- Melee damage specializations, used for the "melee" and "ranged" tags. Tanks and healers match
@@ -147,29 +149,27 @@ function Engine:WordIsMe(word)
     return tokens()[w] and true or false
 end
 
+
 function Engine:Note()
     return note
 end
 
+-- Starts a run of the note. Inside a pull (the engine's onPull hook) the run is already starting and
+-- collects the note's items right after, so the engine is only started here for a test run.
 function Engine:Start(parsedNote, reason)
     if not parsedNote then
         return
     end
     note = parsedNote
-    wipe(starts)
-    starts[note.phases[1] or 1] = GetTime()
-    self.running = true
     self.reason = reason
-    self.runId = (self.runId or 0) + 1
     myTokens = nil
-    Notes:Fire()
+    if not Alerts.starting then
+        Alerts:Start(parsedNote.encounterID, nil, reason)
+    end
 end
 
 function Engine:Stop()
-    self.running = false
-    note = nil
-    wipe(starts)
-    Notes:Fire()
+    Alerts:Stop()
 end
 
 -- Starts the next phase now. Returns the phase that started, or nil.
@@ -177,28 +177,15 @@ function Engine:NextPhase()
     if not self.running or not note then
         return nil
     end
-    for _, ph in ipairs(note.phases) do
-        if not starts[ph] then
-            starts[ph] = GetTime()
-            Notes:Fire()
-            return ph
-        end
-    end
-    return nil
+    return Alerts:NextPhase()
 end
 
 function Engine:PhaseStarted(ph)
-    return starts[ph] ~= nil
+    return Alerts:PhaseStart(ph) ~= nil
 end
 
 function Engine:CurrentPhase()
-    local current
-    for _, ph in ipairs(note and note.phases or {}) do
-        if starts[ph] then
-            current = ph
-        end
-    end
-    return current
+    return Alerts:CurrentPhase()
 end
 
 -- Seconds since the pull.
@@ -206,30 +193,93 @@ function Engine:Elapsed()
     if not self.running or not note then
         return nil
     end
-    return GetTime() - (starts[note.phases[1] or 1] or GetTime())
+    return Alerts:Elapsed()
 end
 
 -- Seconds until a timer, or nil if its phase has not started. Negative once it has passed.
 function Engine:Remaining(item)
-    local start = starts[item.ph]
+    local start = Alerts:PhaseStart(item.ph)
     if not start then
         return nil
     end
     return start + item.time - GetTime()
 end
 
-local events = CreateFrame("Frame")
-events:RegisterEvent("ENCOUNTER_START")
-events:RegisterEvent("ENCOUNTER_END")
-events:SetScript("OnEvent", function(_, event, encounterID, _, difficultyID)
-    if event == "ENCOUNTER_START" then
-        local difficultyName = difficultyID and GetDifficultyInfo and GetDifficultyInfo(difficultyID)
-        local id = Notes:FindForEncounter(encounterID, difficultyName)
-        if id then
-            Notes:SetActive(id)
-            Engine:Start(Notes:Parsed(id), "encounter")
-        end
-    elseif Engine.reason == "encounter" then
-        Engine:Stop()
+-- The note block -----------------------------------------------------------------------------
+
+-- The note a run uses: the one running, or (for a run that is not the current one, such as the
+-- Phases tab asking which phases a boss has) the note saved for that boss.
+local function noteFor(run)
+    if note then
+        return note
     end
+    if run and run ~= Alerts.run and run.encounterID then
+        local id = Notes:FindForEncounter(run.encounterID, run.difficultyName)
+        if id then
+            return Notes:Parsed(id)
+        end
+    end
+    return nil
+end
+
+-- One item per timer. Your timers alert, show as bars and are read out; anyone else's only show in the
+-- timers window, so they carry no outputs.
+local function entries(run)
+    local n = noteFor(run)
+    if not n then
+        return {}
+    end
+    local s = Notes:Alert() or {}
+    local bars = (Alerts:Settings() or {}).bars or {}
+    local out = {}
+    for index, t in ipairs(n.timers) do
+        local info = t.kind == "spell" and Notes:SpellInfo(t.spellId) or nil
+        local item = {
+            id = "note:" .. index,
+            ph = t.ph,
+            time = t.time,
+            spellID = t.spellId,
+            icon = info and info.icon,
+            text = t.kind == "spell" and (info and info.name or ("Spell " .. tostring(t.spellId))) or (t.text or ""),
+            color = t.color,
+        }
+        if Engine:IsMine(t) then
+            item.outputs = {
+                alert = s.enabled and true or false,
+                bar = (bars.shown and bars.noteLines) and true or false,
+                speech = s.tts and true or false,
+            }
+            item.priority = Rules.Priority(2, "normal")
+            item.warn = s.seconds or 10
+            -- A spell shows for half a second after its time, a text line for its dur:.
+            item.hold = t.kind == "text" and (t.dur or 0) or 0.5
+            item.speech = { { offset = s.ttsSeconds or 3, text = info and info.name or t.text or "" } }
+        end
+        out[#out + 1] = item
+    end
+    return out
+end
+
+Alerts:RegisterBlock("note", { label = "Raid note", group = false, Entries = entries })
+
+-- On a pull, the note for the boss (preferring the same difficulty) becomes the note in use and runs.
+Alerts.onPull[#Alerts.onPull + 1] = function(run)
+    note = nil
+    local id = Notes:FindForEncounter(run.encounterID, run.difficultyName)
+    if id then
+        Notes:SetActive(id)
+        Engine:Start(Notes:Parsed(id), "encounter")
+    end
+end
+
+-- running and runId follow the engine; running is only true while the engine runs a note, so a pull
+-- of a boss with no note shows as not running, as before. When the engine stops (Stop, or the end of
+-- the encounter) the note is dropped. Every change tells the note windows and pages.
+Alerts:OnChange(function()
+    if not Alerts.running then
+        note = nil
+    end
+    Engine.running = Alerts.running and note ~= nil
+    Engine.runId = Alerts.runId
+    Notes:Fire()
 end)

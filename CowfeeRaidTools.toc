@@ -32,6 +32,8 @@ ReadyCheck\Page.lua
 Debuffs\Data.lua
 Debuffs\Panel.lua
 Debuffs\Page.lua
+Alerts\Rules.lua
+Alerts\Engine.lua
 Notes\Parse.lua
 Notes\Data.lua
 Notes\Engine.lua
@@ -53,8 +55,6 @@ Timeline\Lanes.lua
 Timeline\View.lua
 Timeline\ReferencePage.lua
 Timeline\Page.lua
-Alerts\Rules.lua
-Alerts\Engine.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua

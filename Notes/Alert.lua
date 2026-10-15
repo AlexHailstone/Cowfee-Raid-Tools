@@ -139,18 +139,18 @@ function Alert:Refresh()
         return
     end
     local s = settings()
-    if not (s.enabled and Engine.running and Engine:Note()) then
+    if not (s.enabled and CRT.Alerts.running) then
         frame:Hide()
         return
     end
 
+    -- Speech (until the alerts speech queue takes it over): each of your timers is read out once, as it
+    -- reaches the speech time. Any that passed long ago is skipped.
     local note = Engine:Note()
-    local best, bestRemaining
-    for index, item in ipairs(note.timers) do
+    for index, item in ipairs(note and note.timers or {}) do
         if Engine:IsMine(item) then
             local remaining = Engine:Remaining(item)
             if remaining then
-                -- Read it out once, as it reaches the speech time. Skip any that passed long ago.
                 local key = Engine.runId .. ":" .. index
                 if s.tts and not spoken[key] and remaining <= (s.ttsSeconds or 3) then
                     spoken[key] = true
@@ -159,25 +159,23 @@ function Alert:Refresh()
                         self:Speak(info and info.name or item.text or "")
                     end
                 end
-                local window = item.kind == "text" and (item.dur or 0) or 0.5
-                if remaining <= (s.seconds or 10) and remaining > -window then
-                    if not bestRemaining or remaining < bestRemaining then
-                        best, bestRemaining = item, remaining
-                    end
-                end
             end
         end
     end
 
+    -- The alert: the engine's line inside its warn and hold window, soonest first.
+    local now = GetTime()
+    local best = CRT.AlertRules.Alert(CRT.Alerts:Lines(now), now)
     if not best then
         frame:Hide()
         return
     end
-    if best.kind == "spell" then
-        local info = Notes:SpellInfo(best.spellId)
-        show(info and info.icon, info and info.name or ("Spell " .. best.spellId), countdownText(bestRemaining))
+    local remaining = best.at - now
+    if type(best.spellID) == "number" then
+        local info = Notes:SpellInfo(best.spellID)
+        show(info and info.icon or best.icon, info and info.name or best.text or ("Spell " .. best.spellID), countdownText(remaining))
     else
-        show(nil, best.text or "", countdownText(bestRemaining), best.color)
+        show(best.icon, best.text or "", countdownText(remaining), best.color)
     end
 end
 
