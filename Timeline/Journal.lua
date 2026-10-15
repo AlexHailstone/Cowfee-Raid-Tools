@@ -151,6 +151,10 @@ end
 -- open (nothing cached then). When the Journal does not know the boss only your own spells are
 -- listed, and that miss is remembered until the zone changes so the Journal is not walked again.
 function Journal:Rows(encounterID)
+    -- a reference timeline has no encounter id to look up (its key is text), so never walk for it
+    if type(encounterID) ~= "number" then
+        return {}
+    end
     if cache[encounterID] then
         return cache[encounterID]
     end

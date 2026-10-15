@@ -49,6 +49,7 @@ Timeline\Data.lua
 Timeline\Journal.lua
 Timeline\Database.lua
 Timeline\Reference.lua
+Timeline\Lanes.lua
 Timeline\View.lua
 Timeline\Page.lua
 QoL\LowHealth.lua
