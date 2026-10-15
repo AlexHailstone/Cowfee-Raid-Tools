@@ -30,8 +30,12 @@ local ADDON, CRT = ...
 --     Quality of Life page, since the game can't list a folder. A file must be there before you log in
 --     or /reload. Updating the addon by replacing its folder removes them, so keep a copy.
 -- Files play with PlaySoundFile(path, channel), which has no volume of its own: they follow the
--- channel's volume. Every warning is cut after the play length (soundLength) except the game's
--- looping pulse.
+-- channel's volume.
+--
+-- Play once (soundOnce, on by default): any sound other than the game's pulse plays one time, in full,
+-- each time your health drops under the threshold; dropping into a lower 10% tier during the same dip
+-- doesn't play it again. Off, it repeats, faster at each lower tier, each repeat stopping the one
+-- before. The game's pulse is a loop by nature and keeps looping either way.
 
 local LowHealth = CRT.LowHealth
 local Sound = {}
@@ -321,10 +325,13 @@ end
 
 -- Two kinds of playing, kept apart so a stop always finds its sound:
 --   following  the addon's copy of the game's pulse, started and stopped by the game's own calls
---   preview    a Play button or Test sound, which always stops by itself after PREVIEW_SECONDS
+--   preview    a Play button or Test sound, which ends by itself after PREVIEW_SECONDS
 -- Each holds every handle, repeat ticker and timer it started, and stopping one stops all of them.
+-- A sound played once is never cut short: when its preview ends it keeps playing to its end, and its
+-- handle waits in lingering so Stop and /crt lowhp stop can still stop it.
 
 local following, preview
+local lingering = {}
 
 local function stopEntry(entry)
     if not entry then
@@ -339,9 +346,6 @@ local function stopEntry(entry)
     if entry.timer then
         entry.timer:Cancel()
     end
-    for _, cut in ipairs(entry.cuts or {}) do
-        cut:Cancel()
-    end
 end
 
 -- The channel for an output key: "game" is the game's voice output, like its pulse.
@@ -352,8 +356,8 @@ end
 
 -- Plays a sound on an output, adding its handle to the entry. A kit plays at your volume; a file plays
 -- at the channel's volume (on Master for Game default, since files can't use the game's voice output).
--- With cut, it is stopped after the play length, and a repeat stops the one before it.
-local function play(entry, source, output, cut)
+-- With replace, it stops the sound the entry played before (a repeat cuts off the one before it).
+local function play(entry, source, output, replace)
     local handle
     if source.kind == "file" then
         local channel = channelFor(output)
@@ -378,18 +382,11 @@ local function play(entry, source, output, cut)
     if not handle then
         return
     end
-    if cut and entry.last then
+    if replace and entry.last then
         pcall(StopSound, entry.last)
     end
     entry.last = handle
     entry.handles[#entry.handles + 1] = handle
-    if cut then
-        local length = settings().soundLength or 1
-        entry.cuts = entry.cuts or {}
-        entry.cuts[#entry.cuts + 1] = C_Timer.NewTimer(length, function()
-            pcall(StopSound, handle)
-        end)
-    end
 end
 
 -- The tier a game pulse kit belongs to (90 down to 10), from the game's own table.
@@ -402,9 +399,8 @@ local function tierOf(kit)
     return 50
 end
 
--- Starts a choice for a game pulse kit: the same looping kit on the output, or the chosen sound
--- repeating every 2.4 seconds at 90% down to every 0.8 seconds at 10% (never sooner than the play
--- length), each cut after the play length.
+-- Starts a choice for a game pulse kit: the same looping kit on the output, or the chosen sound, played
+-- once in full (Play once), or repeating every 2.4 seconds at 90% down to every 0.8 seconds at 10%.
 -- A choice that is gone (a shared sound whose addon isn't loaded) falls back to the game's pulse.
 local function begin(kit, choice, output)
     local entry = { kit = kit, handles = {} }
@@ -414,9 +410,11 @@ local function begin(kit, choice, output)
         return entry
     end
     play(entry, source, output, true)
-    -- A repeat never comes before the play length is up, so a long sound plays in full.
-    local every = math.max(0.6 + tierOf(kit) / 50, settings().soundLength or 1)
-    entry.ticker = C_Timer.NewTicker(every, function()
+    if settings().soundOnce ~= false then
+        entry.once = true
+        return entry
+    end
+    entry.ticker = C_Timer.NewTicker(0.6 + tierOf(kit) / 50, function()
         play(entry, source, output, true)
     end)
     return entry
@@ -432,10 +430,20 @@ function Sound:StopPreview()
     preview = nil
 end
 
+local function stopLingering()
+    for _, handle in ipairs(lingering) do
+        pcall(StopSound, handle)
+    end
+    for i = #lingering, 1, -1 do
+        lingering[i] = nil
+    end
+end
+
 -- Stops every sound the addon is playing. The game's own pulse is left to the game.
 function Sound:StopAll()
     self:StopOurs()
     self:StopPreview()
+    stopLingering()
 end
 
 -- Following the game's pulse. The game re-decides its pulse every time your health changes
@@ -460,6 +468,19 @@ local function settle()
     end
     local kit = decided
     if following and following.kit == kit then
+        return
+    end
+    -- Played once: a lower tier in the same dip doesn't play it again, and it is never cut short.
+    if following and following.once and kit then
+        following.kit = kit
+        return
+    end
+    if following and following.once and not kit then
+        -- Healed: the next dip plays it again. The sound itself finishes on its own.
+        for _, handle in ipairs(following.handles) do
+            lingering[#lingering + 1] = handle
+        end
+        following = nil
         return
     end
     Sound:StopOurs()
@@ -531,11 +552,17 @@ function Sound:Preview(choice, output, onStop)
     preview = begin(kit, choice, output)
     preview.key = key
     local mine = preview
-    -- Long enough to hear a whole warning at your play length.
-    local seconds = math.max(PREVIEW_SECONDS, (settings().soundLength or 1) + 0.2)
-    preview.timer = C_Timer.NewTimer(seconds, function()
+    preview.timer = C_Timer.NewTimer(PREVIEW_SECONDS, function()
         if preview == mine then
-            Sound:StopPreview()
+            if mine.once then
+                -- Played once: let it finish, but keep it stoppable.
+                for _, handle in ipairs(mine.handles) do
+                    lingering[#lingering + 1] = handle
+                end
+                preview = nil
+            else
+                Sound:StopPreview()
+            end
         end
         if onStop then
             onStop()

@@ -21,7 +21,8 @@ local TEXT = {
     lowHealthVolume = "Volume",
     lowHealthChoice = "Sound",
     lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops. Any other sound repeats, faster at each lower 10%.\n\nShared sounds come from other addons through LibSharedMedia, when one of them is installed.\n\nYour own sounds: put an .ogg or .mp3 file in Interface\\AddOns\\CowfeeRaidTools\\Sounds, /reload, then type its name below and press Add. Updating the addon by replacing its folder removes them, so keep a copy.\n\nVolume only changes the game's sounds. Shared and your own sounds play at the volume of their output channel.",
-    lowHealthLength = "Play length",
+    lowHealthOnce = "Play once each time my health drops under",
+    lowHealthOnceNote = "On: the sound plays one time, in full, each time your health drops under the threshold. Dropping lower during the same dip doesn't play it again; healing and dropping again does.\n\nOff: it repeats until you heal, faster as your health drops, each repeat cutting off the one before.\n\nThe game's pulse is a loop and keeps looping either way.",
     lowHealthCustom = "Your sound file",
     lowHealthAdd = "Add",
     lowHealthRemove = "Remove",
@@ -259,28 +260,27 @@ local function buildLowHealth(pf, top)
     volume:SetPoint("TOPLEFT", 10, top - 160)
     controls[#controls + 1] = volume
 
-    -- Play length: every warning is cut after this many seconds (not the game's looping pulse).
-    local length = UI.Slider(pf, TEXT.lowHealthLength, {
-        min = 0.5,
-        max = 10,
-        step = 0.5,
-        labelWidth = SLIDER_LABEL_W,
-        width = 200,
-        format = function(v)
-            return format("%.1f s", v)
-        end,
-        get = function()
-            return settings().soundLength or 1
-        end,
-        set = function(v)
-            settings().soundLength = v
-        end,
-        enabledIf = function()
-            return soundOn() and (settings().soundChoice or "pulse") ~= "pulse"
-        end,
-    })
-    length:SetPoint("TOPLEFT", 10, top - 190)
-    controls[#controls + 1] = length
+    -- Play once: the sound plays one time per dip under the threshold (not the game's looping pulse).
+    local once = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
+    once:SetSize(24, 24)
+    once:SetPoint("TOPLEFT", 6, top - 192)
+    local onceText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    onceText:SetPoint("LEFT", once, "RIGHT", 1, 0)
+    onceText:SetText(TEXT.lowHealthOnce)
+    UI.Help(pf, TEXT.lowHealthOnce, TEXT.lowHealthOnceNote):SetPoint("LEFT", onceText, "RIGHT", 6, 0)
+    once:SetScript("OnClick", function(self)
+        settings().soundOnce = self:GetChecked() and true or false
+        Sound:StopOurs()
+        refresh()
+    end)
+    once.refresh = function()
+        local on = soundOn() and (settings().soundChoice or "pulse") ~= "pulse"
+        once:SetChecked(settings().soundOnce ~= false)
+        once:SetEnabled(on and true or false)
+        local c = on and 1 or 0.5
+        onceText:SetTextColor(c, c, c)
+    end
+    controls[#controls + 1] = once
 
     -- Your own sound files, added by name since the game can't list a folder.
     local customLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
