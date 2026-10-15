@@ -13,7 +13,8 @@ local UI = CRT.UI
 
 local ROW_H = 22
 local RIGHT_X = 360
-local EMPTY_TEXT = "No pulls recorded for this boss yet"
+local EMPTY_BOSS = "No pulls recorded for this boss yet"
+local EMPTY_ALL = "No boss pulls recorded yet"
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local BACKDROP = {
@@ -34,6 +35,7 @@ local currentTab = "review"
 local selectedBoss, selectedPull
 local shownBoss, shownPull
 local raidCache = {}
+local bossList -- { { key, name, label } } for the dropdown and name lookups, rebuilt on each refresh
 local refresh
 
 local function settings()
@@ -102,9 +104,14 @@ end
 -- The bosses ------------------------------------------------------------------------------------
 
 -- The bosses of the raid you are standing in, from the Encounter Journal: { { encounterID, name } }.
--- Asked out of combat only, kept per instance, and empty when anything is missing or fails.
+-- Asked out of combat only, only inside a raid, kept per instance, and empty when anything is
+-- missing or fails.
 local function raidBosses()
     local out = {}
+    local okType, _, kind = pcall(GetInstanceInfo)
+    if not okType or kind ~= "raid" then
+        return out
+    end
     if InCombatLockdown() or not (EJ_GetInstanceForMap and EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo and C_Map and C_Map.GetBestMapForUnit) then
         return out
     end
@@ -137,21 +144,27 @@ local function raidBosses()
     return out
 end
 
--- Bosses with saved pulls first, then this raid's bosses that have none.
-local function bossOptions()
+-- Bosses with saved pulls first, then this raid's bosses that have none: { { key, name, label } },
+-- the label being the name with the pull count for a boss that has pulls.
+local function buildBossList()
     local list, seen = {}, {}
     for _, boss in ipairs(Timeline:Bosses()) do
         seen[boss.encounterID] = true
-        local text = boss.name ~= "" and boss.name or tostring(boss.encounterID)
-        list[#list + 1] = { key = boss.encounterID, label = text .. " (" .. boss.count .. ")" }
+        local name = boss.name ~= "" and boss.name or tostring(boss.encounterID)
+        list[#list + 1] = { key = boss.encounterID, name = name, label = name .. " (" .. boss.count .. ")" }
     end
     for _, boss in ipairs(raidBosses()) do
         if not seen[boss.encounterID] then
             seen[boss.encounterID] = true
-            list[#list + 1] = { key = boss.encounterID, label = boss.name }
+            list[#list + 1] = { key = boss.encounterID, name = boss.name, label = boss.name }
         end
     end
     return list
+end
+
+local function bossOptions()
+    bossList = bossList or buildBossList()
+    return bossList
 end
 
 local function pullOptions()
@@ -174,7 +187,7 @@ local function bossName()
     end
     for _, option in ipairs(bossOptions()) do
         if option.key == selectedBoss then
-            return (option.label:gsub(" %(%d+%)$", ""))
+            return option.name
         end
     end
 end
@@ -209,6 +222,7 @@ local function updateView()
     else
         view:Refresh()
     end
+    emptyLabel:SetText(selectedBoss and EMPTY_BOSS or EMPTY_ALL)
     emptyLabel:SetShown(pull == nil)
 end
 
@@ -266,13 +280,26 @@ local function buildReview(f)
     end)
     unnamedHelp:SetPoint("TOPLEFT", f, "TOPLEFT", 470, -40)
 
+    -- Zoom: the mouse wheel writes span without telling the page, so refresh re-reads it here.
+    place(UI.Slider(f, "Time visible", {
+        min = 60, max = 600, step = 30, format = View.Format,
+        labelWidth = 80, width = 160,
+        get = function()
+            return settings().span
+        end,
+        set = function(value)
+            Timeline:Set("span", value)
+            view:SetSpan(value)
+        end,
+    }), f, 8, -64)
+
     local holder = CreateFrame("Frame", nil, f)
-    holder:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -68)
+    holder:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -96)
     holder:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
     view = View.Create(holder)
     emptyLabel = holder:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     emptyLabel:SetPoint("CENTER", holder, "CENTER")
-    emptyLabel:SetText(EMPTY_TEXT)
+    emptyLabel:SetText(EMPTY_ALL)
 end
 
 -- The Settings tab -----------------------------------------------------------------------------
@@ -332,6 +359,7 @@ local function updateRows()
                 Journal:RemoveCustom(selectedBoss, line.spellID)
             end)
             rowPool[i] = line
+            UI:SkinTree(rowsChild) -- so the Modern look skins the new Remove button
         end
         line.spellID = row.spellID
         line.text:SetText(row.name or tostring(row.spellID))
@@ -359,7 +387,7 @@ local function addSpell()
     end
     local ok, name = pcall(C_Spell.GetSpellName, spellID)
     if not ok or not name then
-        CRT:Print("No spell with that ID")
+        CRT:Print("No spell with that ID.")
         return
     end
     Journal:AddCustom(selectedBoss, spellID)
@@ -480,6 +508,7 @@ refresh = function()
     if not page or not page:IsShown() then
         return
     end
+    bossList = buildBossList()
     fixSelection()
     for _, control in ipairs(controls) do
         control.refresh()
@@ -498,6 +527,9 @@ local function selectTab(key)
         local on = tab.key == key
         tabFrames[tab.key]:SetShown(on)
         UI:SetTabSelected(tabButtons[tab.key], on)
+    end
+    if key == "review" then
+        refresh() -- the hidden view did not redraw while the Settings tab was open
     end
 end
 

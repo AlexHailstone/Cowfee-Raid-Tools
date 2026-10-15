@@ -23,7 +23,11 @@ end
 
 function Timeline:Fire()
     for _, fn in ipairs(self.listeners) do
-        fn()
+        -- A listener (the page) failing must never stop the recording.
+        local ok, err = pcall(fn)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
     end
 end
 
@@ -226,12 +230,13 @@ local function groupRoles()
     return byGuid, byName
 end
 
--- The spell that killed a player: the last readable spell in their death recap, else the first
--- spell the meter marks as deadly, else 0.
+-- The spell that killed a player: the first readable spell in their death recap (the game lists
+-- recap events newest first, so the first is the killing blow), else the first spell the meter
+-- marks as deadly, else 0.
 local function killingBlow(recapID, sourceGUID)
     local ok, events = pcall(C_DeathRecap.GetRecapEvents, recapID)
     if ok and type(events) == "table" then
-        for i = #events, 1, -1 do
+        for i = 1, #events do
             local id = events[i] and events[i].spellId
             if readable(id) and id and type(id) == "number" and id > 0 then
                 return id
@@ -336,14 +341,19 @@ local function scheduleRead(pull)
     end)
 end
 
-local function startPull(encounterID, name, difficultyID)
-    -- The meter's current session is about to become the new pull's, so earlier pulls still waiting
-    -- to be read are saved now with the deaths they have.
+-- Saves every ended pull still waiting for its death read, with the deaths of its last completed
+-- read. Used when new combat starts, because the meter's current session then becomes the new
+-- fight's.
+local function saveUnsaved()
     for i = #unsaved, 1, -1 do
         if unsaved[i] then
             save(unsaved[i])
         end
     end
+end
+
+local function startPull(encounterID, name, difficultyID)
+    saveUnsaved()
     current = nil
     if not tdb().record or not inRaid() or not readable(encounterID) or type(encounterID) ~= "number" then
         return
@@ -393,6 +403,8 @@ function Timeline.HandleEvent(event, ...)
     elseif event == "ENCOUNTER_END" then
         local encounterID, _, _, _, success = ...
         endPull(encounterID, success)
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        saveUnsaved()
     elseif event == "PLAYER_REGEN_ENABLED" then
         local list = awaiting
         awaiting = {}
@@ -428,8 +440,8 @@ function Timeline.HandleEvent(event, ...)
 end
 
 local driver = CreateFrame("Frame")
-for _, event in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_ENABLED", "ENCOUNTER_TIMELINE_EVENT_ADDED",
-    "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED", "ENCOUNTER_TIMELINE_EVENT_REMOVED" }) do
+for _, event in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+    "ENCOUNTER_TIMELINE_EVENT_ADDED", "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED", "ENCOUNTER_TIMELINE_EVENT_REMOVED" }) do
     driver:RegisterEvent(event)
 end
 driver:SetScript("OnEvent", function(_, event, ...)

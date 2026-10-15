@@ -14,8 +14,10 @@ local ADDON, CRT = ...
 -- The sources: added (ENCOUNTER_TIMELINE_EVENT_ADDED fields), getinfo (GetEventInfo, read again at the
 -- end for each event ID seen), state (GetEventState), feature (IsFeatureEnabled), bosscast (spell casts
 -- on boss1 to boss5), meter (Deaths meter fields), recap.self and recap.other (C_DeathRecap events),
--- deadly (the spells a dead player's meter entry lists) and ej (EJ_GetEncounterInfo). A value is
--- never compared or tested before the secret check says it is safe.
+-- deadly (the spells a dead player's meter entry lists) and ej (the Journal lookup of the pulled boss;
+-- ej.match says whether it was found). added.prepull holds the timeline events that arrived while
+-- armed but before ENCOUNTER_START. A value is never compared or tested before the secret check
+-- says it is safe.
 --
 -- This file never ships: the .toc line that loads it is inside a do-not-package block.
 
@@ -142,7 +144,7 @@ local function readDeaths(moment)
                 end)
                 if okEvents then
                     recordFields(isSelf and "recap.self" or "recap.other", RECAP_FIELDS, moment,
-                        type(events) == "table" and events[#events] or nil)
+                        type(events) == "table" and events[1] or nil) -- newest first: the killing blow
                 end
             end
             if not doneDeadly then
@@ -175,15 +177,43 @@ local function readFeature(moment)
     end
 end
 
+-- Finds the pulled boss in the Journal. EJ_GetEncounterInfo takes a journal encounter ID, not the
+-- dungeon encounter ID of the pull, so this walks the current raid's encounters by index and
+-- compares the 7th return (dungeonEncounterID) with the pulled one. ej.match is "readable" when a
+-- match is found and "missing" when none is. EJ_SelectInstance is never called.
 local function readJournal(moment, encounterID)
-    local results = { pcall(EJ_GetEncounterInfo, encounterID) }
-    for i, name in ipairs(EJ_FIELDS) do
-        if results[1] then
-            record("ej", name, moment, results[i + 1])
-        else
-            bump("ej", name, moment, "error")
+    if classify(encounterID) ~= "readable" then
+        bump("ej", "match", moment, "missing")
+        return
+    end
+    local instanceID, okInst = call("ej", "instance", moment, function()
+        return EJ_GetInstanceForMap(C_Map.GetBestMapForUnit("player"))
+    end)
+    if not okInst then
+        return
+    end
+    local found = false
+    if classify(instanceID) == "readable" and type(instanceID) == "number" and instanceID ~= 0 then
+        for i = 1, 30 do
+            local entry = { pcall(EJ_GetEncounterInfoByIndex, i, instanceID) }
+            local journalID = entry[4]
+            if not entry[1] or entry[2] == nil or classify(journalID) ~= "readable" or journalID == nil then
+                break
+            end
+            local results = { pcall(EJ_GetEncounterInfo, journalID) }
+            if results[1] then
+                local dungeonID = results[8]
+                if classify(dungeonID) == "readable" and dungeonID == encounterID then
+                    found = true
+                    for n, name in ipairs(EJ_FIELDS) do
+                        record("ej", name, moment, results[n + 1])
+                    end
+                    break
+                end
+            end
         end
     end
+    bump("ej", "match", moment, found and "readable" or "missing")
 end
 
 -- Reads every event ID seen again through GetEventInfo and GetEventState.
@@ -233,6 +263,13 @@ function Probe.HandleEvent(event, ...)
             -- Not RegisterUnitEvent: it listens to at most two units. The handler skips non-boss units.
             frame:RegisterEvent("UNIT_SPELLCAST_START")
             frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+        end
+    elseif stage == "armed" and event == "ENCOUNTER_TIMELINE_EVENT_ADDED" then
+        -- Seen before the pull starts: shows whether the opener's event arrives before ENCOUNTER_START.
+        local okType, _, instanceType = pcall(GetInstanceInfo)
+        if okType and instanceType == "raid" then
+            local info = ...
+            recordFields("added.prepull", INFO_FIELDS, "event", info)
         end
     elseif stage == "pull" then
         if event == "ENCOUNTER_TIMELINE_EVENT_ADDED" then

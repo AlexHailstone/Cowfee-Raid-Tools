@@ -340,7 +340,13 @@ function Methods:SetSpan(seconds)
 end
 
 function Methods:CastCount()
-    return (self.pull and self.pull.casts) and #self.pull.casts or 0
+    local n = 0
+    for _, cast in ipairs((self.pull and self.pull.casts) or {}) do
+        if type(cast.t) == "number" then -- the lanes skip casts without a time, so the count does too
+            n = n + 1
+        end
+    end
+    return n
 end
 
 -- The width of the track's window, in pixels.
@@ -503,6 +509,9 @@ function Methods:Refresh()
     self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), height)
     self.track:SetSize(self.trackW, height)
     self.axis:SetSize(self.trackW, AXIS_H)
+    if self.hscroll.UpdateScrollChildRect then
+        self.hscroll:UpdateScrollChildRect() -- so a zoom scroll right after is not cut to the old range
+    end
     if pull then
         self:DrawAxis(length, height)
     else
