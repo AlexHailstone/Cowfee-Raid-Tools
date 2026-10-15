@@ -1,0 +1,308 @@
+local ADDON, CRT = ...
+
+-- DEVELOPER ONLY. Finds out which boss timeline, boss cast, death and Journal values the game hides
+-- from addons ("secret values" in Midnight). /crt dev probe turns it on for the next raid boss pull;
+-- it logs, for every value, whether it was "secret", "readable", "missing" (nil) or "error" (the call
+-- failed), at three moments: when the event fired, at ENCOUNTER_END, and once combat is left
+-- (PLAYER_REGEN_ENABLED). Then it switches itself off and prints a summary. /crt dev probe show
+-- prints the summary again.
+--
+-- The results go in CRTDB.dev.probe:
+--   armedAt, encounterID
+--   fields["<source>.<field>@<moment>"] = the last class seen
+--   counts["<source>.<field>@<moment>"] = { secret = n, readable = n, missing = n, error = n }
+-- The sources: added (ENCOUNTER_TIMELINE_EVENT_ADDED fields), getinfo (GetEventInfo, read again at the
+-- end for each event ID seen), state (GetEventState), feature (IsFeatureEnabled), bosscast (spell casts
+-- on boss1 to boss5), meter (Deaths meter fields), recap.self and recap.other (C_DeathRecap events),
+-- deadly (the spells a dead player's meter entry lists) and ej (EJ_GetEncounterInfo). A value is
+-- never compared or tested before the secret check says it is safe.
+--
+-- This file never ships: the .toc line that loads it is inside a do-not-package block.
+
+local Probe = {}
+CRT.TimelineProbe = Probe
+
+local MOMENTS = { "event", "end", "ooc" }
+local CLASSES = { "secret", "readable", "missing", "error" }
+local BOSS_UNITS = { boss1 = true, boss2 = true, boss3 = true, boss4 = true, boss5 = true }
+local INFO_FIELDS = { "id", "source", "spellName", "spellID", "iconFileID", "duration", "maxQueueDuration",
+    "icons", "severity", "isApproximate" }
+local METER_FIELDS = { "sourceGUID", "sourceCreatureID", "name", "classFilename", "totalAmount", "isLocalPlayer",
+    "deathRecapID", "deathTimeSeconds" }
+local RECAP_FIELDS = { "spellId", "spellName", "amount", "school", "sourceName", "timestamp" }
+local DEADLY_FIELDS = { "spellID", "totalAmount", "overkillAmount", "isDeadly" }
+local EJ_FIELDS = { "name", "description", "journalEncounterID", "rootSectionID", "link", "journalInstanceID",
+    "dungeonEncounterID", "instanceID" }
+local EVENTS = { "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_ENABLED", "ENCOUNTER_TIMELINE_EVENT_ADDED",
+    "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED" }
+
+local stage = "idle" -- idle, armed (waiting for a raid boss pull), pull, ended (waiting to leave combat)
+local seenIDs = {}
+local frame
+
+local function probeData()
+    local r = CRTDB or CRT.db
+    return r and r.dev and r.dev.probe
+end
+
+-- The secret check comes first, inside pcall, so a secret value is never compared or tested.
+local function classify(v)
+    if not issecretvalue then
+        return v == nil and "missing" or "readable"
+    end
+    local ok, secret = pcall(issecretvalue, v)
+    if not ok then
+        return "error"
+    end
+    if secret then
+        return "secret"
+    end
+    if v == nil then
+        return "missing"
+    end
+    return "readable"
+end
+
+local function bump(source, field, moment, class)
+    local data = probeData()
+    local key = source .. "." .. field .. "@" .. moment
+    data.fields[key] = class
+    local c = data.counts[key]
+    if not c then
+        c = { secret = 0, readable = 0, missing = 0, error = 0 }
+        data.counts[key] = c
+    end
+    c[class] = c[class] + 1
+end
+
+local function record(source, field, moment, v)
+    bump(source, field, moment, classify(v))
+end
+
+-- Records each named field of a table, or "missing" for all of them when there is no table.
+local function recordFields(source, names, moment, t)
+    local usable = type(t) == "table" and classify(t) == "readable"
+    for _, name in ipairs(names) do
+        if not usable then
+            bump(source, name, moment, t == nil and "missing" or classify(t))
+        else
+            local ok, v = pcall(function() return t[name] end)
+            if ok then
+                record(source, name, moment, v)
+            else
+                bump(source, name, moment, "error")
+            end
+        end
+    end
+end
+
+-- Calls fn under pcall and returns its first result. A failed call is counted as an error under
+-- source.field and returns nil.
+local function call(source, field, moment, fn, ...)
+    local ok, v = pcall(fn, ...)
+    if not ok then
+        bump(source, field, moment, "error")
+        return nil
+    end
+    return v
+end
+
+-- Deaths meter, recaps and the dead players' spells. Run at the end and after combat.
+local function readDeaths(moment)
+    local session = call("meter", "session", moment, function()
+        local sessionType = Enum and Enum.DamageMeterSessionType and Enum.DamageMeterSessionType.Current or 1
+        local meterType = Enum and Enum.DamageMeterType and Enum.DamageMeterType.Deaths or 9
+        return C_DamageMeter.GetCombatSessionFromType(sessionType, meterType)
+    end)
+    local sources = type(session) == "table" and session.combatSources
+    if type(sources) ~= "table" then
+        recordFields("meter", METER_FIELDS, moment, nil)
+        return
+    end
+    local doneSelf, doneOther, doneDeadly = false, false, false
+    for i = 1, math.min(#sources, 5) do
+        local src = sources[i]
+        recordFields("meter", METER_FIELDS, moment, src)
+        if type(src) == "table" then
+            local mine = src.isLocalPlayer
+            local isSelf = classify(mine) == "readable" and mine and true or false
+            local recapID = src.deathRecapID
+            if classify(recapID) == "readable" and ((isSelf and not doneSelf) or (not isSelf and not doneOther)) then
+                if isSelf then
+                    doneSelf = true
+                else
+                    doneOther = true
+                end
+                local events = call("recap", "events", moment, C_DeathRecap.GetRecapEvents, recapID)
+                recordFields(isSelf and "recap.self" or "recap.other", RECAP_FIELDS, moment,
+                    type(events) == "table" and events[#events] or nil)
+            end
+            if not doneDeadly then
+                doneDeadly = true
+                local detail = call("deadly", "source", moment, C_DamageMeter.GetCombatSessionSourceFromType,
+                    1, 9, src.sourceGUID, src.sourceCreatureID)
+                local spells = type(detail) == "table" and detail.combatSpells
+                if type(spells) == "table" and #spells > 0 then
+                    for s = 1, math.min(#spells, 10) do
+                        recordFields("deadly", DEADLY_FIELDS, moment, spells[s])
+                    end
+                else
+                    recordFields("deadly", DEADLY_FIELDS, moment, nil)
+                end
+            end
+        end
+    end
+end
+
+local function readFeature(moment)
+    local enabled = call("feature", "enabled", moment, C_EncounterTimeline.IsFeatureEnabled)
+    record("feature", "enabled", moment, enabled)
+end
+
+local function readJournal(moment, encounterID)
+    local results = { pcall(EJ_GetEncounterInfo, encounterID) }
+    for i, name in ipairs(EJ_FIELDS) do
+        if results[1] then
+            record("ej", name, moment, results[i + 1])
+        else
+            bump("ej", name, moment, "error")
+        end
+    end
+end
+
+-- Reads every event ID seen again through GetEventInfo and GetEventState.
+local function readSeen(moment)
+    for id in pairs(seenIDs) do
+        local info = call("getinfo", "info", moment, C_EncounterTimeline.GetEventInfo, id)
+        recordFields("getinfo", INFO_FIELDS, moment, info)
+        record("state", "value", moment, call("state", "value", moment, C_EncounterTimeline.GetEventState, id))
+    end
+end
+
+local function disarm()
+    stage = "idle"
+    if frame then
+        frame:UnregisterAllEvents()
+    end
+end
+
+function Probe.HandleEvent(event, ...)
+    if stage == "idle" or not probeData() then
+        return
+    end
+    local data = probeData()
+    if event == "ENCOUNTER_START" and stage == "armed" then
+        local ok, _, instanceType = pcall(GetInstanceInfo)
+        if not ok or instanceType ~= "raid" then
+            return
+        end
+        local encounterID = ...
+        stage = "pull"
+        seenIDs = {}
+        if classify(encounterID) == "readable" then
+            data.encounterID = encounterID
+        end
+        readFeature("event")
+        readJournal("event", encounterID)
+        if frame then
+            for i = 1, 5 do
+                frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "boss" .. i)
+                frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "boss" .. i)
+            end
+        end
+    elseif stage == "pull" then
+        if event == "ENCOUNTER_TIMELINE_EVENT_ADDED" then
+            local info = ...
+            recordFields("added", INFO_FIELDS, "event", info)
+            if type(info) == "table" and classify(info) == "readable" then
+                local id = info.id
+                if classify(id) == "readable" then
+                    seenIDs[id] = true
+                end
+            end
+        elseif event == "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED" then
+            local id = ...
+            if classify(id) == "readable" then
+                seenIDs[id] = true
+                record("state", "value", "event", call("state", "value", "event", C_EncounterTimeline.GetEventState, id))
+            end
+        elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED" then
+            local unit, castGUID, spellID = ...
+            if classify(unit) == "readable" and BOSS_UNITS[unit] then
+                record("bosscast", "castGUID", "event", castGUID)
+                record("bosscast", "spellID", "event", spellID)
+            end
+        elseif event == "ENCOUNTER_END" then
+            stage = "ended"
+            readSeen("end")
+            readFeature("end")
+            readDeaths("end")
+            if data.encounterID then
+                readJournal("end", data.encounterID)
+            end
+        end
+    elseif stage == "ended" and event == "PLAYER_REGEN_ENABLED" then
+        readSeen("ooc")
+        readDeaths("ooc")
+        disarm()
+        CRT:Print("Timeline probe done, /crt dev probe show")
+    end
+end
+
+-- Logs the next raid boss pull.
+function Probe:Arm()
+    local r = CRTDB or CRT.db
+    if not r then
+        return
+    end
+    r.dev = r.dev or {}
+    r.dev.probe = { armedAt = time(), fields = {}, counts = {} }
+    seenIDs = {}
+    stage = "armed"
+    if not frame and CreateFrame then
+        frame = CreateFrame("Frame")
+        frame:SetScript("OnEvent", function(_, event, ...)
+            Probe.HandleEvent(event, ...)
+        end)
+    end
+    if frame then
+        frame:UnregisterAllEvents()
+        for _, e in ipairs(EVENTS) do
+            frame:RegisterEvent(e)
+        end
+    end
+    CRT:Print("Timeline probe armed for the next raid boss pull.")
+end
+
+-- Prints one line per value: its counts at each moment.
+function Probe:Show()
+    local data = probeData()
+    if not data or not next(data.counts) then
+        CRT:Print("The timeline probe has no results yet. Run /crt dev probe, then pull a raid boss.")
+        return
+    end
+    local names, byName = {}, {}
+    for key, c in pairs(data.counts) do
+        local name, moment = key:match("^(.-)@(.+)$")
+        if not byName[name] then
+            byName[name] = {}
+            names[#names + 1] = name
+        end
+        byName[name][moment] = c
+    end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local parts = {}
+        for _, moment in ipairs(MOMENTS) do
+            local c = byName[name][moment]
+            if c then
+                for _, class in ipairs(CLASSES) do
+                    if c[class] > 0 then
+                        parts[#parts + 1] = moment .. " " .. class .. " " .. c[class]
+                    end
+                end
+            end
+        end
+        CRT:Print(name .. ": " .. table.concat(parts, ", "))
+    end
+end

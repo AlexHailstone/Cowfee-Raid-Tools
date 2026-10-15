@@ -127,6 +127,16 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.Dev then
             CRT.Dev:ClearAll()
         end
+    elseif msg == "dev probe show" or msg == "dev probe" then
+        if CRT.TimelineProbe then
+            if msg == "dev probe" then
+                CRT.TimelineProbe:Arm()
+            else
+                CRT.TimelineProbe:Show()
+            end
+        else
+            CRT:Print("The timeline probe is not loaded.")
+        end
     elseif msg == "dev" then
         if CRT.Dev then
             CRT.Dev:Toggle()

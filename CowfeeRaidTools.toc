@@ -54,4 +54,5 @@ UI\Minimap.lua
 UI\SettingsPage.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
+Dev\TimelineProbe.lua
 #@end-do-not-package@
