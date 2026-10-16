@@ -233,3 +233,23 @@ function Parser.FormatLine(t)
     end
     return table.concat(out)
 end
+
+-- The keys FormatLine writes.
+local FORMAT_KEYS = {}
+for _, k in ipairs({ "time", "ph", "tag", "spellid", "text", "dur", "colors", "show", "tts", "count", "sound",
+    "glow", "warn", "linger", "icon" }) do
+    FORMAT_KEYS[k] = true
+end
+
+-- The "key:value;" pairs of a raw note line that FormatLine doesn't write (such as DisplayType:Text;),
+-- as written and in order, so a line written back from its timer can keep them.
+function Parser.UnknownFields(line)
+    local out = {}
+    for part in tostring(line or ""):gmatch("[^;]+") do
+        local key = part:match("^%s*([^:]+):")
+        if key and not FORMAT_KEYS[trim(key):lower()] then
+            out[#out + 1] = trim(part) .. ";"
+        end
+    end
+    return table.concat(out)
+end

@@ -89,7 +89,8 @@ local function readable(v)
 end
 
 -- Your class as tag words: the class file name and the class's own name, lower-cased with every space
--- removed, so "druid", "deathknight" and "death knight" all match (and "chevalier de la mort" in French).
+-- removed, so "DEATHKNIGHT" (what the editor writes), "deathknight" and "death knight" all match (and
+-- "chevalier de la mort" in French).
 -- Only IsMine reads these: a class word is common in ordinary sentences, so it never marks free text as yours.
 local myClasses, classesAt
 local function classTokens()
@@ -296,7 +297,11 @@ function Engine.ItemFor(t, index, mine)
         color = t.color,
     }
     -- A line with show: is labelled by its text: when it has one, as a reminder is; the spell gives the
-    -- icon. A line without show: keeps the spell's name.
+    -- icon. A line without show: keeps the spell's name. ownLabel tells the Next spell alert to show the
+    -- item's own text, icon and colour, as the areas do.
+    if t.show then
+        item.ownLabel = true
+    end
     if t.show and type(t.text) == "string" and t.text ~= "" then
         item.text = t.text
     end

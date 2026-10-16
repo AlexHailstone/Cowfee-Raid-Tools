@@ -299,17 +299,6 @@ local function headerWord(value)
     return value ~= "" and value or nil
 end
 
--- The boss's note for exactly this difficulty (case-insensitive; nil matches a note with none).
-local function noteForDifficulty(encounterID, difficultyName)
-    local wanted = (difficultyName or ""):lower()
-    for id, record in pairs(ndb().list) do
-        if record.encounterID == encounterID and (record.difficulty or ""):lower() == wanted then
-            return id
-        end
-    end
-    return nil
-end
-
 -- The timer parsed from a line, and the raw line itself (pass it back as `expected`). Nil when that
 -- line isn't a timed line.
 function Notes:TimerAt(id, lineNumber)
@@ -326,14 +315,15 @@ function Notes:TimerAt(id, lineNumber)
     return nil
 end
 
--- Adds a line to the boss's note for that difficulty (making the note when there is none). Returns the note id and
--- the line's number.
+-- Adds a line where a pull of that difficulty reads it: the note FindForEncounter gives (that
+-- difficulty's note, else the boss's other note). A new note is made only when the boss has none at
+-- all. Returns the note id and the line's number.
 function Notes:AddLine(encounterID, difficultyName, bossName, line)
     if not singleLine(line) then
         return nil
     end
     difficultyName, bossName = headerWord(difficultyName), headerWord(bossName)
-    local id = noteForDifficulty(encounterID, difficultyName)
+    local id = self:FindForEncounter(encounterID, difficultyName)
     if not id then
         local header = "EncounterID:" .. tostring(encounterID)
         if difficultyName then

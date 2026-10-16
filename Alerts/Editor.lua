@@ -18,6 +18,7 @@ local TEXT = {
     asMine = "Only me",
     forLabel = "For",
     everyone = "Everyone",
+    noOne = "No one (timers window only)",
     me = "Me",
     tanks = "Tanks",
     healers = "Healers",
@@ -30,6 +31,9 @@ local TEXT = {
     normal = PLAYER_DIFFICULTY1 or "Normal",
     heroic = PLAYER_DIFFICULTY2 or "Heroic",
     mythic = PLAYER_DIFFICULTY6 or "Mythic",
+    savesTo = "Saves to: %s",
+    newNote = "a new note for this boss",
+    noteName = "%s (%s)",
     relativeTo = "Relative to",
     pull = "Pull",
     phase = "Phase %s",
@@ -104,14 +108,15 @@ local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle" }
 local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
+local ROW1_EXTRA = 14 -- room under the first row for the Saves to line; every row below moves down by it
 
 local frame, exportFrame
 -- ctx: where the draft came from. { encounterID, id (a reminder) and reminder (its saved copy), or
--- noteID, line, expected (the raw line), timer and noteDifficulty for a note line }
+-- noteID, line, expected (the raw line), timer, noteDifficulty and untagged for a note line }
 local ctx
 -- draft: the fields on screen. { saveAs, tag, difficulty, ph, timeText, timeTouched, keptTimes, spellID,
 -- iconType, iconID, text, color, show = { alert, text, icon, bar, circle }, speak, count, glow, sound,
--- warn, linger, boss }
+-- warn, linger, boss, baseDifficulty (a reminder's own), difficultyTouched }
 local draft
 local notice -- the message from the last Save, Test or Delete, shown until the draft changes
 local testItems
@@ -213,10 +218,16 @@ local function firstTime(list)
     return ph, t
 end
 
+-- Whether the draft still uses a saved reminder's own times: one being kept, or one moving to the raid
+-- note with Relative to and Time untouched (it then becomes one note line per time).
+local function keepsTimes()
+    return not draft.timeTouched and (draft.saveAs == "mine" or (ctx ~= nil and ctx.id ~= nil))
+end
+
 -- The message for a time that does not read; `strict` (Save and Test) also asks a note line for one.
 -- A reminder's kept times text is checked while Relative to and Time are untouched.
 local function timeError(strict)
-    if not draft.timeTouched and draft.saveAs == "mine" and draft.keptTimes then
+    if keepsTimes() and draft.keptTimes then
         local list, err = Reminders.ParseTimes(draft.keptTimes)
         if not list then
             return string.format(TEXT.keptBad, tostring(err))
@@ -269,6 +280,30 @@ local function noteTimer()
         linger = draft.linger > 0 and draft.linger or nil,
         iconID = draft.iconType == "id" and validID(draft.iconID) or nil,
     }
+end
+
+-- The fields of the raw line the editor opened that FormatLine doesn't write (such as DisplayType:),
+-- kept on the end of the line written back.
+local function keptFields()
+    return ctx and ctx.expected and CRT.NoteParser.UnknownFields(ctx.expected) or ""
+end
+
+-- The draft as note line timers: one per time of a reminder moving here (keepsTimes), else one.
+local function noteTimers()
+    local base = noteTimer()
+    if keepsTimes() then
+        local list = Reminders:Times(ctx.encounterID, timesProbe())
+        if #list > 0 then
+            local out = {}
+            for i, e in ipairs(list) do
+                local t = copy(base)
+                t.ph, t.time = e.ph, e.t
+                out[i] = t
+            end
+            return out
+        end
+    end
+    return { base }
 end
 
 -- The reminder's times text: the one it was saved with until Relative to or Time is touched.
@@ -340,8 +375,38 @@ local function roster()
     return out
 end
 
--- Who a note line is for, as its tag: Everyone (no tag), you, a role, a class, a group or a name; and
--- the line's own tag when none of those is it.
+-- The game's classes: { file, name } with file the class file name ("DEATHKNIGHT"), which is what a
+-- note line's tag carries, so it matches on every client whatever its language.
+local function classes()
+    local out = {}
+    for i = 1, GetNumClasses and GetNumClasses() or 0 do
+        local name, file = GetClassInfo(i)
+        if readable(name) and readable(file) and type(name) == "string" and name ~= ""
+            and type(file) == "string" and file ~= "" then
+            out[#out + 1] = { file = file, name = name }
+        end
+    end
+    return out
+end
+
+-- A one-word tag naming a class, by its file name or its name without spaces (in any case), as the
+-- class file name; any other tag as it is.
+local function classTag(tag)
+    if tag:find("%s") then
+        return tag
+    end
+    local word = tag:lower()
+    for _, c in ipairs(classes()) do
+        if word == c.file:lower() or word == (c.name:gsub("%s+", "")):lower() then
+            return c.file
+        end
+    end
+    return tag
+end
+
+-- Who a note line is for, as its tag: everyone, you, a role, a class, a group or a name; and the line's
+-- own tag when none of those is it. A line with no tag alerts no one (it only shows in the timers
+-- window), so it has a choice of its own.
 local function forOptions()
     local out, seen = {}, {}
     local function add(key, label)
@@ -350,7 +415,7 @@ local function forOptions()
             out[#out + 1] = { key = key, label = label }
         end
     end
-    add("", TEXT.everyone)
+    add("everyone", TEXT.everyone)
     local me = playerName()
     if me then
         add(me, TEXT.me)
@@ -360,18 +425,17 @@ local function forOptions()
     add("dps", TEXT.damage)
     add("melee", TEXT.melee)
     add("ranged", TEXT.ranged)
-    -- a class as one word, so the line's tag reads back as one choice
-    for i = 1, GetNumClasses and GetNumClasses() or 0 do
-        local name = GetClassInfo(i)
-        if readable(name) and type(name) == "string" and name ~= "" then
-            add((name:gsub("%s+", "")), name)
-        end
+    for _, c in ipairs(classes()) do
+        add(c.file, c.name)
     end
     for g = 1, 8 do
         add("G" .. g, string.format(TEXT.group, g))
     end
     for _, name in ipairs(roster()) do
         add(name, name)
+    end
+    if draft and (draft.tag == "" or (ctx and ctx.untagged)) then
+        add("", TEXT.noOne)
     end
     if draft and draft.tag ~= "" then
         add(draft.tag, draft.tag)
@@ -400,6 +464,76 @@ local function difficultyOptions()
     add(TEXT.mythic)
     add(draft and draft.difficulty)
     return out
+end
+
+-- The raid difficulty you are in now, by the name a pull there gets (GetDifficultyInfo, as the engine
+-- names it on ENCOUNTER_START), or nil outside a raid.
+local function currentDifficulty()
+    if not GetInstanceInfo then
+        return nil
+    end
+    local ok, _, kind, difficultyID, name = pcall(GetInstanceInfo)
+    if not (ok and readable(kind) and kind == "raid") then
+        return nil
+    end
+    if GetDifficultyInfo and readable(difficultyID) and type(difficultyID) == "number" then
+        local okName, n = pcall(GetDifficultyInfo, difficultyID)
+        if okName and readable(n) and type(n) == "string" and trim(n) ~= "" then
+            return n
+        end
+    end
+    if readable(name) and type(name) == "string" and trim(name) ~= "" then
+        return name
+    end
+    return nil
+end
+
+-- The note a raid note line saved now goes to: the line's own note while its difficulty is unchanged,
+-- else the one a pull of that difficulty reads (Notes:AddLine writes there). Nil: a new note is made.
+local function targetNote()
+    if not (ctx and type(ctx.encounterID) == "number") then
+        return nil
+    end
+    local difficulty = draft.difficulty and trim(draft.difficulty) or nil
+    if ctx.noteID and lower(ctx.noteDifficulty) == lower(difficulty) then
+        return ctx.noteID
+    end
+    return CRT.Notes:FindForEncounter(ctx.encounterID, difficulty)
+end
+
+-- The Difficulty a new raid note line starts on: that of the note the pull you are in would read, or,
+-- outside a raid, of the boss's only note. Nil (Any) when there is no such note.
+local function defaultDifficulty()
+    local encounterID = ctx and ctx.encounterID
+    if type(encounterID) ~= "number" then
+        return nil
+    end
+    local Notes = CRT.Notes
+    local current = currentDifficulty()
+    local id
+    if current then
+        id = Notes:FindForEncounter(encounterID, current)
+    else
+        for _, e in ipairs(Notes:List()) do
+            if e.record.encounterID == encounterID then
+                if id then
+                    return nil
+                end
+                id = e.id
+            end
+        end
+    end
+    local record = id and Notes:Get(id)
+    return record and record.difficulty or nil
+end
+
+-- Save as changed, or the editor opened: a draft whose difficulty you haven't picked takes the raid
+-- note's default as a note line, and its own (a reminder's, or Any) otherwise.
+local function applyDefaultDifficulty()
+    if draft.difficultyTouched or (ctx and ctx.noteID) or draft.baseDifficulty ~= nil then
+        return
+    end
+    draft.difficulty = draft.saveAs == "note" and defaultDifficulty() or nil
 end
 
 -- Pull, then a Phase N for every later phase the boss has, and the draft's own.
@@ -434,8 +568,9 @@ end
 
 -- Showing the draft -------------------------------------------------------------------------------
 
+-- Where the times come from while a reminder's own are kept (also when it moves to the raid note).
 local function sourceLine()
-    if draft.timeTouched or draft.saveAs == "note" then
+    if not keepsTimes() then
         return ""
     end
     local list, source = Reminders:Times(ctx and ctx.encounterID, timesProbe())
@@ -448,6 +583,22 @@ local function sourceLine()
         end
     end
     return TEXT.noTimes
+end
+
+-- The note a raid note line saves to, by name and difficulty.
+local function savesToLine()
+    if draft.saveAs ~= "note" or not (ctx and type(ctx.encounterID) == "number") then
+        return ""
+    end
+    local record = CRT.Notes:Get(targetNote())
+    if not record then
+        return string.format(TEXT.savesTo, TEXT.newNote)
+    end
+    local name = record.name or ""
+    if record.difficulty then
+        name = string.format(TEXT.noteName, name, record.difficulty)
+    end
+    return string.format(TEXT.savesTo, name)
 end
 
 -- Everything on the window from the draft, except the boxes being typed in. `rows` also redraws the
@@ -478,6 +629,7 @@ local function refresh(rows)
     local c = draft.color or { 1, 1, 1 }
     frame.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
     frame.sourceText:SetText(sourceLine())
+    frame.savesText:SetText(savesToLine())
     local message = timeError(false) or notice
     frame.messageText:SetText(message and ("|cffff6060" .. message .. "|r") or "")
     frame.deleteBtn:SetShown(ctx ~= nil and (ctx.id ~= nil or ctx.noteID ~= nil))
@@ -519,23 +671,37 @@ local function saveNote()
         return fail(TEXT.noBoss)
     end
     local Notes = CRT.Notes
-    local line = CRT.NoteParser.FormatLine(noteTimer())
+    local extra = keptFields()
+    local lines = {}
+    for i, t in ipairs(noteTimers()) do
+        lines[i] = CRT.NoteParser.FormatLine(t) .. extra
+    end
     local difficulty = draft.difficulty and trim(draft.difficulty) or nil
     if ctx.noteID then
         if not lineUnchanged() then
             return fail(TEXT.stale)
         end
-        if lower(ctx.noteDifficulty) == lower(difficulty) then
-            if not Notes:ReplaceLine(ctx.noteID, ctx.line, line, ctx.expected) then
+        -- still going to its own note: the line is replaced where it is
+        if targetNote() == ctx.noteID then
+            if not Notes:ReplaceLine(ctx.noteID, ctx.line, lines[1], ctx.expected) then
                 return fail(TEXT.stale)
             end
             Editor:Close()
             return true
         end
     end
-    -- a new line, or one moving here from a reminder or another difficulty's note
-    if not Notes:AddLine(encounterID, difficulty, draft.boss, line) then
-        return fail(TEXT.noteFailed)
+    -- a new line, or lines moving here from a reminder (one per time) or from another note. If one
+    -- can't be written, the ones written are taken out again and the old alert stays as it was.
+    local written = {}
+    for _, line in ipairs(lines) do
+        local id, n = Notes:AddLine(encounterID, difficulty, draft.boss, line)
+        if not id then
+            for i = #written, 1, -1 do
+                Notes:RemoveLine(written[i].id, written[i].n, written[i].line)
+            end
+            return fail(TEXT.noteFailed)
+        end
+        written[#written + 1] = { id = id, n = n, line = line }
     end
     if ctx.noteID then
         Notes:RemoveLine(ctx.noteID, ctx.line, ctx.expected)
@@ -601,11 +767,16 @@ function Editor:Test()
     end
     local items, lowest, first
     if draft.saveAs == "note" then
-        local t = noteTimer()
-        local item = CRT.NoteEngine.ItemFor(t, 1, true)
-        item.id = "note:test:1"
-        item.block = "note"
-        items, lowest, first = { item }, t.ph, t.time
+        local list = {}
+        items = {}
+        for i, t in ipairs(noteTimers()) do
+            local item = CRT.NoteEngine.ItemFor(t, i, true)
+            item.id = "note:test:" .. i
+            item.block = "note"
+            items[i] = item
+            list[i] = { ph = t.ph, t = t.time }
+        end
+        lowest, first = firstTime(list)
     else
         local r = buildReminder()
         local list = Reminders:Times(ctx.encounterID, r)
@@ -758,7 +929,7 @@ function Editor:Export()
         return nil
     end
     buildExport()
-    local line = CRT.NoteParser.FormatLine(noteTimer())
+    local line = CRT.NoteParser.FormatLine(noteTimer()) .. keptFields()
     exportFrame.text = line
     exportFrame.edit:SetText(line)
     exportFrame:Show()
@@ -849,7 +1020,10 @@ local function build()
         labelWidth = 56, width = 118,
         options = { { key = "note", label = TEXT.asNote }, { key = "mine", label = TEXT.asMine } },
         get = function() return draft and draft.saveAs or "mine" end,
-        set = setter(function(v) draft.saveAs = v end),
+        set = setter(function(v)
+            draft.saveAs = v
+            applyDefaultDifficulty()
+        end),
     }), LEFT, -30)
     f.forRow = row(UI.Dropdown(f, TEXT.forLabel, {
         labelWidth = 30, width = 160, maxHeight = MENU_MAX_HEIGHT,
@@ -861,8 +1035,17 @@ local function build()
         labelWidth = 60, width = 114,
         options = difficultyOptions,
         get = function() return draft and draft.difficulty or ANY end,
-        set = setter(function(v) draft.difficulty = v ~= ANY and v or nil end),
+        set = setter(function(v)
+            draft.difficulty = v ~= ANY and v or nil
+            draft.difficultyTouched = true
+        end),
     }), 405, -30)
+    -- Saves to: the note a raid note line goes to, under For and Difficulty
+    f.savesText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    f.savesText:SetPoint("TOPRIGHT", -LEFT, -62)
+    f.savesText:SetWidth(WIDTH - 205 - LEFT)
+    f.savesText:SetJustifyH("RIGHT")
+    f.savesText:SetWordWrap(false)
 
     -- Relative to, Time
     row(UI.Dropdown(f, TEXT.relativeTo, {
@@ -873,9 +1056,9 @@ local function build()
             draft.ph = v
             draft.timeTouched = true
         end),
-    }), LEFT, -64)
-    makeLabel(f, TEXT.time, 226, -74)
-    f.timeEdit = makeEdit(f, 264, -70, 64, function(text, userInput)
+    }), LEFT, -64 - ROW1_EXTRA)
+    makeLabel(f, TEXT.time, 226, -74 - ROW1_EXTRA)
+    f.timeEdit = makeEdit(f, 264, -70 - ROW1_EXTRA, 64, function(text, userInput)
         if draft then
             draft.timeText = text
             if userInput then
@@ -884,9 +1067,9 @@ local function build()
             changed()
         end
     end)
-    UI.Help(f, TEXT.timeHelpTitle, TEXT.timeHelp):SetPoint("TOPLEFT", 332, -72)
+    UI.Help(f, TEXT.timeHelpTitle, TEXT.timeHelp):SetPoint("TOPLEFT", 332, -72 - ROW1_EXTRA)
     f.sourceText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    f.sourceText:SetPoint("TOPLEFT", 360, -74)
+    f.sourceText:SetPoint("TOPLEFT", 360, -74 - ROW1_EXTRA)
     f.sourceText:SetWidth(WIDTH - 360 - LEFT)
     f.sourceText:SetJustifyH("LEFT")
     f.sourceText:SetWordWrap(false)
@@ -897,13 +1080,13 @@ local function build()
         format = function(v) return string.format(TEXT.seconds, v) end,
         get = function() return draft and draft.warn or 5 end,
         set = setter(function(v) draft.warn = v end),
-    }), LEFT, -98)
+    }), LEFT, -98 - ROW1_EXTRA)
     row(UI.Slider(f, TEXT.linger, {
         min = 0, max = 10, step = 1, labelWidth = 50, width = 150,
         format = function(v) return string.format(TEXT.seconds, v) end,
         get = function() return draft and draft.linger or 0 end,
         set = setter(function(v) draft.linger = v end),
-    }), 306, -98)
+    }), 306, -98 - ROW1_EXTRA)
 
     -- Icon: Spell or Icon ID, the ID box and a preview
     row(UI.Dropdown(f, TEXT.icon, {
@@ -918,8 +1101,8 @@ local function build()
                 changed(true)
             end
         end,
-    }), LEFT, -132)
-    f.idEdit = makeEdit(f, 212, -138, 80, function(text)
+    }), LEFT, -132 - ROW1_EXTRA)
+    f.idEdit = makeEdit(f, 212, -138 - ROW1_EXTRA, 80, function(text)
         if draft then
             local id = validID(tonumber(trim(text)))
             if draft.iconType == "id" then
@@ -930,20 +1113,20 @@ local function build()
             changed()
         end
     end)
-    UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp):SetPoint("TOPLEFT", 296, -140)
+    UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp):SetPoint("TOPLEFT", 296, -140 - ROW1_EXTRA)
     f.iconPreview = f:CreateTexture(nil, "ARTWORK")
     f.iconPreview:SetSize(24, 24)
-    f.iconPreview:SetPoint("TOPLEFT", 326, -136)
+    f.iconPreview:SetPoint("TOPLEFT", 326, -136 - ROW1_EXTRA)
     f.iconPreview:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     f.spellName = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    f.spellName:SetPoint("TOPLEFT", 358, -142)
+    f.spellName:SetPoint("TOPLEFT", 358, -142 - ROW1_EXTRA)
     f.spellName:SetWidth(WIDTH - 358 - LEFT)
     f.spellName:SetJustifyH("LEFT")
     f.spellName:SetWordWrap(false)
 
     -- Text
-    makeLabel(f, TEXT.text, LEFT, -178)
-    f.textEdit = makeEdit(f, FIELD_X + 4, -174, WIDTH - FIELD_X - LEFT - 8, function(text)
+    makeLabel(f, TEXT.text, LEFT, -178 - ROW1_EXTRA)
+    f.textEdit = makeEdit(f, FIELD_X + 4, -174 - ROW1_EXTRA, WIDTH - FIELD_X - LEFT - 8, function(text)
         if draft then
             draft.text = text
             changed()
@@ -951,10 +1134,10 @@ local function build()
     end)
 
     -- Color: a swatch that opens the game's color picker, and Default for none
-    makeLabel(f, TEXT.color, LEFT, -210)
+    makeLabel(f, TEXT.color, LEFT, -210 - ROW1_EXTRA)
     f.colorSwatch = CreateFrame("Button", nil, f)
     f.colorSwatch:SetSize(20, 20)
-    f.colorSwatch:SetPoint("TOPLEFT", FIELD_X, -206)
+    f.colorSwatch:SetPoint("TOPLEFT", FIELD_X, -206 - ROW1_EXTRA)
     f.colorSwatch.edge = f.colorSwatch:CreateTexture(nil, "BACKGROUND")
     f.colorSwatch.edge:SetAllPoints()
     f.colorSwatch.edge:SetColorTexture(0.5, 0.5, 0.5, 1)
@@ -963,7 +1146,7 @@ local function build()
     f.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
     f.colorSwatch:SetScript("OnClick", pickColor)
     f.colorDefault = makeButton(f, TEXT.colorDefault, 80)
-    f.colorDefault:SetPoint("TOPLEFT", FIELD_X + 28, -204)
+    f.colorDefault:SetPoint("TOPLEFT", FIELD_X + 28, -204 - ROW1_EXTRA)
     f.colorDefault:SetScript("OnClick", function()
         if draft then
             draft.color = nil
@@ -972,30 +1155,30 @@ local function build()
     end)
 
     -- Show as
-    makeLabel(f, TEXT.showAs, LEFT, -246)
+    makeLabel(f, TEXT.showAs, LEFT, -246 - ROW1_EXTRA)
     f.checks = {}
     for _, spec in ipairs({ { "alert", TEXT.nextSpell, FIELD_X }, { "text", TEXT.showText, 226 },
         { "icon", TEXT.showIcon, 296 }, { "bar", TEXT.bar, 366 }, { "circle", TEXT.circle, 430 } }) do
         local key = spec[1]
-        f.checks[key] = makeCheck(f, spec[2], spec[3], -240, setter(function(on) draft.show[key] = on end))
+        f.checks[key] = makeCheck(f, spec[2], spec[3], -240 - ROW1_EXTRA, setter(function(on) draft.show[key] = on end))
     end
 
     -- Also
-    makeLabel(f, TEXT.also, LEFT, -280)
+    makeLabel(f, TEXT.also, LEFT, -280 - ROW1_EXTRA)
     f.also = {
-        speak = makeCheck(f, TEXT.speak, FIELD_X, -274, setter(function(on) draft.speak = on end)),
-        count = makeCheck(f, TEXT.count, 226, -274, setter(function(on) draft.count = on end)),
-        glow = makeCheck(f, TEXT.glow, 386, -274, setter(function(on) draft.glow = on end)),
+        speak = makeCheck(f, TEXT.speak, FIELD_X, -274 - ROW1_EXTRA, setter(function(on) draft.speak = on end)),
+        count = makeCheck(f, TEXT.count, 226, -274 - ROW1_EXTRA, setter(function(on) draft.count = on end)),
+        glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA, setter(function(on) draft.glow = on end)),
     }
     row(UI.Dropdown(f, TEXT.sound, {
         labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT,
         options = soundOptions,
         get = function() return draft and draft.sound or NO_SOUND end,
         set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
-    }), LEFT, -304)
+    }), LEFT, -304 - ROW1_EXTRA)
 
     f.messageText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    f.messageText:SetPoint("TOPLEFT", LEFT, -350)
+    f.messageText:SetPoint("TOPLEFT", LEFT, -350 - ROW1_EXTRA)
     f.messageText:SetWidth(WIDTH - 2 * LEFT)
     f.messageText:SetJustifyH("LEFT")
 
@@ -1056,7 +1239,7 @@ end
 -- Opening -------------------------------------------------------------------------------------------
 
 local function newDraft()
-    return { saveAs = "mine", tag = "", ph = 1, timeText = "", timeTouched = false, iconType = "spell",
+    return { saveAs = "mine", tag = "everyone", ph = 1, timeText = "", timeTouched = false, iconType = "spell",
         text = "", show = { alert = true, bar = true }, speak = true, count = false, glow = false, warn = 5,
         linger = 0 }
 end
@@ -1137,6 +1320,9 @@ function Editor:Open(encounterID, id, prefill)
     if prefill and prefill.boss and not draft.boss then
         draft.boss = prefill.boss
     end
+    -- a reminder's own difficulty stays; a new one as a note line starts where the pull would read it
+    draft.baseDifficulty = draft.difficulty
+    applyDefaultDifficulty()
     show()
 end
 
@@ -1159,7 +1345,9 @@ function Editor:OpenNote(noteID, lineNumber)
     draft.saveAs = "note"
     draft.boss = record.name
     draft.difficulty = record.difficulty
-    draft.tag = table.concat(timer.tags or {}, " ")
+    -- a one-word class tag reads back as its class choice; a line with no tag as No one
+    draft.tag = #(timer.tags or {}) == 1 and classTag(timer.tags[1]) or table.concat(timer.tags or {}, " ")
+    ctx.untagged = draft.tag == ""
     draft.ph = timer.ph or 1
     draft.timeText = clock(timer.time or 0, true)
     draft.timeTouched = true
