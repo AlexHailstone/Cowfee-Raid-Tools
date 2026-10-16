@@ -43,7 +43,8 @@ local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local NOTES_ICON = "Interface\\Icons\\INV_Misc_Note_01"
-local FLAG_W, FLAG_HEAD = 6, 10 -- a marker: as tall as the row less 6 px, its top 10 px the flag
+local FLAG_W, FLAG_HEAD = 12, 14 -- a marker's flag, drawn on a pole as tall as the row less 6 px
+local FLAG_BTN_W = 20 -- the clickable marker: this wide, the full row high, the flag centred in it
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
 
 local TEXT = {
@@ -627,21 +628,13 @@ function Methods:TrackClick(button)
     end
 end
 
--- Drops a new alert at the cursor: an ability row gives its spell (a reference row with none, its
--- name); the Deaths row, the ticks, the Notes row and empty space give the time only.
+-- Drops a new alert at the cursor: the time only, on every row. Only a double-click on a boss spell
+-- icon (IconDoubleClick) fills in that spell.
 function Methods:TrackDoubleClick()
     local length = math.max(1, self.extra.length or 0)
     local x = self.hscroll:GetHorizontalScroll() + cursorX(self.hscroll)
     local t = math.max(0, math.min(length, View.XToTime(x, length, self.trackW)))
-    local lane = self:LaneAt()
-    local spellID, text
-    if lane and (lane.kind == "reference" or lane.kind == "spell") then
-        spellID = type(lane.spellID) == "number" and lane.spellID > 0 and lane.spellID or nil
-        if not spellID and lane.kind == "reference" and type(lane.label) == "string" and lane.label ~= "" then
-            text = lane.label
-        end
-    end
-    self:OpenAt(t, spellID, text)
+    self:OpenAt(t)
 end
 
 -- Markers -------------------------------------------------------------------------------------------
@@ -725,14 +718,17 @@ end
 function Methods:Flag(n)
     return pooled(self.flags, n, function()
         local f = CreateFrame("Button", nil, self.track)
-        f:SetSize(FLAG_W, ROW_H - 6)
+        f:SetSize(FLAG_BTN_W, ROW_H)
         f:EnableMouse(true)
+        local inset = (FLAG_BTN_W - FLAG_W) / 2
         f.pole = f:CreateTexture(nil, "ARTWORK")
-        f.pole:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+        f.pole:SetPoint("TOPLEFT", f, "TOPLEFT", inset, -3)
         f.pole:SetSize(2, ROW_H - 6)
         f.head = f:CreateTexture(nil, "ARTWORK")
-        f.head:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+        f.head:SetPoint("TOPLEFT", f, "TOPLEFT", inset, -3)
         f.head:SetSize(FLAG_W, FLAG_HEAD)
+        f:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
+        f:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.15)
         f:SetScript("OnEnter", flagEnter)
         f:SetScript("OnLeave", hideTip)
         f:SetScript("OnMouseDown", function(_, button)
@@ -766,14 +762,14 @@ function Methods:FlagDoubleClick(f)
     end
 end
 
--- Draws the markers above the icons: raid note lines in caramel, your reminders in cream.
+-- Draws the markers above the icons (their buttons sit a level above every cast icon, so one over an icon is the one clicked): raid note lines in caramel, your reminders in cream.
 function Methods:DrawMarks(length)
     local level = (self.track:GetFrameLevel() or 0) + 8
     for n, m in ipairs(self.marks) do
         local f = self:Flag(n)
         f.mark = m
         f:ClearAllPoints()
-        f:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(m.t, length, self.trackW) - 1, -(m.row - 1) * ROW_H - 3)
+        f:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(m.t, length, self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2, -(m.row - 1) * ROW_H)
         f:SetFrameLevel(level)
         local key = m.mine and "cream" or "caramel"
         f.pole:SetColorTexture(mocha(key))
