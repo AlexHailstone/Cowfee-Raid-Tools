@@ -94,12 +94,13 @@ end
 
 -- A dropdown for one setting, in the Edit Mode style (UI/Controls.lua).
 -- holder optionally returns the table that holds field, by default CRTDB.readycheck.
-local function makeDropdown(parent, x, y, text, field, choices, holder, labelWidth, width)
+local function makeDropdown(parent, x, y, text, field, choices, holder, labelWidth, width, enabledIf)
     holder = holder or settings
     local row = UI.Dropdown(parent, text, {
         options = choices,
         labelWidth = labelWidth,
         width = width,
+        enabledIf = enabledIf,
         get = function()
             return holder()[field]
         end,
@@ -143,9 +144,14 @@ local function buildAuto(f)
     local lock = makeCheck(f, 4, -304, "Lock my Ready button until everyone has my raid buff", "buffLock")
     local fade = makeCheck(f, 4, -334, "Fade out my bar and the ready check window on a pull timer", "fadeOnPull")
     UI.Help(f, "Fade on a pull timer", "When anyone starts a pull timer, your bar and the ready check window fade out over 2 seconds, so they're gone before the pull. They come back on the next ready check, and Previews keeps them up."):SetPoint("LEFT", fade, "RIGHT", 330, 0)
-    local early = makeCheck(f, 4, -364, "Report an early pull (who started the fight before the pull timer ended)", "earlyPull")
-    UI.Help(f, "Early pull", "While a pull timer counts down, the addon watches which group members enter combat and who cast just before. If the fight starts more than half a second before the timer ends, it reports the first players in combat and the last casts before it.\n\nThe game hides which spell other players cast, so only their names and times are listed; your own casts show their spell.\n\nIf the game hides the timer's length in your raid, early and on time can't be told apart and nothing is reported."):SetPoint("LEFT", early, "RIGHT", 420, 0)
-    makeDropdown(f, 32, -394, "Post to", "earlyPullOutput", OUTPUTS, nil, 70, 170)
+    -- Early Pull Checker, its own section under the ready check options.
+    local earlyTitle = label(f, "Early Pull Checker")
+    earlyTitle:SetPoint("TOPLEFT", 8, -376)
+    UI.Help(f, "Early Pull Checker", "While a pull timer counts down, the addon watches which group members enter combat and who cast just before. If the fight starts more than half a second before the timer ends, it reports the first players in combat and the last casts before it.\n\nThe game hides which spell other players cast, so only their names and times are listed; your own casts show their spell.\n\nIf the game hides the timer's length in your raid, early and on time can't be told apart and nothing is reported."):SetPoint("LEFT", earlyTitle, "RIGHT", 6, 0)
+    makeCheck(f, 4, -396, "Report who starts the fight before the pull timer ends", "earlyPull")
+    makeDropdown(f, 32, -422, "Post to", "earlyPullOutput", OUTPUTS, nil, 70, 170, function()
+        return settings().earlyPull
+    end)
     UI.Help(f, "Ready button lock", "When a ready check starts and someone in the group is missing your class's raid buff (Arcane Intellect, Fortitude, Battle Shout, Mark of the Wild, Skyfury or Blessing of the Bronze), your Ready button is greyed out until they have it. Hover it to see who.\n\nHold Shift and click Ready to ready anyway, and it unlocks by itself after 10 seconds, in case you can't buff.\n\nOnly players the game lets the addon read count. Anyone offline, out of sight, or whose buffs the game hides never locks you."):SetPoint("LEFT", lock, "RIGHT", 330, 0)
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.
