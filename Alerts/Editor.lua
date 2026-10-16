@@ -10,6 +10,9 @@ local ADDON, CRT = ...
 -- own ("minetest") that gives them out only to a run started with reason "test". A note line's item is
 -- the note block's own (CRT.NoteEngine.ItemFor) and stays a "note" item, so the note's switches apply.
 -- Export shows the draft as a note line in a copy box.
+-- Save as saved alert keeps the draft's setup, without its time, as a saved alert (CRT.AlertSaved), and
+-- Open takes prefill.saved to start from one. EditSaved opens a saved alert itself: no Save as, Relative
+-- to, Time or Difficulty, Save overwrites it, and Test previews it ten seconds ahead.
 
 local TEXT = {
     title = "Alert",
@@ -75,6 +78,14 @@ local TEXT = {
     exportTitle = "Alert as a note line",
     test = "Test",
     save = "Save",
+    saveAsSaved = "Save as saved alert",
+    savedNamePrompt = "Name this saved alert:",
+    savedAccept = ACCEPT or "Accept",
+    savedTitle = "Saved alert: %s",
+    savedTitleNew = "New saved alert",
+    savedMade = "Saved alert \"%s\" saved.",
+    deleteSavedConfirm = "Delete this saved alert?",
+    savedFailed = "The saved alert could not be saved.",
     cancel = CANCEL or "Cancel",
     testInPull = "Test is off during a pull.",
     testTrigger = "Nothing to test: this alert starts in phase %s, which waits for its trigger.",
@@ -115,9 +126,12 @@ local EXPORT_WIDTH = WIDTH - 88 -- the text box
 local EXPORT_TEXT_WIDTH = EXPORT_WIDTH - 2 * EXPORT_PAD
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
 
+local POPUP_NAME = "COWFEE_RAID_TOOLS_SAVED_ALERT_NAME"
+
 local frame, exportFrame
 -- ctx: where the draft came from. { encounterID, id (a reminder) and reminder (its saved copy), or
--- noteID, line, expected (the raw line), timer, noteDifficulty and untagged for a note line }
+-- noteID, line, expected (the raw line), timer, noteDifficulty and untagged for a note line; or, for a
+-- saved alert itself, savedMode, savedID (nil for a new one) and savedName }
 local ctx
 -- draft: the fields on screen. { saveAs, tag, difficulty, ph, timeText, timeTouched, keptTimes, spellID,
 -- iconType, iconID, text, color, show = { alert, text, icon, bar, circle }, speak, count, glow, sound,
@@ -227,12 +241,18 @@ end
 -- Whether the draft still uses a saved reminder's own times: one being kept, or one moving to the raid
 -- note with Relative to and Time untouched (it then becomes one note line per time).
 local function keepsTimes()
+    if ctx and ctx.savedMode then
+        return false
+    end
     return not draft.timeTouched and (draft.saveAs == "mine" or (ctx ~= nil and ctx.id ~= nil))
 end
 
 -- The message for a time that does not read; `strict` (Save and Test) also asks a note line for one.
 -- A reminder's kept times text is checked while Relative to and Time are untouched.
 local function timeError(strict)
+    if ctx and ctx.savedMode then
+        return nil -- a saved alert has no time
+    end
     if keepsTimes() and draft.keptTimes then
         local list, err = Reminders.ParseTimes(draft.keptTimes)
         if not list then
@@ -622,7 +642,15 @@ local function refresh(rows)
     if not (frame and draft) then
         return
     end
+    local savedMode = ctx ~= nil and ctx.savedMode == true
     frame.forRow:SetShown(draft.saveAs == "note")
+    frame.saveAsRow:SetShown(not savedMode)
+    frame.relativeRow:SetShown(not savedMode)
+    frame.difficultyRow:SetShown(not savedMode)
+    frame.timeLabel:SetShown(not savedMode)
+    frame.timeEdit:SetShown(not savedMode)
+    frame.timeHelp:SetShown(not savedMode)
+    frame.saveSavedBtn:SetShown(not savedMode)
     if rows then
         for _, row in ipairs(frame.rows) do
             row.refresh()
@@ -647,7 +675,7 @@ local function refresh(rows)
     frame.savesText:SetText(savesToLine())
     local message = timeError(false) or notice
     frame.messageText:SetText(message and ("|cffff6060" .. message .. "|r") or "")
-    frame.deleteBtn:SetShown(ctx ~= nil and (ctx.id ~= nil or ctx.noteID ~= nil))
+    frame.deleteBtn:SetShown(ctx ~= nil and (ctx.id ~= nil or ctx.noteID ~= nil or ctx.savedID ~= nil))
 end
 
 -- A field changed: any message about the last Save is out of date.
@@ -759,6 +787,25 @@ local function saveMine()
     return true
 end
 
+-- The draft as a saved alert's fields (CRT.AlertSaved:Save keeps only the ones a saved alert has).
+local function savedFields()
+    local r = buildReminder()
+    r.saveAs = draft.saveAs
+    r.tags = words(draft.tag)
+    r.name = ctx and ctx.savedName
+    return r
+end
+
+-- Saving a saved alert itself: overwrites it, or makes it for a new one.
+local function saveSaved()
+    local Saved = CRT.AlertSaved
+    if not (Saved and Saved:Save(ctx.savedID, savedFields())) then
+        return fail(TEXT.savedFailed)
+    end
+    Editor:Close()
+    return true
+end
+
 -- Saves the draft and closes. A time that does not read, nothing ticked, or a note line changed
 -- elsewhere leaves the window open with the message shown.
 function Editor:Save()
@@ -772,6 +819,9 @@ function Editor:Save()
     if not anyOutput() then
         return fail(TEXT.nothing)
     end
+    if ctx.savedMode then
+        return saveSaved()
+    end
     if draft.saveAs == "note" then
         return saveNote()
     end
@@ -780,7 +830,7 @@ end
 
 -- Runs the draft alone as a test, starting TEST_LEAD seconds before its first time. Saves nothing.
 function Editor:Test()
-    if not (ctx and ctx.encounterID and draft) then
+    if not (ctx and (ctx.encounterID or ctx.savedMode) and draft) then
         return false
     end
     -- A real pull is never cut short by a test.
@@ -799,6 +849,9 @@ function Editor:Test()
         local list = {}
         items = {}
         for i, t in ipairs(noteTimers()) do
+            if ctx.savedMode then
+                t.ph, t.time = 1, TEST_LEAD -- a saved alert has no time: ten seconds from the start
+            end
             local item = CRT.NoteEngine.ItemFor(t, i, true)
             item.id = "note:test:" .. i
             item.block = "note"
@@ -808,6 +861,9 @@ function Editor:Test()
         lowest, first = firstTime(list)
     else
         local r = buildReminder()
+        if ctx.savedMode then
+            r.times = Reminders.FormatTimes({ { ph = 1, t = TEST_LEAD } })
+        end
         local list = Reminders:Times(ctx.encounterID, r)
         if #list == 0 then
             refresh()
@@ -817,7 +873,7 @@ function Editor:Test()
         items = Reminders:Items(ctx.encounterID, "test", r)
     end
     testItems = items
-    Alerts:Start(ctx.encounterID, nil, "test", {
+    Alerts:Start(ctx.encounterID or 0, nil, "test", {
         blocks = { [TEST_BLOCK] = true },
         filter = function(_, item)
             return type(item.id) == "string" and (item.id:find("^mine:test:") or item.id:find("^note:test:")) ~= nil
@@ -983,7 +1039,8 @@ function Editor:Export()
         return nil
     end
     -- a note line needs a time that reads, as Save does
-    local err = timeError(true) or (not keptTimeList() and parseTime(draft.timeText) == nil and TEXT.noTime or nil)
+    local err = timeError(true) or (not ctx.savedMode and not keptTimeList() and parseTime(draft.timeText) == nil
+        and TEXT.noTime or nil)
     if err then
         fail(err)
         return nil
@@ -1035,8 +1092,7 @@ local function liftOver(dialog)
 end
 
 -- The confirmation the game just showed: the popup the call returns, else the first visible one.
-local function confirm(info)
-    local shown = StaticPopup_ShowCustomGenericConfirmation(info)
+local function shownPopup(shown)
     if type(shown) ~= "table" then
         shown = nil
         for i = 1, 4 do
@@ -1047,7 +1103,84 @@ local function confirm(info)
             end
         end
     end
-    liftOver(shown)
+    return shown
+end
+
+local function confirm(info)
+    liftOver(shownPopup(StaticPopup_ShowCustomGenericConfirmation(info)))
+end
+
+-- The name popup of Save as saved alert: an edit box with the default name in it. data = { fields, default }.
+local function popupEdit(dialog)
+    return dialog.GetEditBox and dialog:GetEditBox() or dialog.EditBox or dialog.editBox
+end
+
+local function acceptName(dialog, data)
+    local edit = popupEdit(dialog)
+    local fields = data and data.fields
+    if not (edit and fields and CRT.AlertSaved) then
+        return
+    end
+    fields.name = trim(edit:GetText())
+    local id = CRT.AlertSaved:Save(nil, fields)
+    local s = id and CRT.AlertSaved:Get(id)
+    if s and CRT.Print then
+        CRT:Print(string.format(TEXT.savedMade, s.name))
+    end
+end
+
+local function ensureNamePopup()
+    if not StaticPopupDialogs then
+        return false
+    end
+    if StaticPopupDialogs[POPUP_NAME] then
+        return true
+    end
+    StaticPopupDialogs[POPUP_NAME] = {
+        text = TEXT.savedNamePrompt,
+        button1 = TEXT.savedAccept,
+        button2 = TEXT.cancel,
+        hasEditBox = true,
+        maxLetters = 64,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+        OnShow = function(self, data)
+            local edit = popupEdit(self)
+            if edit then
+                edit:SetText(data and data.default or "")
+                edit:HighlightText()
+            end
+        end,
+        OnAccept = function(self, data)
+            acceptName(self, data)
+        end,
+        EditBoxOnEnterPressed = function(self)
+            local dialog = self:GetParent()
+            acceptName(dialog, dialog.data)
+            dialog:Hide()
+        end,
+        EditBoxOnEscapePressed = function(self)
+            self:GetParent():Hide()
+        end,
+    }
+    return true
+end
+
+-- Asks for a name for the draft as a saved alert, over the editor; Accept makes it (an empty name takes
+-- the default), Cancel leaves the draft as it was.
+local function askSavedName()
+    if not (draft and CRT.AlertSaved and ensureNamePopup()) then
+        return
+    end
+    if not anyOutput() then
+        return fail(TEXT.nothing)
+    end
+    local fields = savedFields()
+    fields.name = nil
+    local data = { fields = fields, default = CRT.AlertSaved.DefaultName(fields) }
+    liftOver(shownPopup(StaticPopup_Show(POPUP_NAME, nil, nil, data)))
 end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
@@ -1141,7 +1274,7 @@ local function build()
     end
 
     -- Save as, For, Difficulty
-    row(UI.Dropdown(f, TEXT.saveAs, {
+    f.saveAsRow = row(UI.Dropdown(f, TEXT.saveAs, {
         labelWidth = 56, width = 118,
         options = { { key = "note", label = TEXT.asNote }, { key = "mine", label = TEXT.asMine } },
         get = function() return draft and draft.saveAs or "mine" end,
@@ -1156,7 +1289,7 @@ local function build()
         get = function() return draft and draft.tag or "" end,
         set = setter(function(v) draft.tag = v end),
     }), 205, -30)
-    row(UI.Dropdown(f, TEXT.difficulty, {
+    f.difficultyRow = row(UI.Dropdown(f, TEXT.difficulty, {
         labelWidth = 60, width = 114,
         options = difficultyOptions,
         get = function() return draft and draft.difficulty or ANY end,
@@ -1173,7 +1306,7 @@ local function build()
     f.savesText:SetWordWrap(false)
 
     -- Relative to, Time
-    row(UI.Dropdown(f, TEXT.relativeTo, {
+    f.relativeRow = row(UI.Dropdown(f, TEXT.relativeTo, {
         labelWidth = 70, width = 120,
         options = phaseOptions,
         get = function() return draft and draft.ph or 1 end,
@@ -1182,7 +1315,7 @@ local function build()
             draft.timeTouched = true
         end),
     }), LEFT, -64 - ROW1_EXTRA)
-    makeLabel(f, TEXT.time, 226, -74 - ROW1_EXTRA)
+    f.timeLabel = makeLabel(f, TEXT.time, 226, -74 - ROW1_EXTRA)
     f.timeEdit = makeEdit(f, 264, -70 - ROW1_EXTRA, 64, function(text, userInput)
         if draft then
             draft.timeText = text
@@ -1192,7 +1325,8 @@ local function build()
             changed()
         end
     end)
-    UI.Help(f, TEXT.timeHelpTitle, TEXT.timeHelp):SetPoint("TOPLEFT", 332, -72 - ROW1_EXTRA)
+    f.timeHelp = UI.Help(f, TEXT.timeHelpTitle, TEXT.timeHelp)
+    f.timeHelp:SetPoint("TOPLEFT", 332, -72 - ROW1_EXTRA)
     f.sourceText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     f.sourceText:SetPoint("TOPLEFT", 360, -74 - ROW1_EXTRA)
     f.sourceText:SetWidth(WIDTH - 360 - LEFT)
@@ -1311,17 +1445,21 @@ local function build()
     f.deleteBtn = makeButton(f, TEXT.delete, 80)
     f.deleteBtn:SetPoint("BOTTOMLEFT", LEFT, 14)
     f.deleteBtn:SetScript("OnClick", function()
-        if not (ctx and (ctx.id or ctx.noteID)) then
+        if not (ctx and (ctx.id or ctx.noteID or ctx.savedID)) then
             return
         end
         local from = ctx
         confirm({
-            text = TEXT.deleteConfirm,
+            text = from.savedMode and TEXT.deleteSavedConfirm or TEXT.deleteConfirm,
             acceptText = TEXT.delete,
             cancelText = TEXT.cancel,
             showAlert = true,
             callback = function()
-                if from.noteID then
+                if from.savedMode then
+                    if CRT.AlertSaved then
+                        CRT.AlertSaved:Delete(from.savedID)
+                    end
+                elseif from.noteID then
                     if not CRT.Notes:RemoveLine(from.noteID, from.line, from.expected) then
                         if ctx == from then
                             fail(TEXT.stale)
@@ -1342,6 +1480,9 @@ local function build()
     f.exportBtn:SetScript("OnClick", function()
         Editor:Export()
     end)
+    f.saveSavedBtn = makeButton(f, TEXT.saveAsSaved, 134)
+    f.saveSavedBtn:SetPoint("BOTTOMLEFT", LEFT + 176, 14)
+    f.saveSavedBtn:SetScript("OnClick", askSavedName)
     f.saveBtn = makeButton(f, TEXT.save, 80)
     f.saveBtn:SetPoint("BOTTOMRIGHT", -LEFT, 14)
     f.saveBtn:SetScript("OnClick", function()
@@ -1391,10 +1532,24 @@ local function fromReminder(r)
     draft.color = copy(r.color)
 end
 
+-- A saved alert into the draft: a reminder's fields, and its For choice and Save as.
+local function fromSaved(s)
+    fromReminder(s)
+    if s.tags then
+        draft.tag = table.concat(s.tags, " ")
+    end
+    draft.saveAs = s.saveAs == "note" and "note" or "mine"
+end
+
 -- Fills the boxes from the draft and shows the window on top.
 local function show()
     notice = nil
-    if not draft.timeTouched then
+    local title = TEXT.title
+    if ctx.savedMode then
+        title = ctx.savedName and string.format(TEXT.savedTitle, ctx.savedName) or TEXT.savedTitleNew
+    end
+    UI.SetFrameTitle(frame, title)
+    if not ctx.savedMode and not draft.timeTouched then
         local ph, t = firstTime((Reminders:Times(ctx.encounterID, timesProbe())))
         if ph then
             draft.ph, draft.timeText = ph, clock(t, true)
@@ -1419,16 +1574,24 @@ function Editor:Open(encounterID, id, prefill)
     ctx = { encounterID = encounterID }
     draft = newDraft()
     local saved = id and Reminders:Get(encounterID, id)
+    local template = prefill and prefill.saved and CRT.AlertSaved and CRT.AlertSaved:Get(prefill.saved)
     if saved then
         ctx.id = id
         ctx.reminder = copy(saved)
         fromReminder(saved)
     else
         prefill = prefill or {}
-        draft.spellID = validID(prefill.spellID)
+        if template then
+            fromSaved(template)
+            -- a spell dropped on an icon replaces the saved alert's own, and its icon with it
+            if validID(prefill.spellID) and validID(prefill.spellID) ~= template.spellID then
+                draft.iconID, draft.iconType = nil, "spell"
+            end
+        end
+        draft.spellID = validID(prefill.spellID) or (template and draft.spellID) or nil
         if type(prefill.text) == "string" and trim(prefill.text) ~= "" then
             draft.text = prefill.text
-        else
+        elseif trim(draft.text) == "" then
             draft.text = (spellInfo(draft.spellID)) or ""
         end
         if prefill.saveAs == "note" then
@@ -1449,6 +1612,23 @@ function Editor:Open(encounterID, id, prefill)
     draft.baseDifficulty = draft.difficulty
     applyDefaultDifficulty()
     show()
+end
+
+-- Opens a saved alert itself (nil for a new one): Save overwrites it. False when there is no such one.
+function Editor:EditSaved(id)
+    local Saved = CRT.AlertSaved
+    local s = id and Saved and Saved:Get(id)
+    if id and not s then
+        return false
+    end
+    build()
+    ctx = { savedMode = true, savedID = id, savedName = s and s.name }
+    draft = newDraft()
+    if s then
+        fromSaved(s)
+    end
+    show()
+    return true
 end
 
 -- Opens a line of a raid note (its line number in the note). False when that line isn't a timed line.
