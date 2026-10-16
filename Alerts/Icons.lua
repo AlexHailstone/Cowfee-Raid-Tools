@@ -33,6 +33,8 @@ local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = -300,
 local WHITE = { 1, 1, 1 }
 -- Spell icons for the preview.
 local SAMPLE_ICONS = { 136243, 135808, 136116 }
+local SAMPLE_GAP = 1      -- seconds between preview ticks that mean it was turned off
+local SAMPLE_SPAN = 14    -- the preview starts over this long after it began
 
 local OUTLINE_OPTIONS = {
     { key = "", label = TEXT.none },
@@ -86,6 +88,10 @@ local function make(parent)
     if w.cooldown.SetDrawEdge then
         w.cooldown:SetDrawEdge(false)
     end
+    if w.cooldown.SetDrawBling then
+        w.cooldown:SetDrawBling(false) -- no finish flash over NOW and the glow
+    end
+    w.cooldown.noCooldownCount = true -- other addons paint no numbers over ours
     -- The seconds sit on a frame above the swipe.
     w.over = CreateFrame("Frame", nil, w)
     w.over:SetPoint("LEFT", w, "LEFT", 0, 0)
@@ -162,11 +168,18 @@ local function draw(w, line, now, s, shownAt)
     w:SetSize(width, size)
 end
 
+-- The samples keep one base time while the preview runs (a gap between calls means it was turned off
+-- and on), so their swipes run instead of restarting every tick; they start over once all have passed.
+local sampleBase, sampleLast
 local function sample(now)
+    if not sampleBase or now - sampleLast > SAMPLE_GAP or now > sampleBase + SAMPLE_SPAN then
+        sampleBase = now
+    end
+    sampleLast = now
     return {
-        { id = "sample1", text = TEXT.sampleNow, icon = SAMPLE_ICONS[1], at = now, warn = 8, glow = true },
-        { id = "sample2", text = TEXT.sampleSoon, icon = SAMPLE_ICONS[2], at = now + 5, warn = 8 },
-        { id = "sample3", text = TEXT.sampleLater, icon = SAMPLE_ICONS[3], at = now + 12, warn = 12 },
+        { id = "sample1", text = TEXT.sampleNow, icon = SAMPLE_ICONS[1], at = sampleBase, warn = 8, glow = true },
+        { id = "sample2", text = TEXT.sampleSoon, icon = SAMPLE_ICONS[2], at = sampleBase + 5, warn = 8 },
+        { id = "sample3", text = TEXT.sampleLater, icon = SAMPLE_ICONS[3], at = sampleBase + 12, warn = 12 },
     }
 end
 
@@ -190,6 +203,9 @@ local function settings(dialog, s)
             end
             return out
         end,
+        enabledIf = function()
+            return showText(s)
+        end,
         get = function()
             return s.font
         end,
@@ -200,6 +216,9 @@ local function settings(dialog, s)
     dialog:Slider(TEXT.textSize, {
         min = MIN_FONT,
         max = MAX_FONT,
+        enabledIf = function()
+            return showText(s)
+        end,
         get = function()
             return fontSize(s)
         end,
@@ -234,4 +253,7 @@ CRT.AlertIcons = Areas.New({
     draw = draw,
     sample = sample,
     settings = settings,
+    align = function()
+        return "LEFT" -- icons share a left edge; the texts differ in width
+    end,
 })
