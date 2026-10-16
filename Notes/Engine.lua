@@ -80,6 +80,40 @@ local function tokens()
     return t
 end
 
+local function readable(v)
+    local T = CRT.Timeline
+    if T and T.readable then
+        return T.readable(v)
+    end
+    return true
+end
+
+-- Your class as tag words: the class file name and the class's own name, lower-cased with no spaces, so
+-- "druid", "deathknight" and "death knight" all match. Only IsMine reads these: a class word is common
+-- in ordinary sentences, so it never marks free text as yours.
+local myClasses, classesAt
+local function classTokens()
+    if myClasses and classesAt and GetTime() - classesAt < 5 then
+        return myClasses
+    end
+    local t = {}
+    if UnitClass then
+        local ok, localized, file = pcall(UnitClass, "player")
+        if ok then
+            for _, v in ipairs({ localized or false, file or false }) do
+                if type(v) == "string" and readable(v) then
+                    local word = v:lower():gsub("%s+", "")
+                    if word ~= "" then
+                        t[word] = true
+                    end
+                end
+            end
+        end
+    end
+    myClasses, classesAt = t, GetTime()
+    return t
+end
+
 -- Your raid group number. In a party or solo you count as group 1.
 local function mySubgroup()
     if IsInRaid() then
@@ -108,16 +142,20 @@ local function groupTag(word, nextWord)
     return nil
 end
 
--- Whether a timer is for you: your name, your role, everyone, or your raid group. A name in a tag
--- may carry a realm, which is ignored.
+-- Whether a timer is for you: your name, your role, your class, everyone, or your raid group. A name in
+-- a tag may carry a realm, which is ignored. A two-word class name may be split over two words.
 function Engine:IsMine(item)
     local mine = tokens()
+    local classes = classTokens()
     local tags = item.tags
     local subgroup
     local i = 1
     while i <= #tags do
         local word = tags[i]:lower():gsub("%-.*$", "")
-        if mine[word] then
+        if mine[word] or classes[word] then
+            return true
+        end
+        if tags[i + 1] and classes[word .. tags[i + 1]:lower()] then
             return true
         end
         local number, used = groupTag(word, tags[i + 1])
@@ -163,7 +201,7 @@ function Engine:Start(parsedNote, reason)
     end
     note = parsedNote
     self.reason = reason
-    myTokens = nil
+    myTokens, myClasses = nil, nil
     if Alerts.starting then
         noteRunId = Alerts.runId
     else
@@ -233,40 +271,69 @@ local function noteFor(run)
     return nil
 end
 
--- One item per timer. Your timers alert, show as bars and are read out; anyone else's only show in the
--- timers window, so they carry no outputs.
+-- The alert item of one timer, `index` its place in the note and `mine` whether it is for you. Your
+-- timers alert, show as bars and are read out, or, when the line has show:, use exactly the displays it
+-- names; anyone else's only show in the timers window, so they carry no outputs. Used by the block and by
+-- the alert editor's Test of a note line.
+function Engine.ItemFor(t, index, mine)
+    local s = Notes:Alert() or {}
+    local info = t.kind == "spell" and Notes:SpellInfo(t.spellId) or nil
+    local item = {
+        id = "note:" .. index,
+        ph = t.ph,
+        time = t.time,
+        spellID = t.spellId,
+        icon = info and info.icon,
+        text = t.kind == "spell" and (info and info.name or ("Spell " .. tostring(t.spellId))) or (t.text or ""),
+        color = t.color,
+    }
+    if t.show and type(t.iconID) == "number" and t.iconID > 0 then
+        item.icon = t.iconID
+    end
+    if not mine then
+        return item
+    end
+    item.priority = Rules.Priority(2, "normal")
+    if t.show then
+        local show = t.show
+        local speaks = (t.tts or t.count) and true or false
+        item.outputs = {
+            alert = show.alert and true or false,
+            text = show.text and true or false,
+            icon = show.icon and true or false,
+            bar = show.bar and true or false,
+            circle = show.circle and true or false,
+            speech = speaks,
+        }
+        item.warn = t.warn or s.seconds or 10
+        item.hold = math.max(0.5, t.linger or t.dur or 0)
+        item.sound = t.sound
+        item.glow = t.glow and true or nil
+        item.speech = Rules.SpeechItems(item.text, item.warn, t.tts and true or false, t.count and true or false)
+        return item
+    end
+    local bars = (Alerts:Settings() or {}).bars or {}
+    item.outputs = {
+        alert = s.enabled and true or false,
+        bar = (bars.shown and bars.noteLines) and true or false,
+        speech = (s.enabled and s.tts) and true or false,
+    }
+    item.warn = s.seconds or 10
+    -- A spell shows for half a second after its time, a text line for its dur:.
+    item.hold = t.kind == "text" and (t.dur or 0) or 0.5
+    item.speech = { { offset = s.ttsSeconds or 3, text = info and info.name or t.text or "" } }
+    return item
+end
+
+-- One item per timer.
 local function entries(run)
     local n = noteFor(run)
     if not n then
         return {}
     end
-    local s = Notes:Alert() or {}
-    local bars = (Alerts:Settings() or {}).bars or {}
     local out = {}
     for index, t in ipairs(n.timers) do
-        local info = t.kind == "spell" and Notes:SpellInfo(t.spellId) or nil
-        local item = {
-            id = "note:" .. index,
-            ph = t.ph,
-            time = t.time,
-            spellID = t.spellId,
-            icon = info and info.icon,
-            text = t.kind == "spell" and (info and info.name or ("Spell " .. tostring(t.spellId))) or (t.text or ""),
-            color = t.color,
-        }
-        if Engine:IsMine(t) then
-            item.outputs = {
-                alert = s.enabled and true or false,
-                bar = (bars.shown and bars.noteLines) and true or false,
-                speech = (s.enabled and s.tts) and true or false,
-            }
-            item.priority = Rules.Priority(2, "normal")
-            item.warn = s.seconds or 10
-            -- A spell shows for half a second after its time, a text line for its dur:.
-            item.hold = t.kind == "text" and (t.dur or 0) or 0.5
-            item.speech = { { offset = s.ttsSeconds or 3, text = info and info.name or t.text or "" } }
-        end
-        out[#out + 1] = item
+        out[#out + 1] = Engine.ItemFor(t, index, Engine:IsMine(t))
     end
     return out
 end

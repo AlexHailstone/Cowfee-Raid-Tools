@@ -6,8 +6,13 @@ local ADDON, CRT = ...
 --   time:48;ph:1;tag:Abu Sixz;text:Group 1 go in;dur:8;colors:0 1 1 1;DisplayType:Text;
 --                                                                a text callout shown for 8 seconds
 --   invitelist:Name-Realm,Name-Realm,,Name-Realm;                the roster, in group order
--- Any other line is free text shown under the timers. A tag is one or more player names or role words
--- (tank, healer, dps, melee, ranged, all), separated by spaces.
+-- Any other line is free text shown under the timers. A tag is one or more player names, role words
+-- (tank, healer, dps, melee, ranged, all) or class names, separated by spaces.
+-- A timed line may also say how it shows. Without show: it shows as it always has.
+--   show:icon,text;   only these displays: alert, text, icon, bar, circle
+--   tts:1; count:1;   read the line out; count down 3, 2, 1
+--   sound:RAID_WARNING; glow:1; warn:6; linger:3; icon:135940;
+-- DisplayType: is ignored.
 
 local Parser = {}
 CRT.NoteParser = Parser
@@ -44,6 +49,32 @@ local function color(s)
     return nil
 end
 
+local SHOW_WORDS = { "alert", "text", "icon", "bar", "circle" }
+local IS_SHOW_WORD = {}
+for _, w in ipairs(SHOW_WORDS) do
+    IS_SHOW_WORD[w] = true
+end
+
+-- "icon, Text" into { icon = true, text = true }. Unknown words are left out.
+local function showSet(s)
+    local set = {}
+    for word in s:gmatch("[^,]+") do
+        word = trim(word):lower()
+        if IS_SHOW_WORD[word] then
+            set[word] = true
+        end
+    end
+    return set
+end
+
+local YES = { ["1"] = true, ["true"] = true, yes = true }
+local function flag(s)
+    if s and YES[s:lower()] then
+        return true
+    end
+    return nil
+end
+
 -- Comma separated, keeping empty entries so a blank leaves an empty group slot.
 local function nameList(s)
     local names, pos = {}, 1
@@ -59,12 +90,16 @@ local function nameList(s)
 end
 
 -- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...} }.
--- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color }.
+-- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`
+-- its line number in the text, and, when the line has them: show (a set), tts, count, glow (true),
+-- sound (a key of Speech.SOUNDS), warn, linger (seconds) and iconID.
 function Parser.Parse(text)
     local note = { timers = {}, phases = {}, lines = {}, invite = nil }
     local phaseSeen = {}
+    local lineNo = 0
 
     for raw in ((text or "") .. "\n"):gmatch("(.-)\r?\n") do
+        lineNo = lineNo + 1
         local line = trim(raw)
         local lower = line:lower()
         if line == "" then
@@ -86,6 +121,15 @@ function Parser.Parse(text)
                     text = f.text,
                     dur = tonumber(f.dur),
                     color = color(f.colors),
+                    line = lineNo,
+                    show = f.show and showSet(f.show) or nil,
+                    tts = flag(f.tts),
+                    count = flag(f.count),
+                    glow = flag(f.glow),
+                    sound = (f.sound and f.sound ~= "") and f.sound or nil,
+                    warn = tonumber(f.warn),
+                    linger = tonumber(f.linger),
+                    iconID = tonumber(f.icon),
                 }
                 item.kind = item.spellId and "spell" or "text"
                 note.timers[#note.timers + 1] = item
@@ -122,4 +166,75 @@ function Parser.Parse(text)
     end
     note.lines = cleaned
     return note
+end
+
+-- A number as short as it can be written: 34, 1.5, -5.
+local function num(n)
+    return (("%.10g"):format(n))
+end
+
+-- A colour part to at most two decimals: 1, 0.5, 0.33.
+local function part(n)
+    local s = ("%.2f"):format(n):gsub("0+$", ""):gsub("%.$", "")
+    return s
+end
+
+-- One timer back into a note line, the reverse of Parse: Parse(FormatLine(t)) gives back the same timer.
+-- Only the fields the timer has are written.
+function Parser.FormatLine(t)
+    local out = {}
+    local function add(key, value)
+        out[#out + 1] = key .. ":" .. value .. ";"
+    end
+    add("time", num(t.time or 0))
+    if t.ph then
+        add("ph", num(t.ph))
+    end
+    if t.tags and #t.tags > 0 then
+        add("tag", table.concat(t.tags, " "))
+    end
+    if t.kind == "spell" and t.spellId then
+        add("spellid", num(t.spellId))
+    end
+    if t.text then
+        add("text", t.text)
+    end
+    if t.dur then
+        add("dur", num(t.dur))
+    end
+    if t.color then
+        local c = t.color
+        add("colors", part(c[1] or 1) .. " " .. part(c[2] or 1) .. " " .. part(c[3] or 1) .. " " .. part(c[4] or 1))
+    end
+    if t.show then
+        local list = {}
+        for _, w in ipairs(SHOW_WORDS) do
+            if t.show[w] then
+                list[#list + 1] = w
+            end
+        end
+        add("show", table.concat(list, ","))
+    end
+    if t.tts then
+        add("tts", "1")
+    end
+    if t.count then
+        add("count", "1")
+    end
+    if t.sound then
+        add("sound", t.sound)
+    end
+    if t.glow then
+        add("glow", "1")
+    end
+    if t.warn then
+        add("warn", num(t.warn))
+    end
+    if t.linger then
+        add("linger", num(t.linger))
+    end
+    if t.iconID then
+        add("icon", num(t.iconID))
+    end
+    return table.concat(out)
 end
