@@ -955,6 +955,8 @@ local function buildExport()
     x.measure = x:CreateFontString(nil, "OVERLAY")
     x.measure:SetFontObject(CRTFontEdit)
     x.measure:SetWidth(EXPORT_TEXT_WIDTH)
+    -- wraps anywhere, like the edit box (a long line has no spaces to break at)
+    x.measure:SetNonSpaceWrap(true)
     x.measure:Hide()
     edit:SetScript("OnTextChanged", function(self, userInput)
         if userInput then
