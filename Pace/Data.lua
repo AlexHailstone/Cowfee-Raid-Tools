@@ -120,8 +120,10 @@ function Pace.Units(plan)
 end
 
 -- The expected health of a unit: in phase mode at `seconds` into phase `ph`, in time mode at `seconds`
--- from the pull. Rows of that phase (or all rows in time mode) are joined by straight lines; before the
--- first row it is the first row's value, after the last the last row's. nil when there is no row.
+-- from the pull. Rows of that phase (or all rows in time mode) are joined by straight lines. The boss
+-- starts at 100% at the pull, so in time mode and in phase 1 a first row after 0:00 is reached by a
+-- line from 100% at 0:00. A later phase doesn't start full, so before its first row it is that row's
+-- value. After the last row it stays at the last row's. nil when there is no row.
 function Pace.Expected(plan, unit, ph, seconds)
     if not plan then
         return nil
@@ -138,6 +140,9 @@ function Pace.Expected(plan, unit, ph, seconds)
     table.sort(pts, function(a, b)
         return a.t < b.t
     end)
+    if pts[1].t > 0 and (plan.mode == "time" or ph == 1) then
+        table.insert(pts, 1, { t = 0, hp = 100 })
+    end
     if seconds <= pts[1].t then
         return pts[1].hp
     end
