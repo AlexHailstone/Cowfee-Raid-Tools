@@ -157,7 +157,7 @@ end
 UI.MENU_GROUPS = {
     { "settings", "qol" },
     { "groups", "readycheck" },
-    { "notes", "debuffs", "timeline" },
+    { "notes", "timeline" },
     { "late", "tattle" },
 }
 

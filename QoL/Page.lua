@@ -350,6 +350,25 @@ local function buildLowHealth(pf, top)
 
 end
 
+-- Tabs: Low health and Debuffs (the debuff panel, Debuffs/Page.lua). Both are only settings.
+local TABS = {
+    { key = "lowhealth", label = "Low health" },
+    { key = "debuffs", label = "Debuffs" },
+}
+local tabButtons, tabFrames = {}, {}
+
+local function selectTab(key)
+    if not tabFrames[key] then
+        key = "lowhealth"
+    end
+    CRT.db.qol.tab = key
+    for _, tab in ipairs(TABS) do
+        local on = tab.key == key
+        tabFrames[tab.key]:SetShown(on)
+        UI:SetTabSelected(tabButtons[tab.key], on)
+    end
+end
+
 local function build(pf)
     page = pf
 
@@ -359,7 +378,37 @@ local function build(pf)
 
     UI.Help(pf, TEXT.title, TEXT.hint):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
-    buildLowHealth(pf, -42)
+    for i, tab in ipairs(TABS) do
+        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
+        b:SetSize(160, 26)
+        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
+        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        b.sel = b:CreateTexture(nil, "ARTWORK")
+        b.sel:SetAllPoints()
+        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(tab.label)
+        b:SetScript("OnClick", function()
+            selectTab(tab.key)
+        end)
+        tabButtons[tab.key] = b
+        UI:RegisterTab(b)
+
+        local f = CreateFrame("Frame", nil, pf)
+        f:SetPoint("TOPLEFT", 0, -66)
+        f:SetPoint("BOTTOMRIGHT", 0, 0)
+        f:Hide()
+        tabFrames[tab.key] = f
+    end
+    local line = pf:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(0.35, 0.35, 0.35, 1)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", 8, -62)
+    line:SetPoint("TOPRIGHT", -8, -62)
+
+    buildLowHealth(tabFrames.lowhealth, -8)
+    CRT.DebuffsPage.Build(tabFrames.debuffs)
+    selectTab(CRT.db.qol.tab)
 
     pf:SetScript("OnShow", refresh)
     -- Leaving the page stops any sound being tried out.
@@ -369,3 +418,11 @@ local function build(pf)
 end
 
 UI:RegisterPage("qol", TEXT.title, build)
+
+-- Opens the page on a tab: "lowhealth" or "debuffs" (/crt debuffs).
+CRT.QoLPage = {
+    Open = function(key)
+        UI:Show("qol")
+        selectTab(key)
+    end,
+}
