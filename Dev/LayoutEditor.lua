@@ -578,7 +578,7 @@ function Dev:ResetAllPositions()
     local pop = CRT.db.timeline.popout
     pop.point, pop.relativePoint, pop.x, pop.y = nil, nil, nil, nil
     local w = CRT.db.window
-    w.point, w.x, w.y = "CENTER", 0, 0
+    w.point, w.relativePoint, w.x, w.y = "CENTER", "CENTER", 0, 0
     if UI.frame then
         UI.frame:ClearAllPoints()
         UI.frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)

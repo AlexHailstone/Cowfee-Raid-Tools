@@ -782,9 +782,7 @@ function UI:Create()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
-        local point, _, _, x, y = self:GetPoint()
-        local w = CRT.db.window
-        w.point, w.x, w.y = point, x, y
+        UI:SaveWindowPosition()
         -- A drag while the alerts have parked the window (Alerts/Areas.lua) is the player's own choice.
         if UI.windowParked then
             UI.windowParked = "dragged"
@@ -1010,11 +1008,13 @@ function UI:SetMinimized(on)
     if on == (self.minimized or false) then
         return
     end
-    -- Pin the top-left corner first, so the window shrinks and grows from the top.
+    -- Pin the top-left corner first, so the window shrinks and grows from the top, and save that
+    -- anchor, so anything that puts the window back (ApplyWindowPosition) puts it here.
     local left, top = f:GetLeft(), f:GetTop()
     if left and top then
         f:ClearAllPoints()
         f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        self:SaveWindowPosition()
     end
     self.minimized = on
     f:SetHeight(on and TITLE_H or FRAME_H)
@@ -1026,13 +1026,29 @@ function UI:SetMinimized(on)
     self:StyleMinimizeButton()
 end
 
+-- Saves where the main window is: its anchor point, the point of the screen it is measured from, and
+-- the offsets. All four are needed: a drag or a minimize can leave the window anchored from a
+-- different point of the screen than its own (TOPLEFT from the screen's BOTTOMLEFT), and putting it
+-- back as if both were the same made it jump.
+function UI:SaveWindowPosition()
+    local f = self.frame
+    if not f then
+        return
+    end
+    local point, _, relativePoint, x, y = f:GetPoint()
+    if point then
+        local w = CRT.db.window
+        w.point, w.relativePoint, w.x, w.y = point, relativePoint or point, x, y
+    end
+end
+
 -- Puts the window (the main one, unless a frame is given) at its saved place (CRT.db.window).
 function UI:ApplyWindowPosition(f)
     f = f or self.frame
     local w = CRT.db.window
     if f then
         f:ClearAllPoints()
-        f:SetPoint(w.point, UIParent, w.point, w.x, w.y)
+        f:SetPoint(w.point, UIParent, w.relativePoint or w.point, w.x, w.y)
     end
 end
 
