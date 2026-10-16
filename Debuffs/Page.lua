@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
--- The Debuffs page: settings for the in-combat debuff panel. The panel is moved with
--- "Previews" in the corner of the main window.
+-- The Debuffs tab of the Quality of Life page (a page of its own before 0.17.2): settings for the
+-- in-combat debuff panel. The panel is moved with "Previews" in the corner of the main window.
+-- QoL/Page.lua builds it into its tab through CRT.DebuffsPage.Build.
 
 local Debuffs = CRT.Debuffs
 local UI = CRT.UI
@@ -130,13 +131,13 @@ end
 local function build(pf)
     page = pf
 
-    local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     title:SetPoint("TOPLEFT", 8, -8)
-    title:SetText("Debuffs")
+    title:SetText("Debuff panel")
 
-    UI.Help(pf, "The debuff panel", "A movable panel for the short debuffs a boss puts on you in combat. The game hides those from addons, but lets an addon choose where it draws them, so this panel is where they appear. Press Previews in the top right corner of this window to see it and drag it into place.\n\nThese are the boss mechanic debuffs the game calls private auras, which are short by design, so no time filter is needed.\n\nRegular debuffs cannot be limited to short ones, because the game hides their durations from addons in combat, which is why that row is off by default.\n\nShow diagnostics prints what the game allows on your client. Your settings are saved in your own saved variables."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "The debuff panel", "A movable panel for the short debuffs a boss puts on you in combat. The game hides those from addons, but lets an addon choose where it draws them, so this panel is where they appear. Press Previews in the top right corner of this window to see it and drag it into place.\n\nThese are the boss mechanic debuffs the game calls private auras, which are short by design, so no time filter is needed.\n\nRegular debuffs cannot be limited to short ones, because the game hides their durations from addons in combat, which is why that row is off by default.\n\nYour settings are saved in your own saved variables."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
-    enabledCheck = makeCheck(pf, "Show the panel in combat", -44, function(checked)
+    enabledCheck = makeCheck(pf, "Show the panel in combat", -30, function(checked)
         Debuffs:SetEnabled(checked)
     end)
 
@@ -148,13 +149,13 @@ local function build(pf)
     end, set = function(value)
         Debuffs:SetSize(value)
     end })
-    sizeEdit:SetPoint("TOPLEFT", 8, -70)
+    sizeEdit:SetPoint("TOPLEFT", 8, -56)
     countEdit = UI.Slider(pf, "How many to show", { min = 1, max = 8, labelWidth = 130, width = 200, enabledIf = panelOn, get = function()
         return Debuffs:MaxCount()
     end, set = function(value)
         Debuffs:SetMaxCount(value)
     end })
-    countEdit:SetPoint("TOPLEFT", 8, -98)
+    countEdit:SetPoint("TOPLEFT", 8, -84)
 
     dispelCheck = makeCheck(pf, "Show the dispel type icon on each debuff", -130, function(checked)
         Debuffs:SetDispelIcon(checked)
@@ -193,4 +194,4 @@ local function build(pf)
     Debuffs:OnChange(refresh)
 end
 
-UI:RegisterPage("debuffs", "Debuffs", build)
+CRT.DebuffsPage = { Build = build }

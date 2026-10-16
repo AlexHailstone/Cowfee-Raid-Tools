@@ -160,7 +160,7 @@ end
 UI.MENU_GROUPS = {
     { "settings", "qol" },
     { "groups", "readycheck" },
-    { "notes", "debuffs", "timeline" },
+    { "notes", "timeline" },
     { "late", "tattle" },
 }
 
@@ -269,7 +269,10 @@ function UI:ApplyStyle()
     local s = CRT.db.ui
     local modern = self:IsModern()
     local flat = modern or s.style == "minimal"
-    local alpha = (s.bgAlpha or 100) / 100
+    -- Opacity (bgAlpha) fades the whole window, text and buttons too, never below 30%. The window's
+    -- own art and colours stay solid underneath.
+    f:SetAlpha(math.max(30, math.min(100, s.bgAlpha or 100)) / 100)
+    local alpha = 1
     for _, texture in ipairs(f.art) do
         texture:SetShown(not flat)
         texture:SetAlpha(alpha)

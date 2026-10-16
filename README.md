@@ -45,7 +45,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
 | **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter. Your own reminders for boss abilities, with times taken from the boss's reference timeline, that alert, show as bars and speak. Phases that start on a boss emote, a boss becoming untargetable or targetable, or a new boss unit, and alert bars that list what is coming up |
 | **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider. A low-health sound is a work in progress and switched off for now |
-| **General Settings** | Settings for the whole addon: a Modern look (coffee colors, flat controls, grouped menu) or the Classic look, the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black in Classic, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, the sound channel the addon's sounds play through, whether reports and Discord exports leave out realm names, the minimap button, and profiles (each character picks one; create, copy, reset, delete, export and import) |
+| **General Settings** | Settings for the whole addon: a Modern look (coffee colors, flat controls, grouped menu) or the Classic look, the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black in Classic, the window's opacity (30% to 100%), the font, outline and text size (8 to 22 pt) of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, the sound channel the addon's sounds play through, whether reports and Discord exports leave out realm names, the minimap button, and profiles (each character picks one; create, copy, reset, delete, export and import) |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
 | **Timeline** | Saves every raid boss pull, ten per boss, and draws it as a timeline: time runs left to right, with a row for each boss ability and a row of deaths. Zoom, scroll, hover for the time, and draw the deaths of recent pulls over the shown one to see who keeps dying and when. A boss's reference timeline (shipped for Nek'zali the Soulcoiler on Mythic, or pasted in) shows its planned casts with phase lines and duration bars, and a recent pull can be laid over it |
@@ -105,7 +105,7 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 
 ## Debuffs
 
-`/crt debuffs`. A movable panel that shows the boss mechanic debuffs on you during combat, using the slots the game provides for them. Choose the icon size and how many to show, and place it with Previews. Under Look, set where the timer text goes (below, above, on the icon, left, right or hidden, with a nudge in pixels), the swipe and its edge, the countdown numbers, the dispel type icon and the border size. The game draws these debuffs itself, so their font, text size and colors can't be changed by any addon.
+`/crt debuffs`, the **Debuffs** tab of Quality of Life. A movable panel that shows the boss mechanic debuffs on you during combat, using the slots the game provides for them. Choose the icon size and how many to show, and place it with Previews. Under Look, set where the timer text goes (below, above, on the icon, left, right or hidden, with a nudge in pixels), the swipe and its edge, the countdown numbers, the dispel type icon and the border size. The game draws these debuffs itself, so their font, text size and colors can't be changed by any addon.
 
 ## Raid Notes
 
@@ -156,7 +156,7 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 | `/crt check` | Opens the ready check window for your current group, open until you right-click it. Shift-click a heading to post who is missing it |
 | `/crt check food` (or `flask`, `rune`, `vantus`, `buffs`, `all`) | Checks the group and shows it to you. Add `chat` to post it, such as `/crt check all chat` |
 | `/crt rc` | Shows your ready check bar for 20 seconds, for testing |
-| `/crt debuffs` | Debuffs |
+| `/crt debuffs` | Quality of Life, on the Debuffs tab |
 | `/crt notes` | Raid Notes. `/crt notes settings` opens its Settings tab |
 | `/crt reminders` | Raid Notes, on the Reminders tab |
 | `/crt note test`, `/crt note next`, `/crt note stop` | Start the note in use now, start the next phase (the chat line names it), stop the whole run (note and reminders) |
@@ -166,7 +166,7 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 | `/crt tattle scan`, `/crt tattle scan text`, `/crt tattle export` | Pick spells to track from the last fight, the same list as plain text, and the Tattlebot totals for Discord |
 | `/crt timeline` | Timeline. `/crt timeline pop` opens the Review tab in its own window, which you can drag to any size |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
-| `/crt qol` | The Quality of Life page, with the experimental low-health alert |
+| `/crt qol` | The Quality of Life page, with the experimental low-health alert and the Debuffs tab |
 | `/crt settings` | General Settings: the look, window, fonts, sound, minimap button, layers and profiles |
 | `/crt minimap` | Shows or hides the minimap button |
 | `/crt lowhp off`, `/crt lowhp on` | Turns the experimental low-health alert off or on |
