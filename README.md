@@ -49,6 +49,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
 | **Timeline** | Saves every raid boss pull, ten per boss, and draws it as a timeline: time runs left to right, with a row for each boss ability and a row of deaths. Zoom, scroll, hover for the time, and draw the deaths of recent pulls over the shown one to see who keeps dying and when. A boss's reference timeline (shipped for Nek'zali the Soulcoiler on Mythic, or pasted in) shows its planned casts with phase lines and duration bars, and a recent pull can be laid over it |
+| **Pace** | Where each boss's health should be as the fight goes, by phase (seconds into each phase) or by time from the pull. In the pull, a movable window shows each boss's health with a tick where it should be, and AHEAD or BEHIND. Add rows one at a time, or import and export them as text. A raid leader or assistant can share plans with the raid; a shared plan is kept apart from your own and becomes the plan in use |
 
 **Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. The button beside it, or a double-click on the title bar, minimizes the panel to its title bar, and the same again (or `/crt`) restores it. Positions are saved per character.
 
@@ -169,6 +170,7 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 | `/crt tattle`, `/crt tattle post`, `/crt tattle night`, `/crt tattle end` | Tattlebot, post the last pull, post tonight's totals, end the night |
 | `/crt tattle scan`, `/crt tattle scan text`, `/crt tattle export` | Pick spells to track from the last fight, the same list as plain text, and the Tattlebot totals for Discord |
 | `/crt timeline` | Timeline. `/crt timeline pop` opens the Review tab in its own window, which you can drag to any size |
+| `/crt pace` | Pace |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert and the Debuffs tab |
 | `/crt settings` | General Settings: the look, window, fonts, sound, minimap button, layers and profiles |
@@ -232,6 +234,8 @@ CowfeeRaidTools/
   CowfeeRaidTools.toc    title, version, interface number, saved variable
   Core.lua               namespace, saved data defaults, scaled fonts, the Modern colors
   Profiles.lua           profiles: load, switch, copy, reset, delete, export, import
+  Bosses/Registry.lua    the boss library: every boss's shipped data, read by the features
+  Seasons/               season packs: one file per boss with all its properties
   Slash.lua              the /crt command
   UI/Panel.lua           main window, left menu, page registry, previews
   UI/Controls.lua        Edit Mode style dropdowns and sliders shared by the pages

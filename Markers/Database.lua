@@ -2,7 +2,7 @@ local ADDON, CRT = ...
 
 -- The marker displays that ship with the addon, one per boss encounter at most, keyed by the
 -- encounter ID. Each is made in the dev editor (/crt dev markers, Dev/MarkerEditor.lua) and its
--- Export pasted in here, so everyone with the addon gets the same display.
+-- Export written into the boss file, so everyone with the addon gets the same display.
 --
 --   name       what the display is called, shown on its drag bar and the Reminders tab
 --   slots      how many messages it shows, 1 to 8, in the order they are sent
@@ -16,6 +16,9 @@ local ADDON, CRT = ...
 -- It always clears when the pull starts and when it ends, kill or wipe.
 --
 -- Raiders send the markers with macros such as /raid {rt3} (or {diamond}), one per marker.
+
+-- They ship in each boss's file in the season packs (field markers), and Bosses/Registry.lua puts
+-- the loaded seasons' displays here.
 
 CRT.MarkerDisplayDB = {
     displays = {},

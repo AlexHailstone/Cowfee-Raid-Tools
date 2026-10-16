@@ -19,6 +19,7 @@ local function printHelp()
     print("  |cffffd100/crt tattle post|r, |cffffd100night|r, |cffffd100end|r - post the last pull or tonight's totals, or end the night")
     print("  |cffffd100/crt tattle scan|r - pick spells to track from the last fight (|cffffd100/crt tattle scan text|r for the plain list)")
     print("  |cffffd100/crt tattle export|r - the Tattlebot totals as text to paste into Discord")
+    print("  |cffffd100/crt pace|r - open the Pace page: where each boss's health should be")
     print("  |cffffd100/crt timeline|r - open the Timeline page (|cffffd100/crt timeline pop|r opens it in its own window)")
     print("  |cffffd100/crt qol|r - open the Quality of Life page (low health and debuffs)")
     print("  |cffffd100/crt settings|r - open General Settings: window, fonts, sound, minimap button, layers, profiles")
@@ -98,6 +99,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         end
     elseif msg == "timeline" then
         CRT.UI:Show("timeline")
+    elseif msg == "pace" then
+        CRT.UI:Show("pace")
     elseif msg == "timeline pop" then
         CRT.TimelinePopout()
     elseif msg == "tattle" then
@@ -130,6 +133,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     --@do-not-package@
     elseif msg == "dev debuffs" then
         CRT.DebuffPanel:ShowInfo()
+    elseif msg == "dev seasons" then
+        if CRT.SeasonTools then
+            CRT.SeasonTools:Toggle()
+        end
     elseif msg == "dev markers" then
         if CRT.MarkerEditor then
             CRT.MarkerEditor:Toggle()
@@ -152,11 +159,15 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("The timeline probe is not loaded.")
         end
-    elseif msg == "dev" then
+    elseif msg == "dev edit" then
         if CRT.Dev then
             CRT.Dev:Toggle()
+        end
+    elseif msg == "dev" then
+        if CRT.UI.pages.dev then
+            CRT.UI:Show("dev")
         else
-            CRT:Print("The dev layout editor is not loaded.")
+            CRT:Print("The Development page is not loaded.")
         end
     --@end-do-not-package@
     elseif msg == "qol" then

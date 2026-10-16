@@ -20,6 +20,7 @@ local Dev = {}
 CRT.Dev = Dev
 
 local on = false
+local moving = false -- Move pieces: only then does the overlay take clicks, so the panel works as usual
 local overlay, info, hoverBox, selectBox
 local hovered, selected
 local applied = setmetatable({}, { __mode = "k" }) -- objects already given their saved override
@@ -531,6 +532,17 @@ local function build()
     export:SetScript("OnClick", function()
         CRT.ConsumablesTools:ShowText("Dev layout changes (Ctrl+C to copy, paste to Claude)", exportText())
     end)
+    -- Move pieces: off, the panel's buttons work as usual and nothing is picked or moved.
+    info.move = CreateFrame("CheckButton", nil, info, "UICheckButtonTemplate")
+    info.move:SetSize(22, 22)
+    info.move:SetPoint("TOPRIGHT", -96, -4)
+    local moveText = info:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    moveText:SetPoint("LEFT", info.move, "RIGHT", 2, 0)
+    moveText:SetText("Move pieces")
+    info.move:SetScript("OnClick", function(self)
+        Dev:SetMoving(self:GetChecked() and true or false)
+    end)
+
     local done = makeButton(info, "Done", 104)
     done:SetPoint("BOTTOMLEFT", 8, 6)
     local diag = makeButton(info, "Debuff diags", 104)
@@ -562,6 +574,7 @@ function Dev:ResetAllPositions()
     CRT.LowHealth:ResetPosition()
     CRT.ReadyCheckWindow:ResetPosition()
     CRT.MarkerDisplay:ResetPosition()
+    CRT.Pace:ResetPosition()
     local pop = CRT.db.timeline.popout
     pop.point, pop.relativePoint, pop.x, pop.y = nil, nil, nil, nil
     local w = CRT.db.window
@@ -596,10 +609,11 @@ function Dev:Toggle(state)
         build()
         self:ApplyAll()
         on = true
-        overlay:Show()
+        overlay:SetShown(moving)
+        info.move:SetChecked(moving)
         info:Show()
         refreshInfo()
-        CRT:Print("Dev layout editor on. Changes are saved until reset. Done or /crt dev to stop.")
+        CRT:Print("Dev layout editor on. Tick Move pieces to pick and move things; untick it to use the panel as usual. Done to stop.")
     else
         on = false
         dragging = false
@@ -611,6 +625,28 @@ function Dev:Toggle(state)
         end
         CRT:Print("Dev layout editor off.")
     end
+end
+
+-- Move pieces on or off. Off, the overlay is hidden, so clicks reach the panel and nothing is picked.
+function Dev:SetMoving(state)
+    moving = state and true or false
+    if not on or not overlay then
+        return
+    end
+    dragging = false
+    overlay:SetShown(moving)
+    info.move:SetChecked(moving)
+    if not moving then
+        hoverBox:Hide()
+    end
+end
+
+function Dev:IsOn()
+    return on
+end
+
+function Dev:IsMoving()
+    return moving
 end
 
 local events = CreateFrame("Frame")

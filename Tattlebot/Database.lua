@@ -22,6 +22,10 @@ local ADDON, CRT = ...
 -- The meter gives damage, not hits, so Tattlebot reports damage taken per mechanic and how many
 -- pulls each player was hit in.
 
+-- The mechanics ship in each boss's file in the season packs (field mechanics), and
+-- Bosses/Registry.lua adds the loaded seasons' bosses to this list. Pulls are still saved in
+-- Tattlebot's own history with the mechanic and boss name, so reports across seasons keep working.
+
 CRT.TattleDB = {
     bosses = {
         -- { boss = "Example Boss", encounterID = 3001, mechanics = {
