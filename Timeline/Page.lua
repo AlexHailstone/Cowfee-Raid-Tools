@@ -310,7 +310,7 @@ local function updateView()
     local overlay = showingReference() and overlayID and Timeline:Pull(selectedBoss, overlayID) or nil
     if sig ~= shownBase or selectedPull ~= shownPull or selectedBoss ~= shownBoss or overlay ~= shownOverlay then
         shownBase, shownPull, shownBoss, shownOverlay = sig, selectedPull, selectedBoss, overlay
-        view:SetData(base, selectedBoss, overlay)
+        view:SetData(base, selectedBoss, overlay, bossName())
     else
         view:Refresh()
     end

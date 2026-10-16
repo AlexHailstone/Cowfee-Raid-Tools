@@ -291,8 +291,8 @@ function View.Create(parent)
 end
 
 -- base is a recorded pull or { reference = ref }; overlay is a pull laid over a reference.
-function Methods:SetData(base, encounterID, overlay)
-    self.pull, self.encounterID, self.overlay = base, encounterID, overlay
+function Methods:SetData(base, encounterID, overlay, bossName)
+    self.pull, self.encounterID, self.overlay, self.bossName = base, encounterID, overlay, bossName
     self:Refresh()
     self:ScrollTo(0)
 end
@@ -403,8 +403,50 @@ function Methods:Icon(n)
         b:SetScript("OnMouseUp", function()
             self:StopDrag()
         end)
+        b:SetScript("OnDoubleClick", function()
+            self:IconDoubleClick(b)
+        end)
         return b
     end)
+end
+
+-- Double-click on a cast icon opens the reminder editor for that boss with the spell and the time
+-- filled in. Deaths and the overlaid pull's ticks do nothing. Reminders are keyed by encounter ID, so
+-- a boss known only by a reference name asks to be pulled once first.
+function Methods:IconDoubleClick(b)
+    -- the click's mouse-down started a drag; undo it so the view stays where it was
+    if self.dragX then
+        self:ScrollTo(self.dragFrom)
+        self:StopDrag()
+    end
+    local lane, mark = b.lane, b.mark
+    if not (lane and mark and type(mark.t) == "number") or mark.death then
+        return
+    end
+    local times
+    if lane.kind == "reference" and self.pull and self.pull.reference then
+        local ref = self.pull.reference
+        times = CRT.AlertReminders.FromReference({ phases = ref.phases }, { casts = { { t = mark.t } } })
+    elseif lane.kind == "spell" or lane.kind == "unnamed" then
+        times = { { ph = 1, t = math.floor(mark.t + 0.5) } }
+    else
+        return
+    end
+    if type(self.encounterID) ~= "number" then
+        CRT:Print("Reminders need the boss pulled once, or its reference to have an Encounter line.")
+        return
+    end
+    -- the lane's spell, else the cast's own (an unnamed lane holds casts the Journal doesn't list)
+    local spellID = type(lane.spellID) == "number" and lane.spellID > 0 and lane.spellID or nil
+    if not spellID and type(mark.spellID) == "number" and mark.spellID > 0 then
+        spellID = mark.spellID
+    end
+    CRT.AlertEditor:Open(self.encounterID, nil, {
+        spellID = spellID,
+        text = spellID and CRT.AlertReminders.SpellName(spellID) or nil,
+        times = CRT.AlertReminders.FormatTimes(times),
+        boss = self.bossName,
+    })
 end
 
 function Methods:Label(n)
