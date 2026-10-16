@@ -7,4 +7,4 @@ local ADDON, CRT = ...
 -- "newboss", and value is the emote text or a unit (boss1 to boss5). Your own triggers
 -- (CRT.db.alerts.phases) are laid over these.
 
-CRT.AlertPhaseDB = {}
+CRT.AlertPhaseDB = {} -- filled by Bosses/Registry.lua from each boss file's phases

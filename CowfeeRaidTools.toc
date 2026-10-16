@@ -11,6 +11,7 @@
 
 Core.lua
 Profiles.lua
+Bosses\Registry.lua
 Slash.lua
 Perf.lua
 UI\Panel.lua
@@ -80,8 +81,11 @@ QoL\LowHealthSound.lua
 QoL\Page.lua
 UI\Minimap.lua
 UI\SettingsPage.lua
+Seasons\Midnight-S1\Season.lua
+Seasons\Midnight-S1\NekzaliTheSoulcoiler.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
 Dev\MarkerEditor.lua
+Dev\SeasonTools.lua
 #@end-do-not-package@

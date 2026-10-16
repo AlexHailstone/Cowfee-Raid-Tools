@@ -233,6 +233,8 @@ CowfeeRaidTools/
   CowfeeRaidTools.toc    title, version, interface number, saved variable
   Core.lua               namespace, saved data defaults, scaled fonts, the Modern colors
   Profiles.lua           profiles: load, switch, copy, reset, delete, export, import
+  Bosses/Registry.lua    the boss library: every boss's shipped data, read by the features
+  Seasons/               season packs: one file per boss with all its properties
   Slash.lua              the /crt command
   UI/Panel.lua           main window, left menu, page registry, previews
   UI/Controls.lua        Edit Mode style dropdowns and sliders shared by the pages

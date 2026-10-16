@@ -133,6 +133,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     --@do-not-package@
     elseif msg == "dev debuffs" then
         CRT.DebuffPanel:ShowInfo()
+    elseif msg == "dev seasons" then
+        if CRT.SeasonTools then
+            CRT.SeasonTools:Toggle()
+        end
     elseif msg == "dev markers" then
         if CRT.MarkerEditor then
             CRT.MarkerEditor:Toggle()
