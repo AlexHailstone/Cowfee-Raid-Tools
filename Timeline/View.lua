@@ -1601,8 +1601,9 @@ function Methods:RightUp(button)
     self:TrackMenu(r.tx, r.ty)
 end
 
--- The track's menu at x, y on the track: its time and row as the title, New alert here (the double-click),
--- and Place, each saved alert at that time (with the spell of a cast icon there).
+-- The track's menu at x, y on the track: its time and row as the title, New alert here (the double-click;
+-- on a cast icon with that icon's spell), and Place, each saved alert at that time (with the spell of a
+-- cast icon there).
 function Methods:TrackMenu(x, y)
     local t = self:TimeAtX(x)
     local row = y >= 0 and math.floor(y / ROW_H) + 1 or nil
@@ -1615,7 +1616,7 @@ function Methods:TrackMenu(x, y)
     contextMenu(self.hscroll, function(root)
         root:CreateTitle(title)
         root:CreateButton(TEXT.newHere, function()
-            self:OpenAt(t)
+            self:OpenAt(t, spellID)
         end)
         local place = root:CreateButton(TEXT.place)
         local list = CRT.AlertSaved and CRT.AlertSaved:List() or {}
