@@ -17,8 +17,7 @@ local TEXT = {
     width = "Width",
     height = "Height",
     more = "+%d more",
-    sampleThree = "Sample bar 3",
-    sampleTwo = "Sample bar 2",
+    sampleBar = "Sample bar %d",
     testBar = "Test bar %d",
 }
 
@@ -188,7 +187,7 @@ local function sample(now)
     for i, remaining in ipairs(SAMPLE_TIMES) do
         out[i] = {
             id = "sample" .. i .. "#" .. sampleCycle,
-            text = i == 1 and info and info.name or ("Sample bar " .. i),
+            text = i == 1 and info and info.name or format(TEXT.sampleBar, i),
             icon = i == 1 and info and info.icon or nil,
             at = sampleBase + remaining,
         }
@@ -267,7 +266,7 @@ function Bars:More()
     return self.more
 end
 
--- Three bars counting down from `seconds`, without a run; the Test bars button's use.
+-- Three bars counting down from `seconds`, without a run, for trying the bars out by hand (/run).
 local baseTest = Bars.Test
 local testCount = 0
 function Bars:Test(seconds)

@@ -38,7 +38,8 @@ local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 32, 160, 64
 local MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 32, 16
 local MIN_SECONDS_FONT = 8
 local TEXT_GAP = 2           -- between the ring and its text
-local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 100 }
+-- Right of the bars, clear of them and of their drag box (the icons sit as far to the left).
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 300, y = 100 }
 local WHITE = { 1, 1, 1 }
 local SAMPLE_GAP = 1         -- seconds between preview ticks that mean it was turned off
 local SAMPLE_SPAN = 14       -- the preview starts over this long after it began

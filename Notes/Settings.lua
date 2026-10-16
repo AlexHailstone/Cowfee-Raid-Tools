@@ -43,7 +43,8 @@ local TEXT = {
 
     -- Alert areas.
     areas = "Alert areas",
-    areasHelp = "Texts, icons, circles and bars each have their own settings: press Previews, then the cog on the area's box. Your note lines are read when the pull starts, so changing that box takes effect on the next pull.",
+    areasHelp = "Texts, icons, circles and bars each have their own settings: press Previews, then the cog on the area's box.\n\n"
+        .. "Show your note lines as bars: your note lines are read when the pull starts, so changing it takes effect on the next pull.",
     barsNoteLines = "Show your note lines as bars",
     previews = "Previews",
 }

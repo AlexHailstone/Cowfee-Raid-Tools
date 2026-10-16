@@ -192,8 +192,8 @@ local function iconEnter(b)
     GameTooltip:Show()
 end
 
--- The game's class names by tag word: the name with its spaces taken out ("deathknight", as the
--- editor writes it) and the class file name, lower-cased. Made once the game lists the classes.
+-- The game's class names by tag word: the class file name ("DEATHKNIGHT", as the editor writes it)
+-- and the name with its spaces taken out, lower-cased. Made once the game lists the classes.
 local classNames
 local function className(word)
     local names = classNames
@@ -603,7 +603,13 @@ end
 
 -- A left click on the track itself (icons and markers take their own clicks). The second of two
 -- within DOUBLE_TIME seconds and DOUBLE_DIST pixels is a double-click; a single click does nothing.
+-- A drag that scrolled the track since the first click (the mouse-up ending it comes here too) means
+-- the next click starts over, so a drag and a quick click never open the editor.
 function Methods:TrackClick(button)
+    local scroll = self.hscroll:GetHorizontalScroll()
+    if self.clickAt and scroll ~= self.clickScroll then
+        self.clickAt = nil
+    end
     if button ~= "LeftButton" or not self.pull then
         return
     end
@@ -616,7 +622,7 @@ function Methods:TrackClick(button)
         self.clickAt = nil
         self:TrackDoubleClick()
     else
-        self.clickAt, self.clickX, self.clickY = now, x, y
+        self.clickAt, self.clickX, self.clickY, self.clickScroll = now, x, y, scroll
     end
 end
 

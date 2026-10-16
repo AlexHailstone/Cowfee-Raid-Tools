@@ -109,6 +109,7 @@ local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
 local ROW1_EXTRA = 14 -- room under the first row for the Saves to line; every row below moves down by it
+local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
 
 local frame, exportFrame
 -- ctx: where the draft came from. { encounterID, id (a reminder) and reminder (its saved copy), or
@@ -983,16 +984,20 @@ local function build()
     UI:RegisterLayer("panel", f)
     -- Previews never touch an alert being edited: on opens an empty editor only when none is open,
     -- and off closes only the one Previews opened.
+    -- The one Previews opens sits in the bottom right corner, clear of the alert areas it shows with.
     UI:RegisterPreview("alerteditor", function(on)
         local open = draft ~= nil and frame:IsShown()
         if on then
             if not open then
                 Editor:Open(nil, nil)
                 previewDraft = draft
+                f:ClearAllPoints()
+                f:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -PREVIEW_INSET, PREVIEW_INSET)
             end
         else
             if open and draft == previewDraft then
                 Editor:Close()
+                applyPosition()
             end
             previewDraft = nil
         end

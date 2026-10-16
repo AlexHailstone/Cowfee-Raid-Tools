@@ -290,12 +290,12 @@ local function pieceAt(id, lineNumber, expected)
     return pieces, piece
 end
 
--- A name fit to sit in the header: no line ends or semicolons; nil when nothing is left.
+-- A name fit to sit in the header: trimmed, no line ends or semicolons; nil when nothing is left.
 local function headerWord(value)
     if value == nil then
         return nil
     end
-    value = tostring(value):gsub("[\r\n;]", "")
+    value = tostring(value):gsub("[\r\n;]", ""):gsub("^%s+", ""):gsub("%s+$", "")
     return value ~= "" and value or nil
 end
 
