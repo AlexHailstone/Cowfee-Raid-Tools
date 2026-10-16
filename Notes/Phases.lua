@@ -72,7 +72,8 @@ local function phaseList(enc)
             list[#list + 1] = ph
         end
     end
-    for _, ph in ipairs(CRT.Alerts:PhasesFor({ encounterID = enc })) do
+    -- The tab has no difficulty choice, so reminders of every difficulty count.
+    for _, ph in ipairs(CRT.Alerts:PhasesFor({ encounterID = enc, anyDifficulty = true })) do
         add(ph)
     end
     for ph in pairs(CRT.AlertPhases:For(enc)) do

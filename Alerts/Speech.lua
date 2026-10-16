@@ -2,8 +2,9 @@ local ADDON, CRT = ...
 
 -- The speech queue: every block's spoken lines play one at a time through the game's text to speech.
 -- A line plays until the game says it finished (or SPEECH_TIMEOUT seconds pass), then the next starts.
--- When the queue falls behind, the lowest priority line is dropped: your reminders, then your note
--- lines, then raid-wide lines. Speech plays only while the Raid Notes Text to Speech switch is on.
+-- When the queue falls behind, the lowest priority line is dropped first: raid-wide lines go first,
+-- your note lines are kept longer, and your reminders are kept longest. Speech plays only while the
+-- Raid Notes Text to Speech switch is on.
 
 local Rules = CRT.AlertRules
 local Alerts = CRT.Alerts

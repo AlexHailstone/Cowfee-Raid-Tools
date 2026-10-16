@@ -44,6 +44,8 @@ local TEXT = {
     save = "Save",
     cancel = CANCEL or "Cancel",
     dragHint = "Reminder: drag to move",
+    testInPull = "Test is off during a pull.",
+    testTrigger = "Nothing to test: this reminder starts in phase %s, which waits for its trigger.",
 }
 
 local Alerts = CRT.Alerts
@@ -63,6 +65,7 @@ local frame
 local ctx   -- { encounterID, id }
 local draft -- the reminder being edited, in the saved shape
 local testItems
+local previewDraft -- the empty draft Previews opened, so Previews only ever closes that one
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -193,6 +196,7 @@ function Editor:Test()
     end
     -- A real pull is never cut short by a test.
     if Alerts.running and Alerts.run and Alerts.run.reason == "encounter" then
+        CRT:Print(TEXT.testInPull)
         return false
     end
     local list, _, err = timesState()
@@ -219,6 +223,12 @@ function Editor:Test()
         firstAt = GetTime() + TEST_LEAD - first,
     })
     testItems = nil
+    -- A lowest phase with an event trigger waits for its event, so the test would show nothing.
+    if Alerts.running and Alerts.run and Alerts.run.reason == "test" and not Alerts:PhaseStart(lowest) then
+        Alerts:Stop()
+        CRT:Print(string.format(TEXT.testTrigger, tostring(lowest)))
+        return false
+    end
     return true
 end
 
@@ -306,11 +316,20 @@ local function build()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     UI:RegisterLayer("panel", f)
+    -- Previews never touch a reminder being edited: on opens an empty editor only when none is open,
+    -- and off closes only the one Previews opened.
     UI:RegisterPreview("alerteditor", function(on)
+        local open = draft ~= nil and frame:IsShown()
         if on then
-            Editor:Open(nil, nil)
+            if not open then
+                Editor:Open(nil, nil)
+                previewDraft = draft
+            end
         else
-            Editor:Close()
+            if open and draft == previewDraft then
+                Editor:Close()
+            end
+            previewDraft = nil
         end
     end)
     UI.SetFrameTitle(f, TEXT.title)
@@ -491,4 +510,6 @@ function Editor:Open(encounterID, id, prefill)
     -- Setting the boxes runs their change handlers, which read them back; the draft is already right.
     refresh()
     frame:Show()
+    -- Above the Timeline pop-out and any other window it opened from.
+    frame:Raise()
 end

@@ -326,8 +326,9 @@ end
 
 -- The block -----------------------------------------------------------------------------------
 
+-- A run with anyDifficulty (the Phases tab asking which phases a boss has) takes every difficulty.
 local function matchesDifficulty(r, run)
-    if not r.difficulty then
+    if not r.difficulty or run.anyDifficulty then
         return true
     end
     return type(run.difficultyName) == "string" and lower(run.difficultyName) == lower(r.difficulty)

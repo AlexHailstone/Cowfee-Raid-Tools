@@ -216,7 +216,6 @@ local defaults = {
         overrides = {},
         nextId = 1,
     },
-
 }
 
 -- Profiles.lua reads these to know which keys a profile holds and to start a profile afresh.
