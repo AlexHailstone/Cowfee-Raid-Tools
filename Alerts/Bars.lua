@@ -1,85 +1,77 @@
 local ADDON, CRT = ...
 
--- The alert bars: a movable window listing what is coming up, soonest first, each line with its icon,
--- text, seconds left and a fill that empties as the time nears. It shows your note lines and your
--- reminders (every line whose outputs.bar is on) from the alerts engine. Settings are in
--- CRT.db.alerts.bars; see the Settings tab of the Raid Notes page.
+-- The alert bars: a list of what is coming up, soonest first, each bar with its icon, text, seconds left and
+-- a fill that empties as the time nears. It shows your note lines and your reminders (every line whose
+-- outputs.bar is on) from the alerts engine. Built on Alerts/Areas.lua; the settings stay in
+-- CRT.db.alerts.bars (shown, cap, ahead, width, height, grow, noteLines) and open from the area's gear.
+-- A bar starts full: its fill runs over the time left when it first showed, at most `ahead`.
 
-local Notes = CRT.Notes
+local Areas = CRT.AlertAreas
 local Alerts = CRT.Alerts
 local Rules = CRT.AlertRules
-local Bars = {}
-CRT.AlertBars = Bars
+local Notes = CRT.Notes
 
-local REFRESH_SECONDS = 0.1
-local MAX_BARS = 10
-local BAR_GAP = 2
+local TEXT = {
+    title = "Alert bars",
+    ahead = "Show bars from",
+    width = "Width",
+    height = "Height",
+    more = "+%d more",
+    sampleThree = "Sample bar 3",
+    sampleTwo = "Sample bar 2",
+    testBar = "Test bar %d",
+}
+
 local ICON_GAP = 4 -- between the icon and the text, and at the edges
-local TIME_WIDTH = 36
-local MORE_HEIGHT = 14
+local MORE_GAP = 2
 local DEFAULT_COLOR = { 0.44, 0.31, 0.22 }
-local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 120 }
+-- The first bar's centre. The old window was centred here, three sample bars tall, so this is its top.
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 142 }
 local SAMPLE_SPELL = 31884
+local SAMPLE_TIMES = { 8, 14, 19 }
+local SAMPLE_GAP = 1      -- seconds between preview ticks that mean it was turned off
 local TEST_SECONDS = 12
-local TEST_STEP = 4 -- seconds between the three test bars
+local TEST_STEP = 4       -- seconds between the three test bars
+local OLD_GAP = 2         -- between bars in the old window
+local OLD_PREVIEW_BARS = 3 -- the old window could only be dragged showing its three samples
+local POSITION_VERSION = 2
 
-local frame, handle, moreText
-local build
-local pool = {}
-local previewOn = false
-local testAt -- the three times of the test bars, or nil
-local elapsed = 0
-local drawn, drawnMore = {}, 0
+local Bars
+local moreText
 
 local function readable(v)
     return CRT.Timeline.readable(v)
-end
-
-local function settings()
-    return (Alerts:Settings() or {}).bars or {}
 end
 
 local function number(v, default)
     return type(v) == "number" and v or default
 end
 
--- The line's text, else its spell's name, else nothing. Values the game hides never reach a string call.
-local function lineText(line)
-    local t = line.text
-    if readable(t) and type(t) == "string" and t ~= "" then
-        return t
+-- The saved position of the old window was its centre, with three sample bars showing. The area saves
+-- the first bar's centre, which is (h + OLD_GAP) higher than the old centre when the top is the same; so
+-- that is moved once, marked by positionV, and a position saved later is left alone.
+local function settings()
+    local alerts = Alerts:Settings()
+    if not alerts then
+        return {}
     end
-    local id = line.spellID
-    if readable(id) and type(id) == "number" then
-        local info = Notes:SpellInfo(id)
-        if info and readable(info.name) and type(info.name) == "string" then
-            return info.name
+    alerts.bars = alerts.bars or {}
+    local s = alerts.bars
+    if s.positionV ~= POSITION_VERSION then
+        s.positionV = POSITION_VERSION
+        local p = s.position
+        if type(p) == "table" and type(p.y) == "number" then
+            local h = math.max(8, number(s.height, 20))
+            local old = OLD_PREVIEW_BARS * (h + OLD_GAP) - OLD_GAP
+            p.y = p.y + old / 2 - h / 2
         end
     end
-    return ""
+    return s
 end
 
-local function lineIcon(line)
-    local icon = line.icon
-    if readable(icon) and (type(icon) == "number" or type(icon) == "string") then
-        return icon
-    end
-    local id = line.spellID
-    if readable(id) and type(id) == "number" then
-        local info = Notes:SpellInfo(id)
-        if info and readable(info.icon) and (type(info.icon) == "number" or type(info.icon) == "string") then
-            return info.icon
-        end
-    end
-    return nil
-end
-
-local function lineColor(line)
-    local c = line.color
-    if readable(c) and type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number" then
-        return c
-    end
-    return DEFAULT_COLOR
+local function aheadOf(s)
+    local ahead = number(s.ahead, 20)
+    return ahead > 0 and ahead or 20
 end
 
 local function timeText(remaining)
@@ -89,21 +81,21 @@ local function timeText(remaining)
     return format("%d", math.floor(remaining))
 end
 
-local function row(line, now, ahead)
-    local fraction = (line.at - now) / ahead
+-- What one bar shows. The fill is over the time left when the line first showed, at most `ahead`.
+local function row(line, now, ahead, shownAt)
+    local total = math.min(ahead, line.at - (shownAt or now))
+    local fraction = total > 0 and (line.at - now) / total or 0
     return {
-        text = lineText(line),
+        text = Areas.LineText(line),
         time = timeText(line.at - now),
-        icon = lineIcon(line),
-        color = lineColor(line),
+        icon = Areas.LineIcon(line),
+        color = Areas.LineColor(line) or DEFAULT_COLOR,
         fraction = math.max(0, math.min(1, fraction)),
     }
 end
 
--- The bars -------------------------------------------------------------------------------
-
-local function makeBar()
-    local bar = CreateFrame("Frame", nil, frame)
+local function make(parent)
+    local bar = CreateFrame("Frame", nil, parent)
     bar.bg = bar:CreateTexture(nil, "BACKGROUND")
     bar.bg:SetAllPoints()
     bar.bg:SetColorTexture(0, 0, 0, 0.55)
@@ -121,9 +113,11 @@ local function makeBar()
     return bar
 end
 
-local function drawBar(bar, index, r, width, height)
-    bar:ClearAllPoints()
-    bar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -(index - 1) * (height + BAR_GAP))
+local function draw(bar, line, now, s, shownAt)
+    local width = math.max(60, number(s.width, 240))
+    local height = math.max(8, number(s.height, 20))
+    local r = row(line, now, aheadOf(s), shownAt)
+    bar.row = r
     bar:SetSize(width, height)
 
     local left = 0
@@ -148,210 +142,144 @@ local function drawBar(bar, index, r, width, height)
     bar.text:SetPoint("LEFT", left + ICON_GAP, 0)
     bar.text:SetPoint("RIGHT", bar.time, "LEFT", -ICON_GAP, 0)
     bar.text:SetText(r.text)
-    bar:Show()
 end
 
-local function draw(rows, more)
-    drawn, drawnMore = rows, more
-    if #rows == 0 then
-        frame:Hide()
+-- The lines the bars show: those due within `ahead`, soonest first, and how many the cap left out.
+local function lines(now, s, cap)
+    return Rules.Bars(Alerts:Lines(now), now, aheadOf(s), cap)
+end
+
+-- "+N more" under the last bar (above it when they grow up, under the first when they grow sideways).
+local function after(area, n, more)
+    if not moreText then
+        moreText = area.frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        moreText:SetJustifyH("LEFT")
+        moreText:SetShadowOffset(1, -1)
+    end
+    if n == 0 or more <= 0 then
+        moreText:Hide()
         return
     end
-    local s = settings()
-    local width = math.max(60, number(s.width, 240))
-    local height = math.max(8, number(s.height, 20))
-    for i, r in ipairs(rows) do
-        pool[i] = pool[i] or makeBar()
-        drawBar(pool[i], i, r, width, height)
-    end
-    for i = #rows + 1, #pool do
-        pool[i]:Hide()
-    end
-    local total = #rows * (height + BAR_GAP) - BAR_GAP
-    if more > 0 then
-        moreText:ClearAllPoints()
-        moreText:SetPoint("TOPLEFT", frame, "TOPLEFT", ICON_GAP, -(total + BAR_GAP))
-        moreText:SetText("+" .. more .. " more")
-        moreText:Show()
-        total = total + BAR_GAP + MORE_HEIGHT
+    local grow = Bars:Settings().grow
+    moreText:ClearAllPoints()
+    if grow == "up" then
+        moreText:SetPoint("BOTTOMLEFT", area.pool[n], "TOPLEFT", ICON_GAP, MORE_GAP)
+    elseif grow == "left" or grow == "right" then
+        moreText:SetPoint("TOPLEFT", area.pool[1], "BOTTOMLEFT", ICON_GAP, -MORE_GAP)
     else
-        moreText:Hide()
+        moreText:SetPoint("TOPLEFT", area.pool[n], "BOTTOMLEFT", ICON_GAP, -MORE_GAP)
     end
-    frame:SetSize(width, total)
-    frame:Show()
+    moreText:SetText(format(TEXT.more, more))
+    moreText:Show()
 end
 
-local function sampleRows(ahead)
+-- The samples keep one base time while the preview runs (a gap between calls means it was turned off and
+-- on), so the bars run down instead of restarting every tick; they start over, full, once all have passed.
+local sampleBase, sampleLast
+local sampleCycle = 0 -- ids change each cycle, so every bar starts full again
+local function sample(now)
+    if not sampleBase or now - sampleLast > SAMPLE_GAP or now > sampleBase + SAMPLE_TIMES[#SAMPLE_TIMES] then
+        sampleBase = now
+        sampleCycle = sampleCycle + 1
+    end
+    sampleLast = now
     local info = Notes:SpellInfo(SAMPLE_SPELL)
     local out = {}
-    for i, remaining in ipairs({ 8, 14, 19 }) do
+    for i, remaining in ipairs(SAMPLE_TIMES) do
         out[i] = {
+            id = "sample" .. i .. "#" .. sampleCycle,
             text = i == 1 and info and info.name or ("Sample bar " .. i),
-            time = timeText(remaining),
             icon = i == 1 and info and info.icon or nil,
-            color = DEFAULT_COLOR,
-            fraction = math.max(0, math.min(1, remaining / ahead)),
+            at = sampleBase + remaining,
         }
     end
     return out
 end
 
-local function testRows(now, ahead)
+local function dialogRows(dialog, s)
+    local function on()
+        return s.shown and true or false
+    end
+    dialog:Slider(TEXT.ahead, {
+        min = 5,
+        max = 60,
+        get = function()
+            return aheadOf(s)
+        end,
+        set = function(value)
+            s.ahead = value
+        end,
+        enabledIf = on,
+    })
+    dialog:Slider(TEXT.width, {
+        min = 120,
+        max = 400,
+        step = 10,
+        get = function()
+            return number(s.width, 240)
+        end,
+        set = function(value)
+            s.width = value
+        end,
+        enabledIf = on,
+    })
+    dialog:Slider(TEXT.height, {
+        min = 12,
+        max = 40,
+        get = function()
+            return number(s.height, 20)
+        end,
+        set = function(value)
+            s.height = value
+        end,
+        enabledIf = on,
+    })
+end
+
+Bars = Areas.New({
+    key = "bars",
+    output = "bar",
+    layer = "alertbars",
+    title = TEXT.title,
+    settingsKey = "bars",
+    store = settings,
+    defaultPosition = DEFAULT_POSITION,
+    make = make,
+    draw = draw,
+    lines = lines,
+    after = after,
+    sample = sample,
+    settings = dialogRows,
+})
+CRT.AlertBars = Bars
+
+-- For the tests: one table per bar on screen (text, time, icon, color, fraction), and the count left out.
+local widgets = Bars.Visible
+function Bars:Visible()
     local out = {}
-    for _, at in ipairs(testAt) do
-        if at > now then
-            out[#out + 1] = row({ at = at, text = "Test bar " .. (#out + 1) }, now, ahead)
-        end
+    for i, w in ipairs(widgets(self)) do
+        out[i] = w.row
     end
     return out
 end
 
-function Bars:Refresh()
-    if not frame then
-        return
-    end
-    handle:SetShown(previewOn)
-    local now = GetTime()
-    local s = settings()
-    local ahead = number(s.ahead, 20)
-    if ahead <= 0 then
-        ahead = 20
-    end
-
-    if previewOn then
-        draw(sampleRows(ahead), 0)
-        return
-    end
-    if testAt then
-        local rows = testRows(now, ahead)
-        if #rows > 0 then
-            draw(rows, 0)
-            return
-        end
-        testAt = nil
-    end
-
-    -- Nothing shows while the bars are off, whichever block the lines come from.
-    if not (s.shown and Alerts.running) then
-        draw({}, 0)
-        return
-    end
-    local cap = math.max(1, math.min(MAX_BARS, number(s.cap, 5)))
-    local list, left = Rules.Bars(Alerts:Lines(now), now, ahead, cap)
-    local rows = {}
-    for i, line in ipairs(list) do
-        rows[i] = row(line, now, ahead)
-    end
-    draw(rows, left)
-end
-
--- What is on screen, for the tests: one table per bar, and the count left out.
-function Bars:Visible()
-    return drawn
-end
-
 function Bars:More()
-    return drawnMore
+    return self.more
 end
 
--- Three sample bars counting down from `seconds`, without a run; the Settings tab's Test bars button.
+-- Three bars counting down from `seconds`, without a run; the Test bars button's use.
+local baseTest = Bars.Test
+local testCount = 0
 function Bars:Test(seconds)
     seconds = number(seconds, TEST_SECONDS)
     if seconds <= 0 then
         seconds = TEST_SECONDS
     end
-    build()
+    testCount = testCount + 1
     local now = GetTime()
-    testAt = { now + seconds, now + seconds + TEST_STEP, now + seconds + 2 * TEST_STEP }
-    Bars:Refresh()
+    local list = {}
+    for i = 1, 3 do
+        list[i] = { id = "test" .. i .. "#" .. testCount, text = format(TEXT.testBar, i), at = now + seconds + (i - 1) * TEST_STEP }
+    end
+    baseTest(self, list)
 end
-
--- The window -----------------------------------------------------------------------------
-
-local function applyPosition()
-    local p = settings().position or DEFAULT_POSITION
-    frame:ClearAllPoints()
-    frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
-end
-
-function Bars:ResetPosition()
-    local s = Alerts:Settings()
-    if s and s.bars then
-        s.bars.position = nil
-    end
-    if frame then
-        applyPosition()
-    end
-end
-
-function build()
-    if frame then
-        return
-    end
-    frame = CreateFrame("Frame", "CowfeeRaidToolsAlertBars", UIParent)
-    frame:SetSize(240, 20)
-    CRT.UI:RegisterLayer("alertbars", frame)
-    frame:SetClampedToScreen(true)
-    frame:SetMovable(true)
-
-    moreText = frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    moreText:SetJustifyH("LEFT")
-    moreText:SetShadowOffset(1, -1)
-    moreText:Hide()
-
-    handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    handle:SetHeight(20)
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
-    handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    handle:SetBackdropColor(0.3, 0.25, 0.05, 0.9)
-    handle:SetBackdropBorderColor(1, 0.82, 0, 1)
-    handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
-    local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("CENTER")
-    text:SetText("Alert bars: drag to move")
-    CRT.UI.ResetButton(handle, function()
-        Bars:ResetPosition()
-    end):SetPoint("RIGHT", -2, 0)
-    handle:SetScript("OnDragStart", function()
-        frame:StartMoving()
-    end)
-    -- Saved by its center, so the window grows evenly around where you put it.
-    handle:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        local x, y = frame:GetCenter()
-        local ux, uy = UIParent:GetCenter()
-        local s = Alerts:Settings()
-        s.bars = s.bars or {}
-        s.bars.position = { point = "CENTER", relativePoint = "CENTER", x = x - ux, y = y - uy }
-        applyPosition()
-    end)
-    handle:Hide()
-
-    applyPosition()
-    frame:Hide()
-end
-
--- The window hides itself when there is nothing to show, so this frame keeps it updated.
-local ticker = CreateFrame("Frame")
-ticker:SetScript("OnUpdate", function(_, dt)
-    elapsed = elapsed + dt
-    if elapsed < REFRESH_SECONDS then
-        return
-    end
-    elapsed = 0
-    if frame then
-        Bars:Refresh()
-    end
-end)
-ticker:RegisterEvent("PLAYER_LOGIN")
-ticker:SetScript("OnEvent", function()
-    build()
-end)
-
-CRT.UI:RegisterPreview("alertbars", function(on)
-    build()
-    previewOn = on and true or false
-    Bars:Refresh()
-end)

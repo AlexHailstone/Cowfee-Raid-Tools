@@ -62,8 +62,8 @@ Timeline\Page.lua
 Alerts\Reminders.lua
 Alerts\PhaseDatabase.lua
 Alerts\Phases.lua
-Alerts\Bars.lua
 Alerts\Areas.lua
+Alerts\Bars.lua
 Alerts\Texts.lua
 Alerts\Icons.lua
 Alerts\Circles.lua

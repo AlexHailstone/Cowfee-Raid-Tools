@@ -41,16 +41,11 @@ local TEXT = {
     sharing = "Sharing",
     trustedOnly = "Only accept notes from leader or assistants",
 
-    -- Alert bars.
-    bars = "Alert bars",
-    barsHelp = "Bars list what is coming up, soonest first: your note lines and your reminders. Show bars from is how many seconds ahead a line gets a bar. Your note lines are read when the pull starts, so changing that box takes effect on the next pull.",
-    barsShow = "Show alert bars",
+    -- Alert areas.
+    areas = "Alert areas",
+    areasHelp = "Texts, icons, circles and bars each have their own settings: press Previews, then the cog on the area's box. Your note lines are read when the pull starts, so changing that box takes effect on the next pull.",
     barsNoteLines = "Show your note lines as bars",
-    barsCap = "Bars at once",
-    barsAhead = "Show bars from",
-    barsWidth = "Bar width",
-    barsHeight = "Bar height",
-    testBars = "Test bars",
+    previews = "Previews",
 }
 
 local COLUMN_W = 226
@@ -278,43 +273,26 @@ local function build(pf)
         Notes:Set(nil, "trustedOnly", value)
     end)
 
-    -- Alert bars, under sharing. They read these settings every refresh, so a change shows at once.
+    -- Alert areas, under sharing. Each area has its own settings, shown with Previews.
     local function bars()
         return CRT.Alerts:Settings().bars
     end
-    local function barSetting(field)
-        return function()
-            return bars()[field]
-        end, function(value)
-            bars()[field] = value
-            refresh()
-            CRT.AlertBars:Refresh()
-        end
-    end
-    local function barsOn()
+    local areasTop = top - 60
+    local areasTitle = heading(pf, 360, areasTop, TEXT.areas)
+    UI.Help(pf, TEXT.areas, TEXT.areasHelp):SetPoint("LEFT", areasTitle, "RIGHT", 6, 0)
+    makeCheck(pf, 356, areasTop - 20, TEXT.barsNoteLines, function()
         return bars().shown and true or false
-    end
-    local barsTop = top - 60
-    local barsTitle = heading(pf, 360, barsTop, TEXT.bars)
-    UI.Help(pf, TEXT.bars, TEXT.barsHelp):SetPoint("LEFT", barsTitle, "RIGHT", 6, 0)
-    makeCheck(pf, 356, barsTop - 20, TEXT.barsShow, nil, barSetting("shown"))
-    makeCheck(pf, 356, barsTop - 44, TEXT.barsNoteLines, barsOn, barSetting("noteLines"))
-    local sliders = {
-        { TEXT.barsCap, "cap", 1, 10, 1 },
-        { TEXT.barsAhead, "ahead", 5, 60, 1 },
-        { TEXT.barsWidth, "width", 120, 400, 10 },
-        { TEXT.barsHeight, "height", 12, 40, 1 },
-    }
-    for i, def in ipairs(sliders) do
-        local get, set = barSetting(def[2])
-        local row = UI.Slider(pf, def[1], { min = def[3], max = def[4], step = def[5], labelWidth = 110, width = 130, get = get, set = set, enabledIf = barsOn })
-        row:SetPoint("TOPLEFT", 364, barsTop - 48 - i * 28)
-        controls[#controls + 1] = row
-    end
-    local testBars = makeButton(pf, TEXT.testBars, 140)
-    testBars:SetPoint("TOPLEFT", 364, barsTop - 48 - (#sliders + 1) * 28 - 4)
-    testBars:SetScript("OnClick", function()
-        CRT.AlertBars:Test()
+    end, function()
+        return bars().noteLines
+    end, function(value)
+        bars().noteLines = value
+        refresh()
+        CRT.AlertBars:Refresh()
+    end)
+    local previews = makeButton(pf, TEXT.previews, 140)
+    previews:SetPoint("TOPLEFT", 364, areasTop - 54)
+    previews:SetScript("OnClick", function()
+        UI:SetPreviews(true)
     end)
 
     pf:SetScript("OnShow", refresh)
