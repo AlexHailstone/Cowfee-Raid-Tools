@@ -87,6 +87,7 @@ UI.LAYERS = {
     { key = "bar", label = "Your consumables bar", default = "HIGH" },
     { key = "debuffs", label = "Debuff panel", default = "HIGH" },
     { key = "lowhealth", label = "Low-health banner", default = "DIALOG" },
+    { key = "timeline", label = "Timeline window", default = "HIGH" },
 }
 
 local layerDefaults, layerFrames = {}, {}
@@ -262,6 +263,42 @@ function UI:SkinDropdown(d)
 end
 
 -- A UIPanelButtonTemplate button: its Left, Middle and Right art and its red highlight.
+-- A close button (UIPanelCloseButton, or the window template's own): in Modern, a plain X in place
+-- of the game's red and gold button art, cream and turning caramel on hover.
+function UI:SkinCloseButton(b)
+    if type(b) ~= "table" or b.crtSkin then
+        return
+    end
+    local x = b:CreateFontString(nil, "OVERLAY")
+    x:SetFont("Fonts\\ARIALN.TTF", 18, "")
+    x:SetPoint("CENTER", 0, 1)
+    x:SetText("X")
+    local hover = false
+    local function color()
+        x:SetTextColor(mocha(hover and "caramel" or "cream"))
+    end
+    b:HookScript("OnEnter", function()
+        hover = true
+        color()
+    end)
+    b:HookScript("OnLeave", function()
+        hover = false
+        color()
+    end)
+    b.crtSkin = function(modern)
+        for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
+            local texture = b[get] and b[get](b)
+            if texture then
+                texture:SetAlpha(modern and 0 or 1)
+            end
+        end
+        x:SetShown(modern)
+        color()
+    end
+    self.skinned[#self.skinned + 1] = b
+    b.crtSkin(self:IsModern())
+end
+
 function UI:SkinButton(b)
     if b.crtSkin or not (b.Left and b.Middle and b.Right) then
         return
@@ -670,6 +707,7 @@ function UI:Create()
     end
 
     self.frame = f
+    self:SkinCloseButton(f.CloseButton)
     self:SkinTree(f)
     self:ApplyStyle()
     f:Hide()

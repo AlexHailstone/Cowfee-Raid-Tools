@@ -11,6 +11,7 @@ local ADDON, CRT = ...
 -- one over it (toggle(pullID)); the page keeps which one, and says with recent:Update.
 
 local Reference = CRT.TimelineReference
+local Journal = CRT.TimelineJournal
 local UI = CRT.UI
 
 local ReferencePage = {}
@@ -20,6 +21,8 @@ local ROW_H = 24
 local BOX_W = 340
 local LIST_X = 364
 local MAX_ERRORS = 3
+local REF_ROWS = 4 -- references listed before the Journal abilities start
+local ABILITY_H = 20
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local BACKDROP = {
@@ -34,8 +37,10 @@ local FORMAT_HELP = "One line per thing:\n\n"
     .. "Length: 9:48  (else the last cast plus its bar)\n"
     .. "Encounter: 3001  (the boss's encounter ID, optional)\n"
     .. "Phase: P2 7:20  (a phase line, the label is optional)\n"
-    .. "Soulcoil Rite (lead 7, color ff6b7d) [spell 123456]: 0:02+45, 1:17, 95\n\n"
-    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. lead N draws the cast line N seconds before each icon, color rrggbb colors the name, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\nIcons and the match to a Journal ability come from the Encounter Journal, which is not read in combat, so they can be blank until you are out of combat."
+    .. "Soulcoil Rite (type raid, lead 7) [spell 123456]: 0:02+45, 1:17, 95\n\n"
+    .. "A time is m:ss or plain seconds, and +N after it draws a bar N seconds long. type says what the ability is, one or more of the words below: the first colors the row, and each other one adds a dot to its name. lead N draws the cast line N seconds before each icon, color rrggbb colors the name instead of its type, and [spell N] gives the icon and tooltip; without it the row is matched by name to the boss's Journal abilities. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
+    .. CRT.TimelineReference.Legend()
+    .. "\n\nIcons and the match to a Journal ability come from the Encounter Journal, which is not read in combat, so they can be blank until you are out of combat."
 
 local function skin(frame, alpha)
     frame:SetBackdrop(BACKDROP)
@@ -232,6 +237,40 @@ function ReferencePage.Build(f, ctx)
         fill("", nil)
     end)
 
+    -- The boss whose Journal abilities fit the box: its Boss and Encounter lines when it has them,
+    -- else the selected boss. Returns the encounter ID to ask the Journal (or nil) and a name.
+    local function journalBoss()
+        local boss, encounterID = Reference.Header(edit:GetText())
+        if boss or encounterID then
+            return Journal:ResolveID(nil, { boss = boss, encounterID = encounterID }), boss or tostring(encounterID)
+        end
+        local selected = ctx.selectedBoss()
+        local refs = selected and ctx.references() or {}
+        return Journal:ResolveID(selected, refs[1] and refs[1].ref), ctx.bossName()
+    end
+
+    local refreshAbilities -- set below, with the abilities list
+
+    local fillIDs = button(f, "Fill spell IDs", 110)
+    fillIDs:SetPoint("LEFT", clear, "RIGHT", 8, 0)
+    fillIDs:SetScript("OnClick", function()
+        edit:ClearFocus()
+        local id, name = journalBoss()
+        local rows = id and Journal:Rows(id) or {}
+        if #rows == 0 then
+            status:SetText("No Journal abilities found for " .. (name or "this boss") .. ".")
+            status:SetTextColor(1, 0.3, 0.3)
+        else
+            local text, n = Reference.FillSpellIDs(edit:GetText(), rows)
+            edit:SetText(text)
+            status:SetText(n > 0 and ("Added " .. n .. " spell ID" .. (n == 1 and "" or "s") .. ". Save to keep them.")
+                or "No more lines match a Journal ability.")
+            status:SetTextColor(0.4, 1, 0.4)
+        end
+        refreshAbilities()
+    end)
+    UI.Help(f, "Fill spell IDs", "Adds [spell N] to every line whose name matches one of the boss's Encounter Journal abilities (listed on the right), so its icon and tooltip are fixed in the text. The boss is the one on the Boss line, or the selected boss.\n\nLines that already have a [spell] and lines that match nothing are left as they are. A name that doesn't match can be renamed to the Journal's name, or given [spell N] by hand.\n\nThe Journal is read out of combat with its window closed."):SetPoint("LEFT", fillIDs, "RIGHT", 4, 0)
+
     -- Right: the selected boss's references.
     local listLabel = label(f, "")
     listLabel:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, -8)
@@ -293,7 +332,85 @@ function ReferencePage.Build(f, ctx)
         return l
     end
 
+    -- Right, under the references: the boss's Journal abilities with their spell IDs.
+    local abilitiesLabel = label(f, "")
+    abilitiesLabel:SetWidth(280)
+    abilitiesLabel:SetJustifyH("LEFT")
+    abilitiesLabel:SetWordWrap(false)
+    UI.Help(f, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs. A reference line whose name matches one gets its icon and tooltip, or use Fill spell IDs to write the IDs into the text.\n\nThe Journal's spell for an ability is sometimes a summary spell rather than the exact cast, so its ID may differ from what the damage meter shows.\n\nNothing shows in combat or while the Journal window is open."):SetPoint("LEFT", abilitiesLabel, "RIGHT", -4, 0)
+    local abilitiesNone = label(f, "", "CRTFontSmall")
+    abilitiesNone:SetWidth(300)
+    abilitiesNone:SetJustifyH("LEFT")
+    local abilitiesScroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTimelineAbilitiesScroll", f, "UIPanelScrollFrameTemplate")
+    -- the abilities start under the references, however many there are (at least REF_ROWS rows)
+    local function placeAbilities(refCount)
+        local top = -30 - math.max(REF_ROWS, refCount) * ROW_H - 12
+        abilitiesLabel:ClearAllPoints()
+        abilitiesLabel:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top)
+        abilitiesNone:ClearAllPoints()
+        abilitiesNone:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top - 24)
+        abilitiesScroll:ClearAllPoints()
+        abilitiesScroll:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, top - 22)
+        abilitiesScroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 8)
+    end
+    placeAbilities(0)
+    local abilitiesChild = CreateFrame("Frame", nil, abilitiesScroll)
+    abilitiesChild:SetSize(290, 1)
+    abilitiesScroll:SetScrollChild(abilitiesChild)
+    local abilityLines = {}
+
+    local function abilityLine(i)
+        local l = abilityLines[i]
+        if l then
+            return l
+        end
+        l = CreateFrame("Frame", nil, abilitiesChild)
+        l:SetSize(290, ABILITY_H)
+        l:SetPoint("TOPLEFT", abilitiesChild, "TOPLEFT", 0, -(i - 1) * ABILITY_H)
+        l.icon = l:CreateTexture(nil, "ARTWORK")
+        l.icon:SetSize(16, 16)
+        l.icon:SetPoint("LEFT", 0, 0)
+        l.name = label(l, "", "CRTFontSmall")
+        l.name:SetPoint("LEFT", 22, 0)
+        l.name:SetWidth(200)
+        l.name:SetJustifyH("LEFT")
+        l.name:SetWordWrap(false)
+        l.id = label(l, "", "CRTFontSmall")
+        l.id:SetPoint("RIGHT", 0, 0)
+        l.id:SetTextColor(0.6, 0.6, 0.6)
+        abilityLines[i] = l
+        return l
+    end
+
+    local abilitiesFor -- the encounter ID the list was last filled for, so typing doesn't refill it
+    refreshAbilities = function()
+        local id, name = journalBoss()
+        abilitiesFor = id
+        abilitiesLabel:SetText("Journal abilities" .. (name and (": " .. name) or ""))
+        local rows = id and Journal:Rows(id) or {}
+        for i, row in ipairs(rows) do
+            local l = abilityLine(i)
+            l.icon:SetTexture(row.icon or 134400)
+            l.name:SetText(row.name or "")
+            l.id:SetText(tostring(row.spellID))
+            l:Show()
+        end
+        for i = #rows + 1, #abilityLines do
+            abilityLines[i]:Hide()
+        end
+        abilitiesChild:SetHeight(math.max(1, #rows * ABILITY_H))
+        abilitiesNone:SetText(name and "No Journal abilities found" or "No boss picked")
+        abilitiesNone:SetShown(#rows == 0)
+    end
+    edit:SetScript("OnTextChanged", function()
+        local id = journalBoss()
+        if id ~= abilitiesFor then
+            refreshAbilities()
+        end
+    end)
+
     function tab:Refresh()
+        refreshAbilities()
         local boss = ctx.selectedBoss()
         listLabel:SetText(boss and ("References for " .. (ctx.bossName() or tostring(boss))) or "Pick a boss on the Review tab")
         local refs = boss and ctx.references() or {}
@@ -314,6 +431,7 @@ function ReferencePage.Build(f, ctx)
             lines[i].copy:Hide()
         end
         empty:SetShown(boss ~= nil and #refs == 0)
+        placeAbilities(#refs)
         showMode()
     end
 

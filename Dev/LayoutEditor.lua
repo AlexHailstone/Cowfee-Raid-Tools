@@ -560,6 +560,8 @@ function Dev:ResetAllPositions()
     end
     CRT.LowHealth:ResetPosition()
     CRT.ReadyCheckWindow:ResetPosition()
+    local pop = CRT.db.timeline.popout
+    pop.point, pop.relativePoint, pop.x, pop.y = nil, nil, nil, nil
     local w = CRT.db.window
     w.point, w.x, w.y = "CENTER", 0, 0
     if UI.frame then
