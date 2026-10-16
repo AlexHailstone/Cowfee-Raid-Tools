@@ -192,9 +192,71 @@ function UI:RegisterThemed(f, classic)
     self:ApplyThemed(f)
 end
 
+-- Floating windows: a window of its own made from BasicFrameTemplateWithInset, such as the alert
+-- editor, its export box and an alert area's settings. Classic shows the template's own art; Modern
+-- a flat espresso background with an edge border, a caramel line under the title and the plain X.
+-- Call StyleWindow right after CreateFrame, before adding anything, so only the template's own
+-- textures count as its art. Its buttons and dropdowns are skinned now and each time it shows.
+UI.windows = {}
+
+function UI:ApplyWindow(f)
+    local modern = self:IsModern()
+    for _, texture in ipairs(f.crtArt) do
+        texture:SetShown(not modern)
+    end
+    f.crtBg:SetShown(modern)
+    f.crtBg:SetColorTexture(mocha("espresso", 0.96))
+    for _, edge in ipairs(f.crtEdges) do
+        edge:SetShown(modern)
+        edge:SetColorTexture(mocha("edge"))
+    end
+    f.crtTitleLine:SetShown(modern)
+    f.crtTitleLine:SetColorTexture(mocha("caramel"))
+end
+
+function UI:StyleWindow(f)
+    if f.crtArt then
+        return
+    end
+    f.crtArt = {}
+    for _, region in ipairs({ f:GetRegions() }) do
+        if region:GetObjectType() == "Texture" then
+            f.crtArt[#f.crtArt + 1] = region
+        end
+    end
+    f.crtBg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
+    f.crtBg:SetAllPoints()
+    f.crtEdges = {}
+    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true }, { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
+        local edge = f:CreateTexture(nil, "BORDER")
+        edge:SetPoint(side[1])
+        edge:SetPoint(side[2])
+        if side[3] then
+            edge:SetHeight(1)
+        else
+            edge:SetWidth(1)
+        end
+        f.crtEdges[#f.crtEdges + 1] = edge
+    end
+    f.crtTitleLine = f:CreateTexture(nil, "BORDER")
+    f.crtTitleLine:SetPoint("TOPLEFT", 1, -24)
+    f.crtTitleLine:SetPoint("TOPRIGHT", -1, -24)
+    f.crtTitleLine:SetHeight(1)
+    self:SkinCloseButton(f.CloseButton)
+    self.windows[#self.windows + 1] = f
+    f:HookScript("OnShow", function()
+        UI:SkinTree(f)
+    end)
+    self:ApplyWindow(f)
+    self:SkinTree(f)
+end
+
 function UI:ApplyStyle()
     for _, themed in ipairs(self.themed) do
         self:ApplyThemed(themed)
+    end
+    for _, window in ipairs(self.windows) do
+        self:ApplyWindow(window)
     end
     local f = self.frame
     if not f then

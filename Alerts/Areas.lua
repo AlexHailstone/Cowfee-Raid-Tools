@@ -371,6 +371,7 @@ local function buildDialog()
         return
     end
     local d = CreateFrame("Frame", DIALOG_NAME, UIParent, "BasicFrameTemplateWithInset")
+    UI:StyleWindow(d)
     d:Hide()
     d:SetSize(DIALOG_WIDTH, 200)
     d:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
