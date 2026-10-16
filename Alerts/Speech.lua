@@ -14,16 +14,18 @@ local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds a
 
 -- The sounds an alert can play: the choices in the editor, from the game's own sound kit names.
 -- A name this client does not have is left out.
-local SOUND_NAMES = {
-    { "RAID_WARNING", "Raid warning" },
-    { "READY_CHECK", "Ready check" },
-    { "ALARM_CLOCK_WARNING_3", "Alarm clock" },
-    { "UI_BNET_TOAST", "Toast" },
-    { "IG_PLAYER_INVITE", "Invite" },
-    { "MAP_PING", "Map ping" },
-    { "IG_QUEST_LIST_OPEN", "Quest list" },
-    { "IG_MAINMENU_OPTION_CHECKBOX_ON", "Checkbox" },
+local TEXT = {
+    RAID_WARNING = "Raid warning",
+    READY_CHECK = "Ready check",
+    ALARM_CLOCK_WARNING_3 = "Alarm clock",
+    UI_BNET_TOAST = "Toast",
+    IG_PLAYER_INVITE = "Invite",
+    MAP_PING = "Map ping",
+    IG_QUEST_LIST_OPEN = "Quest list",
+    IG_MAINMENU_OPTION_CHECKBOX_ON = "Checkbox",
 }
+local SOUND_ORDER = { "RAID_WARNING", "READY_CHECK", "ALARM_CLOCK_WARNING_3", "UI_BNET_TOAST", "IG_PLAYER_INVITE",
+    "MAP_PING", "IG_QUEST_LIST_OPEN", "IG_MAINMENU_OPTION_CHECKBOX_ON" }
 
 local Speech = {
     queue = {},     -- items waiting, oldest first
@@ -35,10 +37,10 @@ local Speech = {
 CRT.AlertSpeech = Speech
 
 Speech.SOUNDS = {}  -- { { key, label, kit } }, in the order above
-for _, def in ipairs(SOUND_NAMES) do
-    local kit = SOUNDKIT and SOUNDKIT[def[1]]
+for _, name in ipairs(SOUND_ORDER) do
+    local kit = SOUNDKIT and SOUNDKIT[name]
     if kit then
-        Speech.SOUNDS[#Speech.SOUNDS + 1] = { key = def[1], label = def[2], kit = kit }
+        Speech.SOUNDS[#Speech.SOUNDS + 1] = { key = name, label = TEXT[name], kit = kit }
     end
 end
 
@@ -119,15 +121,18 @@ function Speech:Tick(now)
     end
     local lines = Alerts:Lines(now)
 
-    -- Sound cues, keyed like speech so a line never plays twice.
+    -- Sound cues: each member plays its own, once, keyed like speech so a changing line never replays one.
     for _, line in ipairs(lines) do
-        if line.sound and line.at <= now then
-            local key = tostring(line.id) .. "#sound"
-            if not self.spoken[key] then
-                self.spoken[key] = true
-                local kit = soundKit(line.sound)
-                if kit and now - line.at <= SOUND_LATE then
-                    CRT:PlaySound(kit)
+        for _, member in ipairs(line.members or { line }) do
+            local at = member.at or line.at
+            if member.sound and at <= now then
+                local key = tostring(member.id) .. "#sound"
+                if not self.spoken[key] then
+                    self.spoken[key] = true
+                    local kit = soundKit(member.sound)
+                    if kit and now - at <= SOUND_LATE then
+                        CRT:PlaySound(kit)
+                    end
                 end
             end
         end

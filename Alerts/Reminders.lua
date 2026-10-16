@@ -375,7 +375,7 @@ function Reminders:Items(encounterID, id, r)
             text = text,
             priority = Rules.Priority(3, r.priority),
             warn = r.warn or 5,
-            hold = math.max(0.5, r.linger or 0),
+            hold = math.max(0.5, type(r.linger) == "number" and r.linger or 0),
             color = r.color,
             sound = r.sound,
             glow = r.glow and true or nil,
