@@ -217,7 +217,8 @@ local defaults = {
     -- their changes to shared packs, and nextId numbers them. The bars window position is added when moved.
     -- areas are the icon, text and circle areas' settings (Alerts/Areas.lua); position is added when moved.
     alerts = {
-        bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
+        bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, font = "Friz Quadrata", fontSize = 13,
+            barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 } },
         areas = {
             icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true, fade = true },
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },

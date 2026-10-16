@@ -3,7 +3,9 @@ local ADDON, CRT = ...
 -- The alert bars: a list of what is coming up, soonest first, each bar with its icon, text, seconds left and
 -- a fill that empties as the time nears. It shows your note lines and your reminders (every line whose
 -- outputs.bar is on) from the alerts engine. Built on Alerts/Areas.lua; the settings stay in
--- CRT.db.alerts.bars (shown, cap, ahead, width, height, grow, noteLines) and open from the area's gear.
+-- CRT.db.alerts.bars (shown, cap, ahead, width, height, grow, noteLines, font, fontSize, barColor, bgColor,
+-- textColor) and open from the area's gear. A line's own colour wins over barColor; the background and the
+-- text colours always come from the area.
 -- A bar starts full: its fill runs over the time left when it first showed, at most `ahead`.
 
 local Areas = CRT.AlertAreas
@@ -17,13 +19,25 @@ local TEXT = {
     width = "Width",
     height = "Height",
     more = "+%d more",
+    font = "Font",
+    textSize = "Text size",
+    barColor = "Bar colour",
+    bgColor = "Background",
+    textColor = "Text colour",
     sampleBar = "Sample bar %d",
     testBar = "Test bar %d",
 }
 
 local ICON_GAP = 4 -- between the icon and the text, and at the edges
 local MORE_GAP = 2
-local DEFAULT_COLOR = { 0.44, 0.31, 0.22 }
+local DEFAULT_BAR_COLOR = { 0.44, 0.31, 0.22, 1 }
+local DEFAULT_BG_COLOR = { 0, 0, 0, 0.6 }
+local DEFAULT_TEXT_COLOR = { 0.95, 0.90, 0.84, 1 }
+local DEFAULT_FONT_NAME = "Friz Quadrata"
+local DEFAULT_FONT_SIZE = 13
+local MIN_FONT, MAX_FONT = 8, 24
+local FONT_OUTLINE = "OUTLINE"
+local LINE_ALPHA = 0.9 -- the fill of an alert that brings its own colour
 -- The first bar's centre. The old window was centred here, three sample bars tall, so this is its top.
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 142 }
 local SAMPLE_SPELL = 31884
@@ -68,6 +82,22 @@ local function settings()
     return s
 end
 
+-- A saved { r, g, b, a } or the default; old saves and edited files may lack it.
+local function colorOf(c, default)
+    if type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number" then
+        return c
+    end
+    return default
+end
+
+local function fontName(s)
+    return type(s.font) == "string" and s.font or DEFAULT_FONT_NAME
+end
+
+local function fontSize(s)
+    return math.max(MIN_FONT, math.min(MAX_FONT, number(s.fontSize, DEFAULT_FONT_SIZE)))
+end
+
 local function aheadOf(s)
     local ahead = number(s.ahead, 20)
     return ahead > 0 and ahead or 20
@@ -81,14 +111,15 @@ local function timeText(remaining)
 end
 
 -- What one bar shows. The fill is over the time left when the line first showed, at most `ahead`.
-local function row(line, now, ahead, shownAt)
+local function row(line, now, ahead, shownAt, s)
     local total = math.min(ahead, line.at - (shownAt or now))
     local fraction = total > 0 and (line.at - now) / total or 0
     return {
         text = Areas.LineText(line),
         time = timeText(line.at - now),
         icon = Areas.LineIcon(line),
-        color = Areas.LineColor(line) or DEFAULT_COLOR,
+        lineColor = Areas.LineColor(line),
+        color = Areas.LineColor(line) or colorOf(s.barColor, DEFAULT_BAR_COLOR),
         fraction = math.max(0, math.min(1, fraction)),
     }
 end
@@ -97,7 +128,6 @@ local function make(parent)
     local bar = CreateFrame("Frame", nil, parent)
     bar.bg = bar:CreateTexture(nil, "BACKGROUND")
     bar.bg:SetAllPoints()
-    bar.bg:SetColorTexture(0, 0, 0, 0.55)
     bar.fill = bar:CreateTexture(nil, "ARTWORK")
     bar.icon = bar:CreateTexture(nil, "ARTWORK")
     bar.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
@@ -115,9 +145,17 @@ end
 local function draw(bar, line, now, s, shownAt)
     local width = math.max(60, number(s.width, 240))
     local height = math.max(8, number(s.height, 20))
-    local r = row(line, now, aheadOf(s), shownAt)
+    local r = row(line, now, aheadOf(s), shownAt, s)
+    local bg = colorOf(s.bgColor, DEFAULT_BG_COLOR)
+    local tc = colorOf(s.textColor, DEFAULT_TEXT_COLOR)
+    local size = math.max(1, math.min(fontSize(s), height - 2)) -- text may not outgrow a small bar
     bar.row = r
     bar:SetSize(width, height)
+    bar.bg:SetColorTexture(bg[1], bg[2], bg[3], bg[4] or 1)
+    Areas.SetFont(bar.time, fontName(s), size, FONT_OUTLINE)
+    Areas.SetFont(bar.text, fontName(s), size, FONT_OUTLINE)
+    bar.time:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
+    bar.text:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
 
     local left = 0
     bar.icon:SetShown(r.icon ~= nil)
@@ -133,7 +171,7 @@ local function draw(bar, line, now, s, shownAt)
     bar.fill:ClearAllPoints()
     bar.fill:SetPoint("LEFT", left, 0)
     bar.fill:SetSize(math.max(fillWidth, 1), height)
-    bar.fill:SetColorTexture(r.color[1], r.color[2], r.color[3], 0.9)
+    bar.fill:SetColorTexture(r.color[1], r.color[2], r.color[3], r.lineColor and LINE_ALPHA or r.color[4] or 1)
     bar.fill:SetShown(fillWidth > 0)
 
     bar.time:SetText(r.time)
@@ -168,6 +206,10 @@ local function after(area, n, more)
     else
         moreText:SetPoint("TOPLEFT", area.pool[n], "BOTTOMLEFT", ICON_GAP, -MORE_GAP)
     end
+    local s = Bars:Settings()
+    local tc = colorOf(s.textColor, DEFAULT_TEXT_COLOR)
+    Areas.SetFont(moreText, fontName(s), fontSize(s), FONT_OUTLINE)
+    moreText:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
     moreText:SetText(format(TEXT.more, more))
     moreText:Show()
 end
@@ -233,6 +275,44 @@ local function dialogRows(dialog, s)
         end,
         enabledIf = on,
     })
+    dialog:Dropdown(TEXT.font, {
+        -- Read each time the menu opens, so fonts another addon shares later appear.
+        options = function()
+            local out = {}
+            for _, font in ipairs(CRT:FontList()) do
+                out[#out + 1] = { key = font.name, label = font.name }
+            end
+            return out
+        end,
+        get = function()
+            return fontName(s)
+        end,
+        set = function(name)
+            s.font = name
+        end,
+        enabledIf = on,
+    })
+    dialog:Slider(TEXT.textSize, {
+        min = MIN_FONT,
+        max = MAX_FONT,
+        get = function()
+            return fontSize(s)
+        end,
+        set = function(value)
+            s.fontSize = value
+        end,
+        enabledIf = on,
+    })
+    local function colorRow(label, key, default)
+        dialog:Color(label, function()
+            return colorOf(s[key], default)
+        end, function(c)
+            s[key] = c
+        end)
+    end
+    colorRow(TEXT.barColor, "barColor", DEFAULT_BAR_COLOR)
+    colorRow(TEXT.bgColor, "bgColor", DEFAULT_BG_COLOR)
+    colorRow(TEXT.textColor, "textColor", DEFAULT_TEXT_COLOR)
 end
 
 Bars = Areas.New({
