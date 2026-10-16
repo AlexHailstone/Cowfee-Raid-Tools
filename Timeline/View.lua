@@ -18,6 +18,10 @@ local ADDON, CRT = ...
 -- with the row's spell and the clicked time as phase + seconds. Every saved note line and reminder of
 -- the boss is drawn as a small flag on its spell's row, or on a "Notes" row added at the bottom for
 -- the ones with no row; a double-click on a flag opens it in the editor.
+-- Along the bottom, a strip holds a chip for each saved alert (CRT.AlertSaved) and a "+" chip that makes
+-- one. Dragging a chip onto the track opens the editor on a new alert from it at that time (taking the
+-- spell of a cast icon it is dropped on); right-clicking a chip edits, renames or deletes it. A right
+-- click on the track that doesn't move opens a menu there: New alert here, or Place a saved alert.
 
 local View = {}
 CRT.TimelineView = View
@@ -47,6 +51,14 @@ local FLAG_W, FLAG_HEAD = 12, 14 -- a marker's flag, drawn on a pole as tall as 
 local FLAG_BTN_W = 20 -- the clickable marker: a square at the row top, the flag centred in it
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
 local MOVE_DIST = 4 -- a flag held and moved less than this many pixels is a click, not a drag
+local STRIP_H = 26 -- the saved alerts strip under the scroll bar
+local CHIP_H, CHIP_ICON, CHIP_EDGE, CHIP_GAP = 20, 16, 3, 4
+local CHIP_NAME_MAX = 160 -- a longer name is cut short on its chip
+local PLUS_W = 22
+local CHIP_WHEEL = 40 -- pixels the chips scroll per mouse wheel notch
+local MENU_DIST, MENU_TIME = 6, 0.3 -- a right click that moves less and lets go sooner opens the menu
+local DASH, DASH_GAP = 6, 4 -- the dashed line where a dragged chip would land
+local RENAME_POPUP = "COWFEE_RAID_TOOLS_SAVED_ALERT_RENAME"
 
 local TEXT = {
     notes = "Notes",
@@ -62,6 +74,31 @@ local TEXT = {
     moveTo = "Move to %s",
     addTime = "Alt \194\183 add a time %s",
     moveRefused = "That alert changed since you grabbed it; nothing was moved.",
+    savedAlerts = "Saved alerts",
+    savedHelp = "Your saved alerts: an alert's setup without its time. Drag one onto the timeline to make an "
+        .. "alert there (dropped on a boss spell's icon it takes that spell). Right-click one to edit, rename or "
+        .. "delete it; + makes a new one. \"Save as saved alert\" in the alert editor makes one too.\n\n"
+        .. "Right-click the timeline (without dragging) for New alert here, or Place a saved alert at that time.",
+    newSaved = "New saved alert",
+    savedHint = "Drag onto the timeline to place it. Right-click to edit, rename or delete.",
+    shows = "Shows: %s",
+    showsNothing = "Shows nothing",
+    readOut = "read out",
+    outputs = { alert = "Alert", text = "Text", icon = "Icon", bar = "Bar", circle = "Circle" },
+    raidNoteFor = "Raid note for %s",
+    placeAt = "Place at %s",
+    edit = "Edit",
+    rename = "Rename",
+    delete = DELETE or "Delete",
+    cancel = CANCEL or "Cancel",
+    accept = ACCEPT or "Accept",
+    renamePrompt = "Rename this saved alert:",
+    deleteConfirm = "Delete the saved alert \"%s\"?",
+    newHere = "New alert here",
+    place = "Place",
+    noSaved = "No saved alerts yet",
+    unnamed = "Saved alert",
+    noMenu = "This game version has no right-click menus for this.",
 }
 
 local function settings()
@@ -292,7 +329,7 @@ function View.Create(parent)
     local view = setmetatable({
         icons = {}, labels = {}, lines = {}, ticks = {}, texts = {}, lanes = {}, unknown = {}, trackW = 1,
         bars = {}, leads = {}, phaseLines = {}, phaseTexts = {}, pullTicks = {}, extra = { phases = {}, length = 0 },
-        flags = {}, marks = {},
+        flags = {}, marks = {}, chips = {}, dashes = {},
     }, Methods)
     local f = CreateFrame("Frame", nil, parent)
     f:SetAllPoints(parent)
@@ -319,15 +356,17 @@ function View.Create(parent)
     base:SetColorTexture(mocha("caramel"))
 
     view.unknownText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    view.unknownText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, 2)
-    view.unknownText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 2)
+    view.unknownText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, STRIP_H + 2)
+    view.unknownText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, STRIP_H + 2)
     view.unknownText:SetJustifyH("LEFT")
+
+    view:BuildStrip()
 
     -- the sideways scroll bar under the track
     local bar = CreateFrame("Slider", nil, f)
     bar:SetOrientation("HORIZONTAL")
-    bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LABEL_W, UNKNOWN_H + 2)
-    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, UNKNOWN_H + 2)
+    bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LABEL_W, STRIP_H + UNKNOWN_H + 2)
+    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, STRIP_H + UNKNOWN_H + 2)
     bar:SetHeight(BAR_H)
     local barBg = bar:CreateTexture(nil, "BACKGROUND")
     barBg:SetAllPoints()
@@ -350,7 +389,7 @@ function View.Create(parent)
     -- the lanes: an up and down scroll frame holding the name column and the sideways track
     local vscroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTimelineView" .. count, f, "UIPanelScrollFrameTemplate")
     vscroll:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -AXIS_H)
-    vscroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, UNKNOWN_H + BAR_H + 4)
+    vscroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, STRIP_H + UNKNOWN_H + BAR_H + 4)
     local body = CreateFrame("Frame", nil, vscroll)
     body:SetSize(1, 1)
     vscroll:SetScrollChild(body)
@@ -379,8 +418,10 @@ function View.Create(parent)
     end)
     hscroll:SetScript("OnMouseDown", function(_, button)
         view:StartDrag(button)
+        view:RightDown(button)
     end)
     hscroll:SetScript("OnMouseUp", function(_, button)
+        view:RightUp(button) -- before StopDrag: a menu click puts back the few pixels it scrolled
         view:StopDrag()
         view:TrackClick(button)
     end)
@@ -393,6 +434,8 @@ function View.Create(parent)
     f:SetScript("OnHide", function()
         view:StopDrag()
         view:CancelMove()
+        view:CancelChipMove()
+        view.rightAt = nil
     end)
     -- the markers follow the notes and the reminders; only a shown view redraws
     -- a failing redraw must never break the note or reminder save that fired it
@@ -409,6 +452,14 @@ function View.Create(parent)
     end
     if CRT.Alerts and CRT.Alerts.OnChange then
         CRT.Alerts:OnChange(changed)
+    end
+    -- the strip follows the saved alerts
+    if CRT.AlertSaved and CRT.AlertSaved.OnChange then
+        CRT.AlertSaved:OnChange(function()
+            if f:IsVisible() then
+                view:DrawStrip()
+            end
+        end)
     end
     return view
 end
@@ -494,6 +545,9 @@ function Methods:OnUpdate()
     if self.move then
         self:UpdateMove()
     end
+    if self.chipMove then
+        self:UpdateChipMove()
+    end
     if self.dragX then
         if IsMouseButtonDown("RightButton") then
             local x = GetCursorPosition() / self.hscroll:GetEffectiveScale()
@@ -531,8 +585,10 @@ function Methods:Icon(n)
         b:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil -- a click here is the icon's, so it never pairs with one on the track
             self:StartDrag(button)
+            self:RightDown(button)
         end)
-        b:SetScript("OnMouseUp", function()
+        b:SetScript("OnMouseUp", function(_, button)
+            self:RightUp(button)
             self:StopDrag()
         end)
         b:SetScript("OnDoubleClick", function()
@@ -572,6 +628,27 @@ function Methods:OpenAt(t, spellID, text)
     })
 end
 
+-- Whether an icon's mark is a boss cast (not a death) with a time.
+local function castIcon(lane, mark)
+    if not (lane and mark and type(mark.t) == "number") or mark.death then
+        return false
+    end
+    return lane.kind == "reference" or lane.kind == "spell" or lane.kind == "unnamed"
+end
+
+-- A cast icon's spell: the lane's, else the cast's own (an unnamed lane holds casts the Journal doesn't
+-- list). Nil when neither is known.
+local function castSpell(lane, mark)
+    local readable = CRT.Timeline.readable
+    if readable(lane.spellID) and type(lane.spellID) == "number" and lane.spellID > 0 then
+        return lane.spellID
+    end
+    if readable(mark.spellID) and type(mark.spellID) == "number" and mark.spellID > 0 then
+        return mark.spellID
+    end
+    return nil
+end
+
 -- Double-click on a cast icon opens the editor for that boss with the spell and the time filled in.
 -- Deaths and the overlaid pull's ticks do nothing.
 function Methods:IconDoubleClick(b)
@@ -581,17 +658,10 @@ function Methods:IconDoubleClick(b)
         self:StopDrag()
     end
     local lane, mark = b.lane, b.mark
-    if not (lane and mark and type(mark.t) == "number") or mark.death then
+    if not castIcon(lane, mark) then
         return
     end
-    if not (lane.kind == "reference" or lane.kind == "spell" or lane.kind == "unnamed") then
-        return
-    end
-    -- the lane's spell, else the cast's own (an unnamed lane holds casts the Journal doesn't list)
-    local spellID = type(lane.spellID) == "number" and lane.spellID > 0 and lane.spellID or nil
-    if not spellID and type(mark.spellID) == "number" and mark.spellID > 0 then
-        spellID = mark.spellID
-    end
+    local spellID = castSpell(lane, mark)
     local text = spellID and CRT.AlertReminders.SpellName(spellID) or nil
     -- a reference row with no spell (or an unreadable name) is named after the row
     if not text and lane.kind == "reference" and type(lane.label) == "string" and lane.label ~= "" then
@@ -741,12 +811,14 @@ function Methods:Flag(n)
                 self:StartMove(f)
             else
                 self:StartDrag(button)
+                self:RightDown(button)
             end
         end)
         f:SetScript("OnMouseUp", function(_, button)
             if button == "LeftButton" then
                 self:FinishMove()
             else
+                self:RightUp(button)
                 self:StopDrag()
             end
         end)
@@ -910,13 +982,16 @@ local function writeNote(m, ph, t, add)
     return Notes:ReplaceLine(m.noteID, m.line, line, m.expected)
 end
 
--- Whether the cursor is over the track's window.
+-- Whether the cursor is over the track's window: inside the track and inside the shown part of the lanes
+-- (the track runs on under the window when the lanes scroll up and down, behind the strip).
 local function overTrack(self)
     local scale = self.hscroll:GetEffectiveScale()
     local x, y = GetCursorPosition()
     x, y = x / scale, y / scale
     local left, top = self.hscroll:GetLeft() or 0, self.hscroll:GetTop() or 0
+    local vtop = self.vscroll:GetTop() or top
     return x >= left and x <= left + self.hscroll:GetWidth() and y <= top and y >= top - self.hscroll:GetHeight()
+        and y <= vtop and y >= vtop - (self.vscroll:GetHeight() or 0)
 end
 
 -- The left button let go of a flag. Under MOVE_DIST pixels it was a click. Otherwise Alt at this moment
@@ -957,6 +1032,640 @@ function Methods:FinishMove()
     if not ok then
         CRT:Print(TEXT.moveRefused)
     end
+end
+
+-- Saved alerts: the strip, dropping a chip, and the right-click menus -------------------------------
+
+local function readable(v)
+    return CRT.Timeline.readable(v)
+end
+
+-- The cursor on the track: x from the track's left end (scroll included) and y down from its top.
+local function cursorOnTrack(self)
+    local scale = self.hscroll:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    x, y = x / scale, y / scale
+    return self.hscroll:GetHorizontalScroll() + x - (self.hscroll:GetLeft() or 0), (self.hscroll:GetTop() or 0) - y
+end
+
+-- The time at x on the track, within the view and to a tenth.
+function Methods:TimeAtX(x)
+    local length = math.max(1, self.extra.length or 0)
+    return tenth(math.max(0, math.min(length, View.XToTime(x, length, self.trackW))))
+end
+
+-- The spell of the boss cast icon at x, y on the track (as cursorOnTrack gives them), else nil. Deaths and
+-- icons without a spell give none.
+function Methods:IconSpellAt(x, y)
+    local length = math.max(1, self.extra.length or 0)
+    for _, b in ipairs(self.icons) do
+        if b:IsShown() and castIcon(b.lane, b.mark) then
+            local row
+            for i, lane in ipairs(self.lanes) do
+                if lane == b.lane then
+                    row = i
+                    break
+                end
+            end
+            local half = (b:GetWidth() or 0) / 2
+            if row and math.abs(x - View.TimeToX(b.mark.t, length, self.trackW)) <= half
+                and math.abs(y - ((row - 1) * ROW_H + ROW_H / 2)) <= half then
+                local spellID = castSpell(b.lane, b.mark)
+                if spellID then
+                    return spellID
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Opens the editor on a new alert from saved alert id at t seconds from the pull (phase + seconds as
+-- OpenAt gives them), with spellID (a cast icon's) in place of its own when given.
+function Methods:PlaceSaved(id, t, spellID)
+    local Saved = CRT.AlertSaved
+    local encounterID = self:EncounterNumber()
+    if not encounterID then
+        CRT:Print(TEXT.needPull)
+        return
+    end
+    if not Saved then
+        return
+    end
+    local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
+    local prefill = Saved:Prefill(id, encounterID, ph, tenth(seconds), spellID, self.bossName)
+    if prefill then
+        CRT.AlertEditor:Open(encounterID, nil, prefill)
+    end
+end
+
+-- A context menu at the cursor, built by build(root) with the game's menu; without one, a chat line.
+local function contextMenu(owner, build)
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(owner, function(_, root)
+            build(root)
+        end)
+    else
+        CRT:Print(TEXT.noMenu)
+    end
+end
+
+-- Lifts a game dialog (strata below the alert editor's) over it, putting its strata back when it hides,
+-- the way the editor lifts its own popups (the same fields, so the two never hook a dialog twice).
+local function liftOver(dialog)
+    if not (dialog and dialog.SetFrameStrata) then
+        return
+    end
+    if not dialog.crtLifted then
+        dialog.crtLifted = dialog:GetFrameStrata()
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        if not dialog.crtHooked then
+            dialog.crtHooked = true
+            dialog:HookScript("OnHide", function(d)
+                if d.crtLifted then
+                    d:SetFrameStrata(d.crtLifted)
+                    d.crtLifted = nil
+                end
+            end)
+        end
+    end
+    dialog:Raise()
+end
+
+-- The popup the game just showed: the one the call returns, else the first visible one.
+local function shownPopup(shown)
+    if type(shown) ~= "table" then
+        shown = nil
+        for i = 1, 4 do
+            local p = _G["StaticPopup" .. i]
+            if p and p:IsShown() then
+                shown = p
+                break
+            end
+        end
+    end
+    return shown
+end
+
+local function popupEdit(dialog)
+    return dialog.GetEditBox and dialog:GetEditBox() or dialog.EditBox or dialog.editBox
+end
+
+-- The Rename popup: an edit box with the saved alert's name. data = { id, name }.
+local function acceptRename(dialog, data)
+    local edit = popupEdit(dialog)
+    if edit and data and CRT.AlertSaved then
+        CRT.AlertSaved:Rename(data.id, edit:GetText())
+    end
+end
+
+local function ensureRenamePopup()
+    if not StaticPopupDialogs then
+        return false
+    end
+    if not StaticPopupDialogs[RENAME_POPUP] then
+        StaticPopupDialogs[RENAME_POPUP] = {
+            text = TEXT.renamePrompt,
+            button1 = TEXT.accept,
+            button2 = TEXT.cancel,
+            hasEditBox = true,
+            maxLetters = 64,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+            OnShow = function(dialog, data)
+                local edit = popupEdit(dialog)
+                if edit then
+                    edit:SetText(data and data.name or "")
+                    edit:HighlightText()
+                end
+            end,
+            OnAccept = function(dialog, data)
+                acceptRename(dialog, data)
+            end,
+            EditBoxOnEnterPressed = function(edit)
+                local dialog = edit:GetParent()
+                acceptRename(dialog, dialog.data)
+                dialog:Hide()
+            end,
+            EditBoxOnEscapePressed = function(edit)
+                edit:GetParent():Hide()
+            end,
+        }
+    end
+    return true
+end
+
+local function askRename(id)
+    local s = CRT.AlertSaved and CRT.AlertSaved:Get(id)
+    if s and ensureRenamePopup() then
+        liftOver(shownPopup(StaticPopup_Show(RENAME_POPUP, nil, nil, { id = id, name = s.name })))
+    end
+end
+
+local function askDelete(id)
+    local s = CRT.AlertSaved and CRT.AlertSaved:Get(id)
+    if not (s and StaticPopup_ShowCustomGenericConfirmation) then
+        return
+    end
+    liftOver(shownPopup(StaticPopup_ShowCustomGenericConfirmation({
+        text = string.format(TEXT.deleteConfirm, tostring(s.name or "")),
+        acceptText = TEXT.delete,
+        cancelText = TEXT.cancel,
+        showAlert = true,
+        callback = function()
+            CRT.AlertSaved:Delete(id)
+        end,
+    })))
+end
+
+-- A chip's icon: its icon ID, else its spell's icon; nil when there is none or it can't be read.
+local function chipIcon(s)
+    local id = s.iconID
+    if readable(id) and type(id) == "number" and id > 0 then
+        return id
+    end
+    id = s.spellID
+    if readable(id) and type(id) == "number" and id > 0 and C_Spell and C_Spell.GetSpellTexture then
+        local ok, tex = pcall(C_Spell.GetSpellTexture, id)
+        if ok and tex ~= nil and readable(tex) then
+            return tex
+        end
+    end
+    return nil
+end
+
+-- A chip's edge color: the saved alert's color, else caramel.
+local function chipColor(s)
+    local c = s.color
+    if type(c) == "table" and readable(c[1]) and type(c[1]) == "number" and type(c[2]) == "number"
+        and type(c[3]) == "number" then
+        return c[1], c[2], c[3], 1
+    end
+    return mocha("caramel")
+end
+
+-- A font string's width as its text would draw: a width set earlier caps GetStringWidth.
+local function textWidth(fs)
+    local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth()
+    if type(w) ~= "number" then
+        w = fs:GetStringWidth()
+    end
+    return type(w) == "number" and w or 0
+end
+
+-- A saved alert's hover: its name and text, how it shows, who it is for.
+local function chipEnter(c)
+    local s = CRT.AlertSaved and CRT.AlertSaved:Get(c.savedID)
+    if not s then
+        return
+    end
+    GameTooltip:SetOwner(c, "ANCHOR_TOP")
+    GameTooltip:SetText(s.name or TEXT.unnamed, 1, 0.82, 0)
+    if type(s.text) == "string" and s.text ~= "" and s.text ~= s.name then
+        GameTooltip:AddLine(s.text, 1, 1, 1)
+    end
+    local shows = {}
+    for _, k in ipairs({ "alert", "text", "icon", "bar", "circle" }) do
+        if s.outputs and s.outputs[k] then
+            shows[#shows + 1] = TEXT.outputs[k]
+        end
+    end
+    if s.outputs and s.outputs.speech then
+        shows[#shows + 1] = TEXT.readOut
+    end
+    GameTooltip:AddLine(#shows > 0 and string.format(TEXT.shows, table.concat(shows, ", ")) or TEXT.showsNothing,
+        0.85, 0.85, 0.85)
+    if s.saveAs == "note" then
+        local words = {}
+        for i, tag in ipairs(s.tags or {}) do
+            words[i] = tag:lower() == "everyone" and TEXT.everyone or className(tag)
+        end
+        GameTooltip:AddLine(string.format(TEXT.raidNoteFor, #words > 0 and table.concat(words, " ") or TEXT.noOne),
+            0.85, 0.85, 0.85)
+    else
+        GameTooltip:AddLine(TEXT.onlyMe, 0.85, 0.85, 0.85)
+    end
+    GameTooltip:AddLine(TEXT.savedHint, 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+end
+
+-- A faint light over a button while the mouse is on it (the HIGHLIGHT layer shows only then).
+local function hoverLight(b)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.12)
+end
+
+-- The chip parts: a background, the colored left edge, the icon and the name.
+local function chipParts(c)
+    c.bg = c:CreateTexture(nil, "BACKGROUND")
+    c.bg:SetAllPoints()
+    c.bg:SetColorTexture(mocha("roast", 0.9))
+    c.edge = c:CreateTexture(nil, "ARTWORK")
+    c.edge:SetPoint("TOPLEFT", c, "TOPLEFT", 0, 0)
+    c.edge:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 0, 0)
+    c.edge:SetWidth(CHIP_EDGE)
+    c.icon = c:CreateTexture(nil, "ARTWORK")
+    c.icon:SetSize(CHIP_ICON, CHIP_ICON)
+    c.icon:SetPoint("LEFT", c, "LEFT", CHIP_EDGE + 4, 0)
+    c.name = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    c.name:SetJustifyH("LEFT")
+    c.name:SetWordWrap(false)
+    c.name:SetTextColor(mocha("cream"))
+end
+
+-- Fills a chip (or the ghost) for saved alert s; returns its width.
+local function fillChip(c, s)
+    local tex = chipIcon(s)
+    local x = CHIP_EDGE + 6
+    if tex then
+        c.icon:SetTexture(tex)
+        c.icon:Show()
+        x = CHIP_EDGE + 4 + CHIP_ICON + 4
+    else
+        c.icon:Hide()
+    end
+    c.edge:SetColorTexture(chipColor(s))
+    c.name:SetText(s.name or TEXT.unnamed)
+    local w = math.ceil(math.min(CHIP_NAME_MAX, textWidth(c.name)))
+    c.name:SetWidth(w)
+    c.name:ClearAllPoints()
+    c.name:SetPoint("LEFT", c, "LEFT", x, 0)
+    local width = x + w + 6
+    c:SetSize(width, CHIP_H)
+    return width
+end
+
+-- The strip along the bottom: its label (with help), and the chips in a sideways scroll frame.
+function Methods:BuildStrip()
+    local f = self.frame
+    local strip = CreateFrame("Frame", nil, f)
+    strip:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 2)
+    strip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, 2)
+    strip:SetHeight(STRIP_H)
+    local line = strip:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
+    line:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
+    line:SetHeight(1)
+    line:SetColorTexture(mocha("caramel", 0.4))
+    strip.label = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    strip.label:SetPoint("LEFT", strip, "LEFT", 4, 0)
+    strip.label:SetTextColor(mocha("latte"))
+    strip.label:SetText(TEXT.savedAlerts)
+    if CRT.UI and CRT.UI.Help then
+        CRT.UI.Help(strip, TEXT.savedAlerts, TEXT.savedHelp):SetPoint("LEFT", strip.label, "RIGHT", 2, 0)
+    end
+    strip:Hide()
+    self.strip = strip
+
+    local scroll = CreateFrame("ScrollFrame", nil, strip)
+    scroll:SetPoint("TOPLEFT", strip, "TOPLEFT", LABEL_W, -3)
+    scroll:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", 0, 3)
+    local row = CreateFrame("Frame", nil, scroll)
+    row:SetSize(1, CHIP_H)
+    scroll:SetScrollChild(row)
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(_, delta)
+        self:ScrollChips(-delta * CHIP_WHEEL)
+    end)
+    self.chipScroll, self.chipRow = scroll, row
+
+    local plus = CreateFrame("Button", nil, row)
+    plus:SetSize(PLUS_W, CHIP_H)
+    plus.bg = plus:CreateTexture(nil, "BACKGROUND")
+    plus.bg:SetAllPoints()
+    plus.bg:SetColorTexture(mocha("roast", 0.9))
+    plus.text = plus:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    plus.text:SetPoint("CENTER", plus, "CENTER", 0, 0)
+    plus.text:SetText("+")
+    plus.text:SetTextColor(mocha("caramel"))
+    hoverLight(plus)
+    plus:SetScript("OnEnter", function(b)
+        GameTooltip:SetOwner(b, "ANCHOR_TOP")
+        GameTooltip:SetText(TEXT.newSaved, 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    plus:SetScript("OnLeave", hideTip)
+    plus:SetScript("OnClick", function()
+        if CRT.AlertEditor then
+            CRT.AlertEditor:EditSaved(nil)
+        end
+    end)
+    self.plus = plus
+end
+
+-- Scrolls the chips sideways by dx pixels, within their row.
+function Methods:ScrollChips(dx)
+    local scroll = self.chipScroll
+    local most = math.max(0, (self.chipRowW or 0) - (scroll:GetWidth() or 0))
+    scroll:SetHorizontalScroll(math.max(0, math.min(most, (scroll:GetHorizontalScroll() or 0) + dx)))
+end
+
+-- One chip from the pool. Left-drag places it; a right click opens its menu.
+function Methods:Chip(n)
+    return pooled(self.chips, n, function()
+        local c = CreateFrame("Button", nil, self.chipRow)
+        c:EnableMouse(true)
+        chipParts(c)
+        hoverLight(c)
+        c:SetScript("OnEnter", chipEnter)
+        c:SetScript("OnLeave", hideTip)
+        c:SetScript("OnMouseDown", function(_, button)
+            if button == "LeftButton" then
+                self:StartChipMove(c)
+            end
+        end)
+        c:SetScript("OnMouseUp", function(_, button)
+            if button == "LeftButton" then
+                self:FinishChipMove()
+            elseif button == "RightButton" then
+                self:ChipMenu(c)
+            end
+        end)
+        return c
+    end)
+end
+
+-- Draws a chip for each saved alert, by name, then the + chip. Hidden while no boss is shown.
+function Methods:DrawStrip()
+    local shown = self.pull ~= nil and self.encounterID ~= nil
+    self.strip:SetShown(shown)
+    if not shown then
+        self:CancelChipMove()
+        return
+    end
+    local list = CRT.AlertSaved and CRT.AlertSaved:List() or {}
+    local x = 0
+    for n, e in ipairs(list) do
+        local c = self:Chip(n)
+        c.savedID = e.id
+        local w = fillChip(c, e.s)
+        c:ClearAllPoints()
+        c:SetPoint("LEFT", self.chipRow, "LEFT", x, 0)
+        x = x + w + CHIP_GAP
+    end
+    hideFrom(self.chips, #list + 1)
+    self.plus:ClearAllPoints()
+    self.plus:SetPoint("LEFT", self.chipRow, "LEFT", x, 0)
+    self.chipRowW = x + PLUS_W
+    self.chipRow:SetSize(self.chipRowW, CHIP_H)
+    self:ScrollChips(0)
+end
+
+-- The ghost chip that follows the cursor while a chip is dragged; above everything, taking no clicks.
+function Methods:ChipGhost()
+    local g = self.chipGhost
+    if not g then
+        g = CreateFrame("Frame", nil, UIParent)
+        g:SetFrameStrata("TOOLTIP")
+        chipParts(g)
+        g:SetAlpha(0.85)
+        g:Hide()
+        self.chipGhost = g
+    end
+    return g
+end
+
+-- The dashed line on the track where a dragged chip would land, with its time beside it.
+function Methods:DropLine()
+    local d = self.dropLine
+    if not d then
+        d = CreateFrame("Frame", nil, self.track)
+        d:SetWidth(2)
+        d.labelBg = d:CreateTexture(nil, "BACKGROUND")
+        d.labelBg:SetColorTexture(mocha("roast", 0.85))
+        d.label = d:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        d.labelBg:SetPoint("TOPLEFT", d.label, "TOPLEFT", -3, 2)
+        d.labelBg:SetPoint("BOTTOMRIGHT", d.label, "BOTTOMRIGHT", 3, -2)
+        d:Hide()
+        self.dropLine = d
+    end
+    return d
+end
+
+-- Shows the dashed line at time t, its label at the cursor's height (y down from the track's top), kept
+-- inside the visible part of the track.
+function Methods:DrawDropLine(t, y)
+    local d = self:DropLine()
+    local length = math.max(1, self.extra.length or 0)
+    local x = View.TimeToX(t, length, self.trackW)
+    local height = math.max(1, self.track:GetHeight() or 1)
+    d:ClearAllPoints()
+    d:SetPoint("TOP", self.track, "TOPLEFT", x, 0)
+    d:SetHeight(height)
+    d:SetFrameLevel((self.track:GetFrameLevel() or 0) + 10)
+    local n = math.ceil(height / (DASH + DASH_GAP))
+    for i = 1, n do
+        local dash = pooled(self.dashes, i, function()
+            local tex = d:CreateTexture(nil, "OVERLAY")
+            tex:SetColorTexture(mocha("cream", 0.85))
+            tex:SetSize(2, DASH)
+            return tex
+        end)
+        dash:ClearAllPoints()
+        dash:SetPoint("TOP", d, "TOP", 0, -(i - 1) * (DASH + DASH_GAP))
+    end
+    hideFrom(self.dashes, n + 1)
+    d.label:SetText(string.format(TEXT.placeAt, clock(t)))
+    local w = d.label:GetStringWidth() or 0
+    local left = self.hscroll:GetHorizontalScroll()
+    local right = left + self:VisibleWidth()
+    local lx = x + 4
+    if lx + w > right - 3 then
+        lx = x - w - 4
+    end
+    lx = math.max(left + 3, math.min(lx, right - w - 3))
+    d.label:ClearAllPoints()
+    d.label:SetPoint("BOTTOMLEFT", self.track, "TOPLEFT", lx, math.min(-FLAG_HEAD, -y + 6))
+    d:Show()
+end
+
+-- A left button pressed on a chip: remember where, so the release can tell a click from a drag.
+function Methods:StartChipMove(c)
+    if c.savedID then
+        local x, y = GetCursorPosition()
+        self.chipMove = { id = c.savedID, chip = c, x0 = x, y0 = y }
+    end
+end
+
+function Methods:CancelChipMove()
+    self.chipMove = nil
+    if self.chipGhost then
+        self.chipGhost:Hide()
+    end
+    if self.dropLine then
+        self.dropLine:Hide()
+    end
+end
+
+local function chipMoved(cm)
+    local x, y = GetCursorPosition()
+    return cm.moved or math.abs(x - cm.x0) >= MOVE_DIST or math.abs(y - cm.y0) >= MOVE_DIST
+end
+
+-- While a chip is held: once moved MOVE_DIST pixels a ghost of it follows the cursor, and over the track
+-- the dashed line shows where it would land.
+function Methods:UpdateChipMove()
+    local cm = self.chipMove
+    if not IsMouseButtonDown("LeftButton") then
+        self:FinishChipMove() -- the release went elsewhere
+        return
+    end
+    if not chipMoved(cm) then
+        return
+    end
+    cm.moved = true
+    local g = self:ChipGhost()
+    local s = CRT.AlertSaved and CRT.AlertSaved:Get(cm.id)
+    if s then
+        fillChip(g, s)
+    end
+    local scale = UIParent:GetEffectiveScale() or 1
+    local x, y = GetCursorPosition()
+    g:ClearAllPoints()
+    g:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+    g:Show()
+    if self.pull and overTrack(self) then
+        local tx, ty = cursorOnTrack(self)
+        self:DrawDropLine(self:TimeAtX(tx), ty)
+    elseif self.dropLine then
+        self.dropLine:Hide()
+    end
+end
+
+-- The left button let go of a chip. Not moved, it was a click and does nothing; released over the track,
+-- the saved alert is placed there; anywhere else, nothing.
+function Methods:FinishChipMove()
+    local cm = self.chipMove
+    self:CancelChipMove()
+    if not (cm and chipMoved(cm) and self.pull and overTrack(self)) then
+        return
+    end
+    local x, y = cursorOnTrack(self)
+    self:PlaceSaved(cm.id, self:TimeAtX(x), self:IconSpellAt(x, y))
+end
+
+-- A chip's menu: Edit, Rename, Delete.
+function Methods:ChipMenu(c)
+    local id = c.savedID
+    local s = id and CRT.AlertSaved and CRT.AlertSaved:Get(id)
+    if not s then
+        return
+    end
+    contextMenu(c, function(root)
+        root:CreateTitle(s.name or TEXT.unnamed)
+        root:CreateButton(TEXT.edit, function()
+            CRT.AlertEditor:EditSaved(id)
+        end)
+        root:CreateButton(TEXT.rename, function()
+            askRename(id)
+        end)
+        root:CreateButton(TEXT.delete, function()
+            askDelete(id)
+        end)
+    end)
+end
+
+-- The right button pressed on the track (or an icon or a flag on it): remember where and when, so its
+-- release can tell a click (the menu) from a drag (which scrolls).
+function Methods:RightDown(button)
+    if button ~= "RightButton" then
+        return
+    end
+    local x, y = GetCursorPosition()
+    local tx, ty = cursorOnTrack(self)
+    self.rightAt = { x = x, y = y, at = GetTime(), scroll = self.hscroll:GetHorizontalScroll(), tx = tx, ty = ty }
+end
+
+-- The right button let go: moved under MENU_DIST pixels and within MENU_TIME seconds, the press was a
+-- click and opens the menu where it went down, putting back what it scrolled.
+function Methods:RightUp(button)
+    if button ~= "RightButton" then
+        return
+    end
+    local r = self.rightAt
+    self.rightAt = nil
+    if not (r and self.pull) then
+        return
+    end
+    local scale = self.hscroll:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    if math.abs(x - r.x) / scale >= MENU_DIST or math.abs(y - r.y) / scale >= MENU_DIST or GetTime() - r.at > MENU_TIME then
+        return
+    end
+    self:ScrollTo(r.scroll)
+    self:TrackMenu(r.tx, r.ty)
+end
+
+-- The track's menu at x, y on the track: its time and row as the title, New alert here (the double-click),
+-- and Place, each saved alert at that time (with the spell of a cast icon there).
+function Methods:TrackMenu(x, y)
+    local t = self:TimeAtX(x)
+    local row = y >= 0 and math.floor(y / ROW_H) + 1 or nil
+    local lane = row and self.lanes[row]
+    local title = clock(t)
+    if lane and readable(lane.label) and type(lane.label) == "string" and lane.label ~= "" then
+        title = title .. " \194\183 " .. lane.label
+    end
+    local spellID = self:IconSpellAt(x, y)
+    contextMenu(self.hscroll, function(root)
+        root:CreateTitle(title)
+        root:CreateButton(TEXT.newHere, function()
+            self:OpenAt(t)
+        end)
+        local place = root:CreateButton(TEXT.place)
+        local list = CRT.AlertSaved and CRT.AlertSaved:List() or {}
+        if #list == 0 then
+            place:CreateTitle(TEXT.noSaved)
+        end
+        for _, e in ipairs(list) do
+            place:CreateButton(e.s.name or TEXT.unnamed, function()
+                self:PlaceSaved(e.id, t, spellID)
+            end)
+        end
+    end)
 end
 
 -- Draws the markers above the icons: raid note lines in caramel, your reminders in cream. A button
@@ -1269,5 +1978,6 @@ function Methods:Refresh()
     end
     self.unknownText:SetText(#names > 0 and ("Time unknown: " .. table.concat(names, ", ")) or "")
     self:DrawMarks(length)
+    self:DrawStrip()
     self:ScrollTo(self.hscroll:GetHorizontalScroll())
 end
