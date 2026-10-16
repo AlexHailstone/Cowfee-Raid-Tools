@@ -48,11 +48,6 @@ local FLAG_BTN_W = 20 -- the clickable marker: a square at the row top, the flag
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
 
 local TEXT = {
-    markerHint = "Drag to move it, Alt+drag to copy it, right-click for Edit, Copy and Delete.",
-    menuEdit = "Edit",
-    menuCopy = "Copy",
-    menuDelete = "Delete",
-    copied = "Copied the note line. Drag the copy to its time.",
     notes = "Notes",
     everyone = "Everyone",
     noOne = "No one (timers window only)",
@@ -242,9 +237,6 @@ local function flagEnter(f)
         source = m.difficulty and string.format(TEXT.raidNoteOf, m.difficulty) or TEXT.raidNote
     end
     GameTooltip:AddLine(source, 0.85, 0.85, 0.85)
-    if m.noteID then
-        GameTooltip:AddLine(TEXT.markerHint, 0.6, 0.9, 0.6, true)
-    end
     GameTooltip:Show()
 end
 
@@ -494,24 +486,6 @@ function Methods:StopDrag()
 end
 
 function Methods:OnUpdate()
-    local drag = self.markDrag
-    if drag then
-        if not IsMouseButtonDown("LeftButton") then
-            self:FinishMarkDrag()
-        else
-            if not drag.moved and math.abs(GetCursorPosition() - drag.x) > 4 then
-                drag.moved = true
-                drag.f:SetAlpha(drag.copy and 0.6 or 1)
-            end
-            if drag.moved then
-                local t = self:CursorTime()
-                local m = drag.f.mark
-                drag.f:ClearAllPoints()
-                drag.f:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(t, self.markLength or 1, self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2, -(m.row - 1) * ROW_H)
-                self.hover:SetText((drag.copy and "Copy to " or "Move to ") .. View.Format(math.floor(t + 0.5)))
-            end
-        end
-    end
     if self.dragX then
         if IsMouseButtonDown("RightButton") then
             local x = GetCursorPosition() / self.hscroll:GetEffectiveScale()
@@ -519,10 +493,6 @@ function Methods:OnUpdate()
         else
             self.dragX = nil
         end
-    end
-    if self.markDrag and self.markDrag.moved then
-        -- a marker being dragged shows its own time in the hover text
-        return
     end
     if self.pull and self.hscroll:IsMouseOver() then
         local cx = cursorX(self.hscroll)
@@ -694,7 +664,6 @@ function Methods:Marks(lanes, length)
     end
     local ref = self.pull.reference
     local function add(m, spellID, text)
-        m.spellID = type(spellID) == "number" and spellID > 0 and spellID or nil
         m.t = Reminders.AbsoluteTime(ref, m.ph, m.time)
         if not (m.t and m.t >= 0 and m.t <= length) then
             return
@@ -748,36 +717,16 @@ function Methods:Flag(n)
         f.head = f:CreateTexture(nil, "ARTWORK")
         f.head:SetPoint("TOPLEFT", f, "TOPLEFT", inset, -3)
         f.head:SetSize(FLAG_W, FLAG_HEAD)
-        -- A line with a spell shows the spell's icon in place of the flag; who and when are on hover.
-        f.icon = f:CreateTexture(nil, "ARTWORK")
-        f.icon:SetPoint("CENTER", f, "CENTER", 0, -2)
-        f.icon:SetSize(FLAG_BTN_W - 2, FLAG_BTN_W - 2)
-        f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        f.icon:Hide()
         f:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         f:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.15)
         f:SetScript("OnEnter", flagEnter)
         f:SetScript("OnLeave", hideTip)
         f:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil
-            if button == "LeftButton" and f.mark and f.mark.noteID then
-                -- a note line: dragging moves it in time, with Alt held it copies it
-                self.markDrag = { f = f, x = GetCursorPosition(), copy = IsAltKeyDown() }
-                return
-            end
-            f.rightFrom = self.hscroll:GetHorizontalScroll()
             self:StartDrag(button)
         end)
-        f:SetScript("OnMouseUp", function(_, button)
-            if self.markDrag then
-                self:FinishMarkDrag()
-                return
-            end
+        f:SetScript("OnMouseUp", function()
             self:StopDrag()
-            -- a right-click that didn't scroll the view opens the marker's menu
-            if button == "RightButton" and f.rightFrom and math.abs(self.hscroll:GetHorizontalScroll() - f.rightFrom) < 3 then
-                self:MarkMenu(f)
-            end
         end)
         f:SetScript("OnDoubleClick", function()
             self:FlagDoubleClick(f)
@@ -816,65 +765,8 @@ function Methods:DrawMarks(length)
         local key = m.mine and "cream" or "caramel"
         f.pole:SetColorTexture(mocha(key))
         f.head:SetColorTexture(mocha(key))
-        local icon = m.spellID and C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(m.spellID)
-        f.icon:SetTexture(icon)
-        f.icon:SetShown(icon ~= nil)
-        f.pole:SetShown(icon == nil)
-        f.head:SetShown(icon == nil)
-        f:SetAlpha(1)
     end
     hideFrom(self.flags, #self.marks + 1)
-    self.markLength = length
-end
-
--- The time (seconds from the start of the view) under the cursor on the track.
-function Methods:CursorTime()
-    local x = self.hscroll:GetHorizontalScroll() + cursorX(self.hscroll)
-    return math.max(0, x * (self.markLength or 1) / math.max(1, self.trackW or 1))
-end
-
--- A note marker let go after a drag: its line moves to the new time, or a copy goes there with Alt.
--- A press with no real movement is a click, which changes nothing (a double-click opens it).
-function Methods:FinishMarkDrag()
-    local drag = self.markDrag
-    self.markDrag = nil
-    if not drag or not drag.moved then
-        return
-    end
-    local m = drag.f.mark
-    local seconds = m.time + (self:CursorTime() - m.t)
-    if not CRT.Notes:SetLineTime(m.noteID, m.line, seconds, drag.copy) then
-        CRT:Print("That note line changed since the timeline was drawn. Try again.")
-        self:Refresh()
-    end
-end
-
--- The right-click menu of a marker: Edit, and for a note line Copy and Delete.
-function Methods:MarkMenu(f)
-    local m = f.mark
-    if not (m and MenuUtil and MenuUtil.CreateContextMenu) then
-        return
-    end
-    MenuUtil.CreateContextMenu(f, function(_, root)
-        root:CreateTitle(m.text or "")
-        root:CreateButton(TEXT.menuEdit, function()
-            self:FlagDoubleClick(f)
-        end)
-        if m.noteID then
-            root:CreateButton(TEXT.menuCopy, function()
-                if CRT.Notes:SetLineTime(m.noteID, m.line, m.time, true) then
-                    CRT:Print(TEXT.copied)
-                end
-            end)
-            root:CreateButton(TEXT.menuDelete, function()
-                local _, raw = CRT.Notes:TimerAt(m.noteID, m.line)
-                if not (raw and CRT.Notes:RemoveLine(m.noteID, m.line, raw)) then
-                    CRT:Print("That note line changed since the timeline was drawn. Try again.")
-                    self:Refresh()
-                end
-            end)
-        end
-    end)
 end
 
 function Methods:Label(n)

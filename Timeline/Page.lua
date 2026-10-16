@@ -785,22 +785,6 @@ local function buildPopControls()
     popButton:SetScript("OnClick", togglePopout)
     UI.Help(reviewFrame, "Pop out", "Moves the timeline into a window of its own that you can drag to any size, for a wider view. Drag its title to move it and its corner to resize it.\n\nDock, the window's X or Escape puts it back here."):SetPoint("RIGHT", popButton, "LEFT", -2, 0)
 
-    -- Share note: the boss's raid note, with the changes made on this timeline, to the group, as
-    -- Share to raid on Raid Notes does. It becomes everyone's active note. Leader or assistant only.
-    local share = button(reviewFrame, "Share note", 90)
-    share:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8, -66)
-    share:SetScript("OnClick", function()
-        local encounterID = view and view:EncounterNumber()
-        local ref = view and view.pull and view.pull.reference
-        local id = encounterID and CRT.Notes:FindForEncounter(encounterID, ref and ref.difficulty)
-        if not id then
-            CRT:Print("This boss has no raid note yet. Double-click the timeline to add a line to one.")
-            return
-        end
-        CRT.NoteComm:Share(id)
-    end)
-    UI.Help(reviewFrame, "Share note", "Sends this boss's raid note to everyone in the group with the addon, with every change made here: lines moved, copied or deleted on the timeline. It becomes everyone's active note, as Share to raid on Raid Notes does.\n\nOnly the raid leader or an assistant can share, and notes can't be shared during a boss fight."):SetPoint("RIGHT", share, "LEFT", -2, 0)
-
     dockedNote = CreateFrame("Frame", nil, tabFrames.review)
     dockedNote:SetAllPoints(tabFrames.review)
     local text = label(dockedNote, "The timeline is in its own window.", "CRTFontNormal")

@@ -372,44 +372,6 @@ function Notes:RemoveLine(id, lineNumber, expected)
     return true
 end
 
--- Puts a new line right after another, with the same line end. Returns the new line's number.
-function Notes:InsertLine(id, afterLine, line)
-    local pieces, piece = pieceAt(id, afterLine)
-    if not (piece and singleLine(line)) then
-        return nil
-    end
-    local eol = piece.eol
-    if eol == "" then
-        -- the last line: give it a line end first, in the note's own style
-        eol = (pieces[1].eol == "\r\n") and "\r\n" or "\n"
-        piece.eol = eol
-        table.insert(pieces, afterLine + 1, { text = line, eol = "" })
-    else
-        table.insert(pieces, afterLine + 1, { text = line, eol = eol })
-    end
-    self:UpdateRaw(id, joinLines(pieces))
-    return afterLine + 1
-end
-
--- Moves a timed line to a new time (seconds into its phase), changing only its time: field, so every
--- other field, ones the addon doesn't know included, stays as written. With copy, the line stays
--- and a copy at the new time goes right after it. Returns the moved or new line's number, or nil.
-function Notes:SetLineTime(id, lineNumber, seconds, copy)
-    local timer, raw = self:TimerAt(id, lineNumber)
-    if not timer then
-        return nil
-    end
-    local text = string.format("%d", math.max(0, math.floor(seconds + 0.5)))
-    local moved, n = raw:gsub("([Tt][Ii][Mm][Ee]%s*:%s*)[%d%.:]+", "%1" .. text, 1)
-    if n ~= 1 then
-        return nil
-    end
-    if copy then
-        return self:InsertLine(id, lineNumber, moved)
-    end
-    return self:ReplaceLine(id, lineNumber, moved, raw) and lineNumber or nil
-end
-
 function Notes:Delete(id)
     local db = ndb()
     db.list[id] = nil
