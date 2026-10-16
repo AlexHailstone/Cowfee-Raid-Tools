@@ -79,6 +79,18 @@ function UI.Dropdown(parent, text, opts)
     end)
     row.Dropdown = dropdown
     UI:SkinDropdown(dropdown)
+    -- The game opens a dropdown's list on the FULLSCREEN_DIALOG layer, the same as the alert editor,
+    -- which raises itself over it. So the open list goes up to the TOOLTIP layer, above every window.
+    if dropdown.RegisterCallback and DropdownButtonMixin and DropdownButtonMixin.Event then
+        -- A callback with an owner is called with the owner first, then the event's own arguments.
+        dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuOpen, function(_, button)
+            local menu = (button or dropdown).menu
+            if menu and menu.SetFrameStrata then
+                pcall(menu.SetFrameStrata, menu, "TOOLTIP")
+                pcall(menu.Raise, menu)
+            end
+        end, row)
+    end
 
     row.refresh = function()
         -- Rebuilds the menu, which also updates the text shown on the closed dropdown.
