@@ -241,6 +241,126 @@ function Notes:UpdateRaw(id, text)
     self:Fire()
 end
 
+-- Single lines ------------------------------------------------------------------------------
+-- The editor reads and writes one note line at a time. Line numbers are the parser's (timer.line):
+-- 1-based, counting every line, with CRLF or LF ends. Every other line is kept byte for byte.
+
+-- The raw text as { text, eol } pieces; concatenating them gives the raw text back exactly.
+local function splitLines(raw)
+    local pieces, pos = {}, 1
+    while true do
+        local nl = raw:find("\n", pos, true)
+        if not nl then
+            pieces[#pieces + 1] = { text = raw:sub(pos), eol = "" }
+            return pieces
+        end
+        local text, eol = raw:sub(pos, nl - 1), "\n"
+        if text:sub(-1) == "\r" then
+            text, eol = text:sub(1, -2), "\r\n"
+        end
+        pieces[#pieces + 1] = { text = text, eol = eol }
+        pos = nl + 1
+    end
+end
+
+local function joinLines(pieces)
+    local out = {}
+    for i, piece in ipairs(pieces) do
+        out[i] = piece.text .. piece.eol
+    end
+    return table.concat(out)
+end
+
+local function singleLine(line)
+    return type(line) == "string" and not line:find("[\r\n]")
+end
+
+-- The pieces of a note and the piece at lineNumber, or nil when the note or line isn't there or
+-- `expected` (the raw line the editor loaded) no longer matches it.
+local function pieceAt(id, lineNumber, expected)
+    local record = Notes:Get(id)
+    if not (record and record.raw and type(lineNumber) == "number") then
+        return nil
+    end
+    local pieces = splitLines(record.raw)
+    local piece = pieces[lineNumber]
+    if not piece or (expected ~= nil and piece.text ~= expected) then
+        return nil
+    end
+    return pieces, piece
+end
+
+-- The timer parsed from a line, and the raw line itself (pass it back as `expected`). Nil when that
+-- line isn't a timed line.
+function Notes:TimerAt(id, lineNumber)
+    local note = self:Parsed(id)
+    local _, piece = pieceAt(id, lineNumber)
+    if not (note and piece) then
+        return nil
+    end
+    for _, timer in ipairs(note.timers) do
+        if timer.line == lineNumber then
+            return timer, piece.text
+        end
+    end
+    return nil
+end
+
+-- Adds a line to the note for a boss (making the note when there is none). Returns the note id and
+-- the line's number.
+function Notes:AddLine(encounterID, difficultyName, bossName, line)
+    if not singleLine(line) then
+        return nil
+    end
+    local id = self:FindForEncounter(encounterID, difficultyName)
+    if not id then
+        local header = "EncounterID:" .. tostring(encounterID)
+        if difficultyName then
+            header = header .. ";Difficulty:" .. difficultyName
+        end
+        if bossName then
+            header = header .. ";Name:" .. bossName
+        end
+        local newId = self:Import(header .. "\n" .. line)
+        return newId, newId and 2 or nil
+    end
+    local raw = self:Get(id).raw or ""
+    local pieces = splitLines(raw)
+    local last = pieces[#pieces]
+    if last.text ~= "" then
+        -- no newline after the last line yet: add one, in the note's own style
+        last.eol = (pieces[1].eol == "\r\n") and "\r\n" or "\n"
+        pieces[#pieces + 1] = { text = line, eol = "" }
+    else
+        pieces[#pieces] = { text = line, eol = "" }
+    end
+    self:UpdateRaw(id, joinLines(pieces))
+    return id, #pieces
+end
+
+-- Replaces one line. `expected` is the raw line the editor loaded; if the line has changed since,
+-- nothing is written and false comes back.
+function Notes:ReplaceLine(id, lineNumber, line, expected)
+    local pieces, piece = pieceAt(id, lineNumber, expected)
+    if not (piece and singleLine(line)) then
+        return false
+    end
+    piece.text = line
+    self:UpdateRaw(id, joinLines(pieces))
+    return true
+end
+
+-- Removes one line and its line end (a last line with no end leaves the line before it as it was).
+function Notes:RemoveLine(id, lineNumber, expected)
+    local pieces = pieceAt(id, lineNumber, expected)
+    if not pieces then
+        return false
+    end
+    table.remove(pieces, lineNumber)
+    self:UpdateRaw(id, joinLines(pieces))
+    return true
+end
+
 function Notes:Delete(id)
     local db = ndb()
     db.list[id] = nil
