@@ -19,7 +19,7 @@ CRT.ConsumablesDisplay = Display
 local REFRESH_SECONDS = 0.5
 local PREVIEW_SECONDS = 20
 
-local frame, handle
+local frame, handle, closeBar
 local slots = {}
 local dragging -- true while the row is being dragged, so it is not re-anchored under the cursor
 local shownUntil -- time at which a ready check or preview row hides by itself, nil for no limit
@@ -93,6 +93,27 @@ local function build()
         Consumables:SavePosition(point, relativePoint, x, y)
     end)
     handle:Hide()
+
+    -- A Close bar under the row, the row's width, for when you're done looking before the check ends.
+    -- Hidden during previews, which have their own drag bar and Reset.
+    closeBar = CreateFrame("Button", nil, frame, "BackdropTemplate")
+    closeBar:SetHeight(20)
+    closeBar:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
+    closeBar:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -2)
+    closeBar:SetBackdrop(Bar.BACKDROP)
+    closeBar:SetBackdropColor(0, 0, 0, 0.6)
+    closeBar:SetBackdropBorderColor(0.2, 0.8, 0.9, 1)
+    local closeText = closeBar:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    closeText:SetPoint("CENTER")
+    closeText:SetText("Close")
+    closeBar:SetHighlightTexture("Interface\\Buttons\\WHITE8X8")
+    local closeHighlight = closeBar:GetHighlightTexture()
+    if closeHighlight then
+        closeHighlight:SetVertexColor(1, 1, 1, 0.12)
+    end
+    closeBar:SetScript("OnClick", function()
+        Display:Hide()
+    end)
 
     for index = 1, count do
         local slot = Bar.CreateSlot(frame, index, true)
@@ -240,6 +261,7 @@ local function show(seconds, preview)
     sawReadyCheckFrame = false
     shownUntil = seconds and (GetTime() + seconds) or nil
     handle:SetShown(preview and true or false)
+    closeBar:SetShown(not preview)
     place()
     frame:Show()
     elapsed = REFRESH_SECONDS
