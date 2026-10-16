@@ -795,6 +795,9 @@ function Window:Refresh()
     else
         frame.title:SetText(format("Ready check  %d/%d ready", readyCount, #members))
     end
+    if frame.close then
+        frame.close:SetShown(not previewOn)
+    end
     if previewOn then
         frame.timer:SetText("preview")
     elseif stayOpen then
@@ -857,6 +860,17 @@ local function build()
             Window:Hide()
         end
     end)
+    -- An X in the top right closes it too, with the timer text moved to its left.
+    frame.close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    frame.close:SetSize(22, 22)
+    frame.close:SetPoint("TOPRIGHT", -2, -2)
+    frame.close:SetScript("OnClick", function()
+        stayOpen = false
+        Window:Hide()
+    end)
+    CRT.UI:SkinCloseButton(frame.close)
+    frame.timer:ClearAllPoints()
+    frame.timer:SetPoint("RIGHT", frame.close, "LEFT", -4, 0)
 
 
     local elapsed = 0
