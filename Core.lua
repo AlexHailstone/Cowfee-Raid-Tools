@@ -224,6 +224,9 @@ local defaults = {
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
             circles = { shown = true, cap = 3, size = 64, thickness = "medium", ringColor = { 1, 1, 1, 0.9 }, font = "Friz Quadrata", fontSize = 16, grow = "right" },
         },
+        -- Where the player's own note lines without show: also display (Next spell alert, Bar and speech
+        -- keep their own switches); off until chosen.
+        noteLines = { text = false, icon = false, circle = false },
         reminders = {},
         phases = {},
         overrides = {},

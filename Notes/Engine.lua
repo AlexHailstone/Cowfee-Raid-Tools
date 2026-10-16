@@ -330,12 +330,21 @@ function Engine.ItemFor(t, index, mine)
         item.speech = Rules.SpeechItems(item.text, item.warn, t.tts and true or false, t.count and true or false)
         return item
     end
-    local bars = (Alerts:Settings() or {}).bars or {}
+    local settings = Alerts:Settings() or {}
+    local bars = settings.bars or {}
     item.outputs = {
         alert = s.enabled and true or false,
         bar = (bars.shown and bars.noteLines) and true or false,
         speech = (s.enabled and s.tts) and true or false,
     }
+    -- Where else the player sends their own note lines (Raid Notes > Alerts); each is off unless chosen,
+    -- so the outputs stay as they were for anyone who has not.
+    local routing = type(settings.noteLines) == "table" and settings.noteLines or {}
+    for _, area in ipairs({ "text", "icon", "circle" }) do
+        if routing[area] then
+            item.outputs[area] = true
+        end
+    end
     item.warn = s.seconds or 10
     -- A spell shows for half a second after its time, a text line for its dur:.
     item.hold = t.kind == "text" and (t.dur or 0) or 0.5
