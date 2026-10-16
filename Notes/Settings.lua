@@ -21,15 +21,15 @@ local TEXT = {
     locked = "Locked (clicks pass through)",
     hidePassed = "Hide lines once passed",
     onlyMe = "Show only me",
-    fontSize = "Font size (8 to 32)",
-    windowAlpha = "Window alpha %",
-    backgroundAlpha = "Background alpha %",
+    fontSize = "Font size",
+    windowAlpha = "Window alpha",
+    backgroundAlpha = "Background",
     font = "Font",
 
     -- Alerts.
     alerts = "Alerts",
     alertShow = "Show your next spell or callout",
-    alertSeconds = "Display seconds early:",
+    alertSeconds = "Show it early by",
     tts = "Text to Speech",
     ttsSeconds = "Count down seconds",
     ttsVolume = "Speech volume",
@@ -129,47 +129,33 @@ local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
     controls[#controls + 1] = check
 end
 
--- opts: low and high (the allowed range), valueX (where the box sits, from x, default 160) and
--- enabledIf. getter and setter come last because setting() and alert() return both: Lua only passes
--- every return value of a call when it is the last argument, so in the middle the setter is lost.
+-- A number setting as an Edit Mode style slider. opts: low and high (the range), labelWidth and
+-- width (default 92 and 78, to fit a column), format (the text beside the bar) and enabledIf.
+-- getter and setter come last because setting() and alert() return both: Lua only passes every
+-- return value of a call when it is the last argument, so in the middle the setter is lost.
 local function makeNumber(parent, x, y, label, opts, getter, setter)
-    local low, high, valueX, enabledIf = opts.low, opts.high, opts.valueX, opts.enabledIf
-    local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("TOPLEFT", x + 4, y - 4)
-    text:SetText(label)
-    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(CRTFontHighlight)
-    edit:SetNumeric(true)
-    edit:SetMaxLetters(3)
-    edit:SetSize(44, 20)
-    edit:SetPoint("TOPLEFT", x + (valueX or 160), y - 2)
-    edit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    edit:SetScript("OnEscapePressed", function(self)
-        self:SetText(tostring(getter()))
-        self:ClearFocus()
-    end)
-    edit:SetScript("OnEditFocusLost", function(self)
-        local value = tonumber(self:GetText())
-        if value then
-            setter(math.max(low, math.min(high, math.floor(value))))
-        end
-        self:SetText(tostring(getter()))
-    end)
-    edit.refresh = function()
-        if not edit:HasFocus() then
-            edit:SetText(tostring(getter()))
-        end
-        if enabledIf then
-            local on = enabledIf()
-            edit:SetEnabled(on)
-            edit:SetTextColor(on and 1 or 0.5, on and 1 or 0.5, on and 1 or 0.5)
-            greyOut(text, on)
-        end
-    end
-    controls[#controls + 1] = edit
+    local row = UI.Slider(parent, label, {
+        min = opts.low,
+        max = opts.high,
+        step = 1,
+        labelWidth = opts.labelWidth or 92,
+        width = opts.width or 78,
+        format = opts.format,
+        enabledIf = opts.enabledIf,
+        get = getter,
+        set = setter,
+    })
+    row:SetPoint("TOPLEFT", x + 4, y)
+    controls[#controls + 1] = row
+    return row
+end
+
+local function percent(v)
+    return (v or 0) .. "%"
+end
+
+local function seconds(v)
+    return (v or 0) .. "s"
 end
 
 local function heading(parent, x, y, text)
@@ -199,8 +185,8 @@ local function buildColumn(pf, index, def, top)
         y = y - 48
     end
     makeNumber(pf, x, y, TEXT.fontSize, { low = 8, high = 32, enabledIf = shown }, setting(def.key, "fontSize"))
-    makeNumber(pf, x, y - 24, TEXT.windowAlpha, { low = 10, high = 100, enabledIf = shown }, setting(def.key, "alpha"))
-    makeNumber(pf, x, y - 48, TEXT.backgroundAlpha, { low = 0, high = 100, enabledIf = shown }, setting(def.key, "bgAlpha"))
+    makeNumber(pf, x, y - 28, TEXT.windowAlpha, { low = 10, high = 100, format = percent, enabledIf = shown }, setting(def.key, "alpha"))
+    makeNumber(pf, x, y - 56, TEXT.backgroundAlpha, { low = 0, high = 100, format = percent, enabledIf = shown }, setting(def.key, "bgAlpha"))
 
     -- Read each time the menu opens, so fonts shared by other addons appear.
     local function fonts()
@@ -222,7 +208,7 @@ local function buildColumn(pf, index, def, top)
         end,
         enabledIf = shown,
     })
-    font:SetPoint("TOPLEFT", x, y - 70)
+    font:SetPoint("TOPLEFT", x, y - 88)
     controls[#controls + 1] = font
 end
 
@@ -251,22 +237,22 @@ local function build(pf)
     local function speechOn()
         return Notes:Alert().tts and true or false
     end
-    local top = -280
+    local top = -300
     heading(pf, 8, top, TEXT.alerts)
     makeCheck(pf, 4, top - 20, TEXT.alertShow, nil, alert("enabled"))
-    makeNumber(pf, 4, top - 44, TEXT.alertSeconds, { low = 1, high = 60, valueX = 200, enabledIf = alertsOn }, alert("seconds"))
-    makeCheck(pf, 4, top - 68, TEXT.tts, nil, alert("tts"))
-    makeNumber(pf, 4, top - 92, TEXT.ttsSeconds, { low = 0, high = 30, valueX = 200, enabledIf = speechOn }, alert("ttsSeconds"))
+    makeNumber(pf, 4, top - 46, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = 120, width = 150, format = seconds, enabledIf = alertsOn }, alert("seconds"))
+    makeCheck(pf, 4, top - 80, TEXT.tts, nil, alert("tts"))
+    makeNumber(pf, 4, top - 106, TEXT.ttsSeconds, { low = 0, high = 30, labelWidth = 120, width = 150, format = seconds, enabledIf = speechOn }, alert("ttsSeconds"))
     local volumeGet, volumeSet = alert("ttsVolume")
-    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = 100, width = 150, get = volumeGet, set = volumeSet, enabledIf = speechOn })
-    volume:SetPoint("TOPLEFT", 8, top - 116)
+    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = 120, width = 150, format = percent, get = volumeGet, set = volumeSet, enabledIf = speechOn })
+    volume:SetPoint("TOPLEFT", 8, top - 138)
     controls[#controls + 1] = volume
     local iconGet, iconSet = alert("iconPosition")
-    local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = 100, width = 150, get = iconGet, set = iconSet, enabledIf = alertsOn })
-    iconRow:SetPoint("TOPLEFT", 8, top - 148)
+    local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = 120, width = 150, get = iconGet, set = iconSet, enabledIf = alertsOn })
+    iconRow:SetPoint("TOPLEFT", 8, top - 170)
     controls[#controls + 1] = iconRow
     local speak = makeButton(pf, TEXT.testSpeech, 140)
-    speak:SetPoint("TOPLEFT", 8, top - 188)
+    speak:SetPoint("TOPLEFT", 8, top - 210)
     speak:SetScript("OnClick", function()
         CRT.NoteAlert:Speak(TEXT.testPhrase)
     end)
