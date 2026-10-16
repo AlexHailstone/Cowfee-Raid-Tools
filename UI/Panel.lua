@@ -165,7 +165,34 @@ function UI:IsModern()
     return CRT.db and CRT.db.ui and CRT.db.ui.modern and true or false
 end
 
+-- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,
+-- and the ready check window. Each keeps its Classic colours; in Modern its background turns espresso
+-- (keeping its own opacity) and its outline caramel.
+UI.themed = {}
+
+function UI:ApplyThemed(f)
+    local c = f.crtClassic
+    if self:IsModern() then
+        local bg, edge = CRT.MOCHA.espresso, CRT.MOCHA.caramel
+        f:SetBackdropColor(bg[1], bg[2], bg[3], c.bg[4])
+        f:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+    else
+        f:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], c.bg[4])
+        f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+    end
+end
+
+-- classic = { bg = { r, g, b, a }, border = { r, g, b } }, the frame's colours in the Classic look.
+function UI:RegisterThemed(f, classic)
+    f.crtClassic = classic
+    self.themed[#self.themed + 1] = f
+    self:ApplyThemed(f)
+end
+
 function UI:ApplyStyle()
+    for _, themed in ipairs(self.themed) do
+        self:ApplyThemed(themed)
+    end
     local f = self.frame
     if not f then
         return

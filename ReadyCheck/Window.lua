@@ -311,8 +311,7 @@ end
 -- be made with BackdropTemplate.
 function Window.Dress(f)
     f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    f:SetBackdropColor(0.05, 0.05, 0.07, 0.88)
-    f:SetBackdropBorderColor(0.78, 0.63, 0.31, 1)
+    CRT.UI:RegisterThemed(f, { bg = { 0.05, 0.05, 0.07, 0.88 }, border = { 0.78, 0.63, 0.31 } })
     f.title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     f.title:SetPoint("TOPLEFT", 8, -6)
     f.timer = f:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
