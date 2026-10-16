@@ -921,7 +921,9 @@ local function buildExport()
     x:SetPoint("CENTER", frame, "CENTER", 0, 0)
     x:SetClampedToScreen(true)
     x:EnableMouse(true)
-    UI:RegisterLayer("panel", x)
+    -- above every window, not on the "panel" layer (that one follows the main window's strata)
+    x:SetFrameStrata("FULLSCREEN_DIALOG")
+    x:SetToplevel(true)
     UI.SetFrameTitle(x, TEXT.exportTitle)
     tinsert(UISpecialFrames, EXPORT_NAME)
     x.text = ""
@@ -1035,6 +1037,9 @@ local function pickColor()
             end
         end,
     })
+    -- the picker is DIALOG strata, below the editor: lift it over
+    ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    ColorPickerFrame:Raise()
 end
 
 local function build()
@@ -1054,7 +1059,10 @@ local function build()
         self:StopMovingOrSizing()
         inCorner = false -- dragged: it keeps the spot it was put in
     end)
-    UI:RegisterLayer("panel", f)
+    -- above every window, the Timeline pop-out included; not on the "panel" layer, which follows the
+    -- main window's strata
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetToplevel(true)
     -- Previews never touch an alert being edited: on opens an empty editor only when none is open,
     -- and off closes only the one Previews opened.
     -- The one Previews opens sits in the bottom right corner, clear of the alert areas it shows with.
