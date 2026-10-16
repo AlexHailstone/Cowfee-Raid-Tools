@@ -169,6 +169,62 @@ function Late:End(reason, at)
     self:Fire()
 end
 
+-- Editing tonight's roster: the list starts as the expected Raid Groups layout, and these change it
+-- for the running night only, never the layout itself.
+
+local function findPlayer(night, key)
+    local lower = key:lower()
+    for i, p in ipairs(night.players) do
+        if p.key:lower() == lower then
+            return i, p
+        end
+    end
+end
+
+-- Adds someone who should be here tonight. If they are in your group now, they count as joined now.
+-- Returns false and a reason when nothing changed.
+function Late:AddPlayer(key)
+    local night = ldb().current
+    key = CRT.Groups.Normalize(key or "")
+    if not night then
+        return false, "No raid night is running."
+    end
+    if key == "" then
+        return false, "Type a name first."
+    end
+    if findPlayer(night, key) then
+        return false, Ambiguate(key, "none") .. " is already on tonight's list."
+    end
+    night.players[#night.players + 1] = { key = key, added = true }
+    self:Scan(time())
+    self:Fire()
+    return true
+end
+
+-- Takes someone off tonight's list, so they don't count as late or missing.
+function Late:RemovePlayer(key)
+    local night = ldb().current
+    local i = night and findPlayer(night, key)
+    if i then
+        table.remove(night.players, i)
+        self:Fire()
+    end
+end
+
+-- Counts someone as here on time, for a player who was here under another name or excused.
+function Late:SetOnTime(key)
+    local night = ldb().current
+    if not night then
+        return
+    end
+    local _, p = findPlayer(night, key)
+    if p then
+        p.joinedAt = night.startedAt
+        p.never = nil
+        self:Fire()
+    end
+end
+
 function Late:Delete(id)
     local history = ldb().history
     for i, night in ipairs(history) do
