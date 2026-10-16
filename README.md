@@ -50,7 +50,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Tattlebot** | After each boss pull, reads the game's damage meter and reports who took damage from a built-in list of boss mechanics, per pull and per night, with how many pulls each player was hit in. Posts to chat and exports for Discord |
 | **Timeline** | Saves every raid boss pull, ten per boss, and draws it as a timeline: time runs left to right, with a row for each boss ability and a row of deaths. Zoom, scroll, hover for the time, and draw the deaths of recent pulls over the shown one to see who keeps dying and when. A boss's reference timeline (shipped for Nek'zali the Soulcoiler on Mythic, or pasted in) shows its planned casts with phase lines and duration bars, and a recent pull can be laid over it |
 
-**Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. Positions are saved per character.
+**Previews**, in the top right of the panel, shows every movable window at once so you can drag them into place. The button beside it, or a double-click on the title bar, minimizes the panel to its title bar, and the same again (or `/crt`) restores it. Positions are saved per character.
 
 ## Installation
 
@@ -77,6 +77,7 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 | Drag a name onto another slot | The two names swap, or the name moves into an empty slot |
 | Right-click a slot | The slot is cleared |
 | Click a layout in Quick Load | It loads into the grid |
+| Click or drag a name under **In group, not in layout** | Puts someone who is in your group but not in the grid (a renamed or new character, say) into the first empty slot of their raid group, or onto the slot you drop them on |
 | Edit the name at the top | The layout is renamed when you press Enter or click away |
 | Press **Set current roster** | The grid fills from your live group, in its current subgroups, after asking if the grid has names |
 | Press **Clear grid** | The grid empties |

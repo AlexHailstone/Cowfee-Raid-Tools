@@ -58,6 +58,7 @@ local slotButtons = {}
 local presetButtons = {}
 local radios = {}
 local page, listChild, emptyText, editingText, keepCheck
+local extraButtons, extraChild, extraTitle, extraEmpty = {}, nil, nil, nil
 local editingLabel, nameEdit, dirtyText
 local picker, catcher, pickerRows = nil, nil, {}
 local refresh
@@ -374,6 +375,15 @@ local function getGhost()
     return ghost
 end
 
+-- The slot under the mouse, if any.
+local function slotUnderMouse()
+    for i, b in ipairs(slotButtons) do
+        if b:IsMouseOver() then
+            return i
+        end
+    end
+end
+
 local function onDragStart(self)
     local key = Groups:Working()[self.index]
     if key == "" then
@@ -405,6 +415,138 @@ local function onDragStop(self)
     if target and target ~= from then
         Groups:Swap(from, target)
     end
+end
+
+-- Not in this layout -----------------------------------------------------------
+-- The people in your group who aren't anywhere in the grid, such as someone on a renamed or new
+-- character. Click a name to put it in the first empty slot of their current raid group (or the
+-- first empty slot), or drag it onto a slot.
+
+local function placeExtra(entry)
+    local working = Groups:Working()
+    local first, sub = (entry.subgroup or 1) - 1, nil
+    for pos = 1, 5 do
+        local i = first * 5 + pos
+        if working[i] == "" then
+            sub = i
+            break
+        end
+    end
+    if not sub then
+        for i = 1, NUM_SLOTS do
+            if working[i] == "" then
+                sub = i
+                break
+            end
+        end
+    end
+    if sub then
+        Groups:SetSlot(sub, entry.key)
+    else
+        CRT:Print("Every slot is taken. Drag the name onto a slot to replace that player.")
+    end
+end
+
+local function extraButton(i)
+    local b = extraButtons[i]
+    if b then
+        return b
+    end
+    b = CreateFrame("Button", nil, extraChild)
+    b:SetHeight(ROW_H)
+    b:SetPoint("TOPLEFT", extraChild, "TOPLEFT", 0, -(i - 1) * ROW_H)
+    b:SetPoint("TOPRIGHT", extraChild, "TOPRIGHT", 0, -(i - 1) * ROW_H)
+    b.hl = b:CreateTexture(nil, "HIGHLIGHT")
+    b.hl:SetAllPoints()
+    b.hl:SetColorTexture(1, 1, 1, 0.08)
+    b.role = b:CreateTexture(nil, "OVERLAY")
+    b.role:SetSize(16, 16)
+    b.role:SetPoint("LEFT", 4, 0)
+    b.role:SetTexture(ROLE_TEXTURE)
+    b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    b.text:SetPoint("LEFT", 25, 0)
+    b.text:SetPoint("RIGHT", -34, 0)
+    b.text:SetJustifyH("LEFT")
+    b.group = b:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    b.group:SetPoint("RIGHT", -4, 0)
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnClick", function(self)
+        placeExtra(self.entry)
+    end)
+    b:SetScript("OnDragStart", function(self)
+        drag.key = self.entry.key
+        local g = getGhost()
+        g.text:SetText(Groups.Display(self.entry.key))
+        g.text:SetTextColor(Groups.ClassColor(self.entry.key, self.entry.class))
+        g:Show()
+    end)
+    b:SetScript("OnDragStop", function()
+        local key = drag.key
+        drag.key = nil
+        ghost:Hide()
+        local target = slotUnderMouse()
+        for _, slot in ipairs(slotButtons) do
+            setBorder(slot, slot.baseBorder)
+        end
+        if key and target then
+            Groups:SetSlot(target, key)
+        end
+    end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(Groups.Display(self.entry.key), Groups.ClassColor(self.entry.key, self.entry.class))
+        GameTooltip:AddLine("In your group, in raid group " .. (self.entry.subgroup or 1) .. ", but not in this layout.", 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine("Click: put them in the first empty slot of that group. Drag: drop them on any slot.", 1, 0.82, 0, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    extraButtons[i] = b
+    return b
+end
+
+local function refreshExtras(roster, working)
+    local inLayout = {}
+    for i = 1, NUM_SLOTS do
+        if working[i] ~= "" then
+            inLayout[#inLayout + 1] = { key = working[i] }
+        end
+    end
+    local layoutLookup = Groups.MakeLookup(inLayout)
+    local extras = {}
+    for _, entry in ipairs(roster) do
+        if not layoutLookup(entry.key) then
+            extras[#extras + 1] = entry
+        end
+    end
+    table.sort(extras, function(a, b)
+        if (a.subgroup or 1) ~= (b.subgroup or 1) then
+            return (a.subgroup or 1) < (b.subgroup or 1)
+        end
+        return a.key:lower() < b.key:lower()
+    end)
+    for i, entry in ipairs(extras) do
+        local b = extraButton(i)
+        b.entry = entry
+        b.text:SetText(Groups.Display(entry.key))
+        b.text:SetTextColor(Groups.ClassColor(entry.key, entry.class))
+        b.group:SetText("G" .. (entry.subgroup or 1))
+        local coords = entry.role and ROLE_COORDS[entry.role]
+        if coords then
+            b.role:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+            b.role:Show()
+        else
+            b.role:Hide()
+        end
+        b:Show()
+    end
+    for i = #extras + 1, #extraButtons do
+        extraButtons[i]:Hide()
+    end
+    extraChild:SetHeight(math.max(1, #extras * ROW_H))
+    extraTitle:SetText(format("In group, not in layout (%d)", #extras))
+    extraEmpty:SetShown(#extras == 0)
 end
 
 -- Refresh ---------------------------------------------------------------------
@@ -453,7 +595,8 @@ refresh = function()
     local g = gdb()
     local working = Groups:Working()
 
-    local lookup = Groups.MakeLookup(Groups:ReadRoster())
+    local roster = Groups:ReadRoster()
+    local lookup = Groups.MakeLookup(roster)
 
     for i = 1, NUM_SLOTS do
         local b, key = slotButtons[i], working[i]
@@ -514,6 +657,7 @@ refresh = function()
     end
 
     refreshPresets()
+    refreshExtras(roster, working)
 end
 
 -- Page ------------------------------------------------------------------------
@@ -717,9 +861,29 @@ local function buildPage(pf)
 
     local listBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
     listBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -32)
-    listBox:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 172)
-    listBox:SetWidth(RIGHT_W)
+    listBox:SetSize(RIGHT_W, 214)
     skin(listBox, 0.4)
+
+    extraTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    extraTitle:SetPoint("TOPLEFT", listBox, "BOTTOMLEFT", 0, -10)
+    extraTitle:SetWidth(RIGHT_W)
+    extraTitle:SetJustifyH("LEFT")
+    extraTitle:SetWordWrap(false)
+    local extraBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
+    extraBox:SetPoint("TOPRIGHT", listBox, "BOTTOMRIGHT", 0, -30)
+    extraBox:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 172)
+    extraBox:SetWidth(RIGHT_W)
+    skin(extraBox, 0.4)
+    local extraScroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsGroupExtraScroll", extraBox, "UIPanelScrollFrameTemplate")
+    extraScroll:SetPoint("TOPLEFT", extraBox, "TOPLEFT", 4, -4)
+    extraScroll:SetPoint("BOTTOMRIGHT", extraBox, "BOTTOMRIGHT", -26, 4)
+    extraChild = CreateFrame("Frame", nil, extraScroll)
+    extraChild:SetSize(RIGHT_W - 36, 1)
+    extraScroll:SetScrollChild(extraChild)
+    extraEmpty = extraBox:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    extraEmpty:SetPoint("TOP", extraBox, "TOP", 0, -12)
+    extraEmpty:SetWidth(RIGHT_W - 20)
+    extraEmpty:SetText("Everyone in your group is in this layout.")
 
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsPresetScroll", listBox, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", listBox, "TOPLEFT", 4, -4)

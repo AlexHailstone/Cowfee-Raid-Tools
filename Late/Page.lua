@@ -33,7 +33,7 @@ local ENDED = {
 }
 
 local page, tonightText, tonightChild, detailText, detailChild, listChild, statusText
-local startButton, endButton, layoutButton, deleteButton
+local startButton, endButton, layoutButton, deleteButton, editButton
 local rows, controls = {}, {}
 local selected = TOTALS
 local refresh
@@ -496,6 +496,7 @@ local function refreshTonight()
         setText(tonightText, tonightChild, tonightLines(night, now))
         startButton:SetText("Restart from now")
         endButton:Enable()
+        editButton:Enable()
     else
         local nextStart = Late:NextScheduled(now)
         local s = "No raid night is running."
@@ -507,6 +508,7 @@ local function refreshTonight()
         setText(tonightText, tonightChild, s)
         startButton:SetText("Start raid now")
         endButton:Disable()
+        editButton:Disable()
     end
 end
 
@@ -527,6 +529,200 @@ refresh = function()
         setText(detailText, detailChild, nightLines(Late:Find(selected)))
         deleteButton:Show()
     end
+end
+
+
+-- Edit roster: change tonight's list while the night runs -------------------------------------
+
+local editor
+
+local function editorFont(b)
+    b:SetNormalFontObject(CRTFontStandard)
+    b:SetHighlightFontObject(CRTFontStandardHighlight)
+    b:SetDisabledFontObject(CRTFontStandardDisable)
+end
+
+local function statusText(night, p, now)
+    if not p.joinedAt then
+        return "|cffff6060not here " .. running(Late.Seconds(night, p, now)) .. "|r"
+    elseif Late.IsLate(night, p) then
+        return "|cffffd100" .. minutes(Late.Seconds(night, p)) .. " late|r"
+    end
+    return "|cff80ff80on time|r"
+end
+
+-- Group members who are not on tonight's list, for the Add dropdown.
+local function groupNotListed()
+    local night = Late:Current()
+    local out = {}
+    if not night then
+        return out
+    end
+    local listed = {}
+    for _, p in ipairs(night.players) do
+        listed[#listed + 1] = { key = p.key }
+    end
+    local lookup = Groups.MakeLookup(listed)
+    for _, entry in ipairs(Groups:ReadRoster()) do
+        if not lookup(entry.key) then
+            out[#out + 1] = { key = entry.key, label = Groups.Display(entry.key) }
+        end
+    end
+    table.sort(out, function(a, b)
+        return a.label:lower() < b.label:lower()
+    end)
+    return out
+end
+
+local function refreshEditor()
+    if not editor or not editor:IsShown() then
+        return
+    end
+    local night = Late:Current()
+    if not night then
+        editor:Hide()
+        return
+    end
+    local now = time()
+    local list = sortedPlayers(night, now)
+    for i, p in ipairs(list) do
+        local row = editor.rows[i]
+        if not row then
+            row = CreateFrame("Frame", nil, editor.child)
+            row:SetHeight(ROW_H)
+            row:SetPoint("TOPLEFT", editor.child, "TOPLEFT", 0, -(i - 1) * ROW_H)
+            row:SetPoint("TOPRIGHT", editor.child, "TOPRIGHT", 0, -(i - 1) * ROW_H)
+            row.name = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+            row.name:SetPoint("LEFT", 4, 0)
+            row.name:SetWidth(150)
+            row.name:SetJustifyH("LEFT")
+            row.name:SetWordWrap(false)
+            row.status = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+            row.status:SetPoint("LEFT", 158, 0)
+            row.status:SetWidth(90)
+            row.status:SetJustifyH("LEFT")
+            row.remove = makeButton(row, "Remove", 66, 20)
+            editorFont(row.remove)
+            row.remove:SetPoint("RIGHT", -2, 0)
+            row.remove:SetScript("OnClick", function(self)
+                Late:RemovePlayer(self:GetParent().key)
+            end)
+            row.onTime = makeButton(row, "On time", 66, 20)
+            editorFont(row.onTime)
+            row.onTime:SetPoint("RIGHT", row.remove, "LEFT", -4, 0)
+            row.onTime:SetScript("OnClick", function(self)
+                Late:SetOnTime(self:GetParent().key)
+            end)
+            editor.rows[i] = row
+            UI:SkinTree(row)
+        end
+        row.key = p.key
+        row.name:SetText(name(p.key))
+        row.status:SetText(statusText(night, p, now))
+        row.onTime:SetShown(not p.joinedAt or Late.IsLate(night, p))
+        row:Show()
+    end
+    for i = #list + 1, #editor.rows do
+        editor.rows[i]:Hide()
+    end
+    editor.child:SetHeight(math.max(1, #list * ROW_H))
+    editor.count:SetText(format("Tonight's list (%d)", #list))
+    editor.addGroup.refresh()
+end
+
+local function addTyped()
+    local ok, reason = Late:AddPlayer(strtrim(editor.edit:GetText() or ""))
+    if ok then
+        editor.edit:SetText("")
+        editor.edit:ClearFocus()
+    elseif reason then
+        CRT:Print(reason)
+    end
+end
+
+local function getEditor()
+    if editor then
+        return editor
+    end
+    local d = CreateFrame("Frame", "CowfeeRaidToolsLateRoster", UIParent, "BasicFrameTemplateWithInset")
+    d:SetSize(440, 480)
+    d:SetPoint("CENTER")
+    d:SetFrameStrata("DIALOG")
+    d:SetClampedToScreen(true)
+    d:SetMovable(true)
+    d:EnableMouse(true)
+    d:RegisterForDrag("LeftButton")
+    d:SetScript("OnDragStart", d.StartMoving)
+    d:SetScript("OnDragStop", d.StopMovingOrSizing)
+    tinsert(UISpecialFrames, "CowfeeRaidToolsLateRoster")
+    UI.SetFrameTitle(d, "Edit tonight's roster")
+    editor = d
+
+    d.addGroup = UI.Dropdown(d, "Add from group", {
+        options = groupNotListed,
+        labelWidth = 110,
+        width = 200,
+        get = function()
+            return nil
+        end,
+        set = function(key)
+            local ok, reason = Late:AddPlayer(key)
+            if not ok and reason then
+                CRT:Print(reason)
+            end
+        end,
+        enabledIf = function()
+            return #groupNotListed() > 0
+        end,
+    })
+    d.addGroup:SetPoint("TOPLEFT", 14, -30)
+    if d.addGroup.Dropdown.SetDefaultText then
+        d.addGroup.Dropdown:SetDefaultText("Pick a player")
+    end
+    UI.Help(d, "Edit tonight's roster", "Changes the list for tonight only. The expected roster layout on Raid Groups stays as it is, so change it there for future nights.\n\nAdd from group: someone in your group who should count tonight, such as a player on a renamed character. They count as joined now; press On time if they were here from the start.\n\nOn time: counts the player as here from the start, for someone who was here under another name or is excused.\n\nRemove: takes the player off tonight's list, so they don't count as late or missing."):SetPoint("TOPRIGHT", d, "TOPRIGHT", -30, -36)
+
+    local typed = label(d, "Or type a name")
+    typed:SetPoint("TOPLEFT", 16, -72)
+    d.edit = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
+    d.edit:SetSize(150, 20)
+    d.edit:SetPoint("LEFT", typed, "RIGHT", 18, 0)
+    d.edit:SetAutoFocus(false)
+    d.edit:SetFontObject(CRTFontEdit)
+    d.edit:SetScript("OnEnterPressed", addTyped)
+    d.edit:SetScript("OnEscapePressed", d.edit.ClearFocus)
+    local add = makeButton(d, "Add", 60, 22)
+    editorFont(add)
+    add:SetPoint("LEFT", d.edit, "RIGHT", 6, 0)
+    add:SetScript("OnClick", addTyped)
+
+    d.count = label(d, "Tonight's list")
+    d.count:SetPoint("TOPLEFT", 16, -104)
+    local box = CreateFrame("Frame", nil, d, "BackdropTemplate")
+    box:SetPoint("TOPLEFT", 12, -122)
+    box:SetPoint("BOTTOMRIGHT", -12, 12)
+    skin(box, 0.4)
+    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsLateRosterScroll", box, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 4, -4)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 4)
+    d.child = CreateFrame("Frame", nil, scroll)
+    d.child:SetSize(380, 1)
+    scroll:SetScrollChild(d.child)
+    d.rows = {}
+
+    d:SetScript("OnShow", refreshEditor)
+    -- The clocks of players not here yet keep counting while it is open.
+    local elapsed = 0
+    d:SetScript("OnUpdate", function(_, dt)
+        elapsed = elapsed + dt
+        if elapsed >= 1 then
+            elapsed = 0
+            refreshEditor()
+        end
+    end)
+    Late:OnChange(refreshEditor)
+    UI:SkinTree(d)
+    d:Hide()
+    return d
 end
 
 -- Build ------------------------------------------------------------------
@@ -580,6 +776,15 @@ local function buildTonight(f)
         Late:End("button", time())
     end)
     tooltip(endButton, "End raid", "Ends tonight and saves it to the history. Anyone who never joined is recorded with the time until now. A disbanded group ends the night on its own.")
+
+    editButton = makeButton(f, "Edit roster", 120)
+    standardFont(editButton)
+    editButton:SetPoint("LEFT", endButton, "RIGHT", 4, 0)
+    editButton:SetScript("OnClick", function()
+        local d = getEditor()
+        d:SetShown(not d:IsShown())
+    end)
+    tooltip(editButton, "Edit roster", "Change tonight's list while the raid runs: add someone from your group or by name, count a player as on time, or take someone off the list. Only tonight changes, not the expected roster layout.")
 
     local tonightBox
     tonightBox, tonightText, tonightChild = textBox(f, "CowfeeRaidToolsLateTonightScroll")
