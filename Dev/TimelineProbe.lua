@@ -252,12 +252,17 @@ local function registerNormal()
     end
 end
 
-local function disarm()
-    stage = "idle"
+-- Drops the catch-all: unregisters everything and registers the normal list again.
+local function catchAllOff()
     if frame then
         frame:UnregisterAllEvents()
         registerNormal()
     end
+end
+
+local function disarm()
+    stage = "idle"
+    catchAllOff()
 end
 
 -- The phase event sources and any other ENCOUNTER_TIMELINE_ event. Returns true when the event was one
@@ -378,6 +383,7 @@ function Probe.HandleEvent(event, ...)
             end
         elseif event == "ENCOUNTER_END" then
             stage = "ended"
+            catchAllOff()
             readSeen("end")
             readFeature("end")
             readDeaths("end")

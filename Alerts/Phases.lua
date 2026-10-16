@@ -79,16 +79,20 @@ local function validValue(kind, value)
     elseif kind == "emote" then
         return type(value) == "string" and value:match("%S") ~= nil
     end
+    if kind == "newboss" and value == "boss1" then
+        return false -- boss1 is the pull's own boss, so it can never be new
+    end
     return type(value) == "string" and UNITS[value] == true
 end
 
 -- Saves your trigger for a phase. False when the phase, kind or value is not valid.
 function Phases:Set(encounterID, ph, kind, value)
-    if type(ph) ~= "number" or type(kind) ~= "string" or not KIND_SET[kind] or not validValue(kind, value) then
+    if type(encounterID) ~= "number" or encounterID ~= encounterID or type(ph) ~= "number" or ph ~= ph
+        or ph <= 1 or ph >= math.huge or type(kind) ~= "string" or not KIND_SET[kind] or not validValue(kind, value) then
         return false
     end
     local all = saved()
-    if not all or encounterID == nil then
+    if not all then
         return false
     end
     all[encounterID] = all[encounterID] or {}
@@ -112,14 +116,17 @@ end
 
 -- The current run's boss, or nil.
 local function currentEncounter()
-    return Alerts.running and Alerts.run and Alerts.run.encounterID or nil
+    if Alerts.running and Alerts.run and Alerts.run.reason == "encounter" then
+        return Alerts.run.encounterID
+    end
+    return nil
 end
 
 -- The phases of one boss that have a trigger, in order.
 local function triggered(encounterID)
     local list = {}
     for ph, e in pairs(Phases:For(encounterID)) do
-        if e.kind ~= "manual" and KIND_SET[e.kind] then
+        if ph > 1 and e.kind ~= "manual" and KIND_SET[e.kind] then
             list[#list + 1] = ph
         end
     end
