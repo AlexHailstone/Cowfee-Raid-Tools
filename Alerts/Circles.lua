@@ -28,6 +28,10 @@ local RING_ALPHA = 0.9       -- the coloured swipe
 local TRACK_ALPHA = 0.2      -- the faint full ring behind it
 local DISC_ALPHA = 0.6       -- the dark disc inside
 local DISC_INSET = 0.18      -- of the size, on each side
+-- A default cooldown shrinks its swiped part as time runs out, which is the emptying ring; reversed it
+-- grows. Flip this if the ring fills instead of empties in game.
+local REVERSE = false
+local DEFAULT_FONT_NAME = "Friz Quadrata" -- until a font is chosen
 
 local NOW_BELOW = 0.1        -- under this many seconds left reads NOW
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 32, 160, 64
@@ -98,7 +102,7 @@ local function make(parent)
         w.cooldown:SetSwipeTexture(RING_TEXTURE)
     end
     if w.cooldown.SetReverse then
-        w.cooldown:SetReverse(true) -- the coloured part empties
+        w.cooldown:SetReverse(REVERSE)
     end
     w.cooldown.noCooldownCount = true -- other addons paint no numbers over ours
     -- The disc and the seconds sit on a frame above the swipe.
@@ -156,9 +160,9 @@ local function draw(w, line, now, s, shownAt)
         total = math.min(line.warn, total)
     end
     setSwipe(w, line, total)
-    Areas.SetFont(w.seconds, s.font, math.max(MIN_SECONDS_FONT, math.floor(size / 3)), s.outline)
+    Areas.SetFont(w.seconds, s.font or DEFAULT_FONT_NAME, math.max(MIN_SECONDS_FONT, math.floor(size / 3)), s.outline)
     w.seconds:SetText(seconds(at - now))
-    Areas.SetFont(w.text, s.font, textSize, s.outline)
+    Areas.SetFont(w.text, s.font or DEFAULT_FONT_NAME, textSize, s.outline)
     w.text:SetText(Areas.LineText(line))
     w.text:SetTextColor(c[1], c[2], c[3])
     local words = math.ceil(textWidth(w.text))
@@ -168,15 +172,17 @@ end
 -- The samples keep one base time while the preview runs (a gap between calls means it was turned off
 -- and on), so their rings run instead of restarting every tick; they start over once all have passed.
 local sampleBase, sampleLast
+local sampleCycle = 0 -- ids change each cycle, so every ring starts full again
 local function sample(now)
     if not sampleBase or now - sampleLast > SAMPLE_GAP or now > sampleBase + SAMPLE_SPAN then
         sampleBase = now
+        sampleCycle = sampleCycle + 1
     end
     sampleLast = now
     return {
-        { id = "sample1", text = TEXT.sampleNow, at = sampleBase, warn = 8, glow = true },
-        { id = "sample2", text = TEXT.sampleSoon, at = sampleBase + 5, warn = 8 },
-        { id = "sample3", text = TEXT.sampleLater, at = sampleBase + 12, warn = 12 },
+        { id = "sample1#" .. sampleCycle, text = TEXT.sampleNow, at = sampleBase, warn = 8, glow = true },
+        { id = "sample2#" .. sampleCycle, text = TEXT.sampleSoon, at = sampleBase + 5, warn = 8 },
+        { id = "sample3#" .. sampleCycle, text = TEXT.sampleLater, at = sampleBase + 12, warn = 12 },
     }
 end
 
@@ -201,7 +207,7 @@ local function settings(dialog, s)
             return out
         end,
         get = function()
-            return s.font
+            return s.font or DEFAULT_FONT_NAME
         end,
         set = function(name)
             s.font = name
