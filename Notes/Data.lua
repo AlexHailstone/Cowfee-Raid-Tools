@@ -290,6 +290,26 @@ local function pieceAt(id, lineNumber, expected)
     return pieces, piece
 end
 
+-- A name fit to sit in the header: no line ends or semicolons; nil when nothing is left.
+local function headerWord(value)
+    if value == nil then
+        return nil
+    end
+    value = tostring(value):gsub("[\r\n;]", "")
+    return value ~= "" and value or nil
+end
+
+-- The boss's note for exactly this difficulty (case-insensitive; nil matches a note with none).
+local function noteForDifficulty(encounterID, difficultyName)
+    local wanted = (difficultyName or ""):lower()
+    for id, record in pairs(ndb().list) do
+        if record.encounterID == encounterID and (record.difficulty or ""):lower() == wanted then
+            return id
+        end
+    end
+    return nil
+end
+
 -- The timer parsed from a line, and the raw line itself (pass it back as `expected`). Nil when that
 -- line isn't a timed line.
 function Notes:TimerAt(id, lineNumber)
@@ -306,13 +326,14 @@ function Notes:TimerAt(id, lineNumber)
     return nil
 end
 
--- Adds a line to the note for a boss (making the note when there is none). Returns the note id and
+-- Adds a line to the boss's note for that difficulty (making the note when there is none). Returns the note id and
 -- the line's number.
 function Notes:AddLine(encounterID, difficultyName, bossName, line)
     if not singleLine(line) then
         return nil
     end
-    local id = self:FindForEncounter(encounterID, difficultyName)
+    difficultyName, bossName = headerWord(difficultyName), headerWord(bossName)
+    local id = noteForDifficulty(encounterID, difficultyName)
     if not id then
         local header = "EncounterID:" .. tostring(encounterID)
         if difficultyName then
@@ -342,7 +363,7 @@ end
 -- nothing is written and false comes back.
 function Notes:ReplaceLine(id, lineNumber, line, expected)
     local pieces, piece = pieceAt(id, lineNumber, expected)
-    if not (piece and singleLine(line)) then
+    if not (piece and singleLine(line) and self:TimerAt(id, lineNumber)) then
         return false
     end
     piece.text = line
@@ -353,7 +374,7 @@ end
 -- Removes one line and its line end (a last line with no end leaves the line before it as it was).
 function Notes:RemoveLine(id, lineNumber, expected)
     local pieces = pieceAt(id, lineNumber, expected)
-    if not pieces then
+    if not (pieces and self:TimerAt(id, lineNumber)) then
         return false
     end
     table.remove(pieces, lineNumber)
