@@ -120,11 +120,19 @@ function Alert:Refresh()
         return
     end
     local remaining = best.at - now
-    if type(best.spellID) == "number" then
+    if best.block == "note" and type(best.spellID) == "number" then
+        -- A note's spell line shows the spell's own name, as it always did.
         local info = Notes:SpellInfo(best.spellID)
         show(info and info.icon or best.icon, info and info.name or best.text or ("Spell " .. best.spellID), countdownText(remaining))
     else
-        show(best.icon, best.text or "", countdownText(remaining), best.color)
+        -- Any other line (a reminder, or a merged "Soak + Defensive") shows its own text, with the
+        -- spell's icon when the line has none of its own.
+        local icon = best.icon
+        if icon == nil and type(best.spellID) == "number" then
+            local info = Notes:SpellInfo(best.spellID)
+            icon = info and info.icon
+        end
+        show(icon, best.text or "", countdownText(remaining), best.color)
     end
 end
 

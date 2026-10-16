@@ -5,8 +5,9 @@ local ADDON, CRT = ...
 -- RegisterBlock and answers Entries(run) with items: an entry as AlertRules describes it, without `at`,
 -- plus `ph` (the phase it belongs to) and `time` (seconds into that phase). A speech item carries
 -- `offset` (seconds before the entry) instead of `at`. Start collects every block's items once, so a
--- block edited mid-pull shows on the next start. The run's lowest phase (1 when nothing names one) starts at the pull; a later phase starts when
--- its event fires or Next phase is pressed, and starting one skips every earlier phase that never began.
+-- block edited mid-pull shows on the next start. The run's lowest phase (1 when nothing names one)
+-- starts at the pull; a later phase starts when its event fires or Next phase is pressed, and starting
+-- one skips every earlier phase that never began.
 -- Settings are read from CRT.db.alerts fresh each time, so a profile switch or reset mid-pull is safe.
 
 local Rules = CRT.AlertRules
@@ -19,10 +20,16 @@ local Alerts = {
     phaseSources = {}, -- functions (run) -> { ph }: phases that come from events rather than items
     running = false,
     runId = 0,
+    version = 0,       -- goes up whenever the items, the blocks or a phase start change; Lines caches on it
 }
 CRT.Alerts = Alerts
 
 -- Calls fn inside pcall, sending a failure to the error handler. Returns ok, result.
+-- The cached lines are only good while nothing they are built from has changed.
+local function changed(self)
+    self.version = self.version + 1
+end
+
 local function safe(fn, ...)
     local ok, res = pcall(fn, ...)
     if not ok and geterrorhandler then
@@ -52,6 +59,7 @@ function Alerts:RegisterBlock(key, def)
         self.blockOrder[#self.blockOrder + 1] = key
     end
     self.blocks[key] = def
+    changed(self)
 end
 
 -- Every block's items for a run, each copied and stamped with its block key. A failing block is skipped.
@@ -146,6 +154,7 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     self.running = true
     self.starts, self.skipped = {}, {}
     self.items = {}
+    changed(self)
     if reason == "encounter" then
         for _, fn in ipairs(self.onPull) do
             safe(fn, run)
@@ -156,6 +165,7 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     local ok, err = pcall(function()
         if self.run == run then
             self.items = self:Collect(run, opts)
+            changed(self)
             self:StartPhase(self:Phases()[1], "start", opts and type(opts.firstAt) == "number" and opts.firstAt or GetTime())
         end
     end)
@@ -171,6 +181,7 @@ function Alerts:Stop(quiet)
     self.running = false
     self.run = nil
     self.items, self.starts, self.skipped = {}, {}, {}
+    changed(self)
     if not quiet then
         self:Fire()
     end
@@ -192,24 +203,34 @@ function Alerts:StartPhase(ph, source, at)
     if not self.run.firstAt then
         self.run.firstAt = self.starts[ph]
     end
+    changed(self)
     if not self.starting then
         self:Fire()
     end
     return true
 end
 
--- Starts the first phase that has neither started nor been skipped. Returns it, or nil.
-function Alerts:NextPhase()
+-- The phase Next phase would start: the first that has neither started nor been skipped, or nil.
+-- Starts nothing.
+function Alerts:PeekNextPhase()
     if not self.running then
         return nil
     end
     for _, ph in ipairs(self:Phases()) do
         if not self.starts[ph] and not self.skipped[ph] then
-            self:StartPhase(ph, "next")
             return ph
         end
     end
     return nil
+end
+
+-- Starts the phase PeekNextPhase names. Returns it, or nil.
+function Alerts:NextPhase()
+    local ph = self:PeekNextPhase()
+    if ph then
+        self:StartPhase(ph, "next")
+    end
+    return ph
 end
 
 function Alerts:PhaseStart(ph)
@@ -239,15 +260,27 @@ function Alerts:Elapsed()
     return GetTime() - self.run.firstAt
 end
 
--- The timed lines of the run: items of started phases, through the conflict rules.
+-- Whether an item shows anywhere: an alert, a bar or speech. Anyone else's note timers have none; they
+-- only show in the timers window, which reads the note itself.
+local function hasOutput(it)
+    local o = it.outputs
+    return type(o) == "table" and (o.alert or o.bar or o.speech) and true or false
+end
+
+-- The timed lines of the run: items of started phases that show anywhere, through the conflict rules.
+-- The lines do not depend on `now`, so they are built once per change (see `version`) and the same table
+-- is handed to every caller until then. Callers only read it.
 function Alerts:Lines(now)
     if not self.running then
         return {}
     end
+    if self.cachedLines and self.cachedVersion == self.version then
+        return self.cachedLines
+    end
     local entries = {}
     for _, it in ipairs(self.items) do
         local start = self.starts[it.ph]
-        if start and not self.skipped[it.ph] then
+        if start and not self.skipped[it.ph] and hasOutput(it) then
             local e = {}
             for k, v in pairs(it) do e[k] = v end
             e.at = start + it.time
@@ -266,7 +299,9 @@ function Alerts:Lines(now)
             groupBlocks[key] = true
         end
     end
-    return Rules.Lines(entries, groupBlocks)
+    self.cachedLines = Rules.Lines(entries, groupBlocks)
+    self.cachedVersion = self.version
+    return self.cachedLines
 end
 
 function Alerts.HandleEvent(event, ...)

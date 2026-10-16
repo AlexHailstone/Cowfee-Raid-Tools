@@ -439,8 +439,9 @@ function Methods:Icon(n)
 end
 
 -- Double-click on a cast icon opens the reminder editor for that boss with the spell and the time
--- filled in. Deaths and the overlaid pull's ticks do nothing. Reminders are keyed by encounter ID, so
--- a boss known only by a reference name asks to be pulled once first.
+-- filled in. Deaths and the overlaid pull's ticks do nothing. Reminders are keyed by encounter ID: a
+-- boss shown under a reference's name uses the reference's Encounter line, or the boss the Journal
+-- finds by that name, and only when neither is known asks to be pulled once first.
 function Methods:IconDoubleClick(b)
     -- the click's mouse-down started a drag; undo it so the view stays where it was
     if self.dragX then
@@ -460,7 +461,11 @@ function Methods:IconDoubleClick(b)
     else
         return
     end
-    if type(self.encounterID) ~= "number" then
+    local encounterID = self.encounterID
+    if type(encounterID) ~= "number" and CRT.TimelineJournal and CRT.TimelineJournal.ResolveID then
+        encounterID = CRT.TimelineJournal:ResolveID(encounterID, self.pull and self.pull.reference)
+    end
+    if type(encounterID) ~= "number" then
         CRT:Print("Reminders need the boss pulled once, or its reference to have an Encounter line.")
         return
     end
@@ -469,9 +474,14 @@ function Methods:IconDoubleClick(b)
     if not spellID and type(mark.spellID) == "number" and mark.spellID > 0 then
         spellID = mark.spellID
     end
-    CRT.AlertEditor:Open(self.encounterID, nil, {
+    local text = spellID and CRT.AlertReminders.SpellName(spellID) or nil
+    -- a reference row with no spell (or an unreadable name) is named after the row
+    if not text and lane.kind == "reference" and type(lane.label) == "string" and lane.label ~= "" then
+        text = lane.label
+    end
+    CRT.AlertEditor:Open(encounterID, nil, {
         spellID = spellID,
-        text = spellID and CRT.AlertReminders.SpellName(spellID) or nil,
+        text = text,
         times = CRT.AlertReminders.FormatTimes(times),
         boss = self.bossName,
     })

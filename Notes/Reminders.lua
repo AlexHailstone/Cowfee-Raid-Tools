@@ -46,6 +46,7 @@ local function copy(t)
 end
 
 -- The bosses the tabs can pick: the active note's boss first, then the bosses with recorded pulls,
+-- then the bosses of the raid you are standing in (from the Journal, as the Timeline page lists them),
 -- then the bosses of the references. Only bosses with an encounter ID are listed, since that is what
 -- a pull is matched on. { { key = encounterID, name, label } }. Shared with the Phases tab.
 local function bossList()
@@ -61,6 +62,13 @@ local function bossList()
     for _, boss in ipairs(CRT.Timeline and CRT.Timeline:Bosses() or {}) do
         known[boss.encounterID] = boss.name
     end
+    local Journal = CRT.TimelineJournal
+    local raid = Journal and Journal.RaidBosses and Journal:RaidBosses() or {}
+    for _, boss in ipairs(raid) do
+        if not known[boss.encounterID] then
+            known[boss.encounterID] = boss.name
+        end
+    end
     local Ref = CRT.TimelineReference
     local refs = Ref and Ref:List() or {}
     for _, entry in ipairs(refs) do
@@ -74,6 +82,9 @@ local function bossList()
         add(record.encounterID, known[record.encounterID] or record.name)
     end
     for _, boss in ipairs(CRT.Timeline and CRT.Timeline:Bosses() or {}) do
+        add(boss.encounterID, boss.name)
+    end
+    for _, boss in ipairs(raid) do
         add(boss.encounterID, boss.name)
     end
     for _, entry in ipairs(refs) do

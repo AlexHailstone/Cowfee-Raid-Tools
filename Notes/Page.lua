@@ -172,8 +172,13 @@ refresh = function()
     if sent then
         lines[#lines + 1] = format("Sharing: %d of %d parts sent", sent, total)
     end
+    local Alerts = CRT.Alerts
     if Engine.running then
         lines[#lines + 1] = "Running: phase " .. tostring(Engine:CurrentPhase()) .. (Engine.reason == "test" and " (test)" or "")
+    elseif Alerts.running then
+        -- A run with reminders but no note for this boss: the note windows stay idle.
+        lines[#lines + 1] = "Running reminders, no note: phase " .. tostring(Engine:CurrentPhase())
+            .. (Alerts.run and Alerts.run.reason == "test" and " (test)" or "")
     end
     status:SetText(table.concat(lines, "\n"))
 
@@ -329,7 +334,7 @@ local function buildNotes(pf)
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     runLabel:SetPoint("TOPLEFT", 360, top)
     runLabel:SetText("Try it")
-    UI.Help(pf, "Try it", "Test run starts the selected note now, as if the boss was pulled. Later phases start with Next phase. Stop ends it."):SetPoint("LEFT", runLabel, "RIGHT", 6, 0)
+    UI.Help(pf, "Try it", "Test run starts the selected note now, as if the boss was pulled. Later phases start with Next phase, which shows the phase it starts next, including intermissions such as 1.5. It also works on a pull with only reminders. Stop ends it."):SetPoint("LEFT", runLabel, "RIGHT", 6, 0)
 
     local testRun = makeButton(pf, "Test run", 100)
     testRun:SetPoint("TOPLEFT", 360, top - 24)
@@ -340,12 +345,18 @@ local function buildNotes(pf)
             Engine:Start(Notes:Parsed(id), "test")
         end
     end)
-    local nextPhase = makeButton(pf, "Next phase", 100)
+    -- Named after the phase it starts, e.g. "Next phase (1.5)", so an intermission is not a surprise.
+    local nextPhase = makeButton(pf, "Next phase", 130)
     nextPhase:SetPoint("LEFT", testRun, "RIGHT", 6, 0)
     nextPhase:SetScript("OnClick", function()
         local ph = Engine:NextPhase()
         CRT:Print(ph and ("Phase " .. ph .. " started.") or "No phase left to start, or nothing is running.")
     end)
+    nextPhase.refresh = function()
+        local ph = Engine:PeekNextPhase()
+        nextPhase:SetText(ph and ("Next phase (" .. tostring(ph) .. ")") or "Next phase")
+    end
+    controls[#controls + 1] = nextPhase
     local stop = makeButton(pf, "Stop", 70)
     stop:SetPoint("LEFT", nextPhase, "RIGHT", 6, 0)
     stop:SetScript("OnClick", function()

@@ -46,7 +46,6 @@ local selectedBoss, selectedPull
 local selectedBossName -- the selected boss's name, to find it again if its key changes
 local shownBoss, shownPull, shownBase, shownOverlay
 local overlayID -- the pull laid over the shown reference, by id; not saved
-local raidCache = {}
 local bossList -- { { key, name, label } } for the dropdown and name lookups, rebuilt on each refresh
 local refsByBoss = {} -- boss key -> its references, { { key, ref, own, text } }, rebuilt with bossList
 local refresh
@@ -123,47 +122,6 @@ end
 
 -- The bosses ------------------------------------------------------------------------------------
 
--- The bosses of the raid you are standing in, from the Encounter Journal: { { encounterID, name } }.
--- Asked out of combat only, only inside a raid, kept per instance, and empty when anything is
--- missing or fails.
-local function raidBosses()
-    local out = {}
-    local okType, _, kind = pcall(GetInstanceInfo)
-    if not okType or kind ~= "raid" then
-        return out
-    end
-    if InCombatLockdown() or not (EJ_GetInstanceForMap and EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo and C_Map and C_Map.GetBestMapForUnit) then
-        return out
-    end
-    local okMap, mapID = pcall(C_Map.GetBestMapForUnit, "player")
-    if not okMap or not mapID then
-        return out
-    end
-    local okInst, instanceID = pcall(EJ_GetInstanceForMap, mapID)
-    if not okInst or not instanceID or instanceID == 0 then
-        return out
-    end
-    if raidCache[instanceID] then
-        return raidCache[instanceID]
-    end
-    for i = 1, 30 do
-        local r = { pcall(EJ_GetEncounterInfoByIndex, i, instanceID) }
-        local name, journalID = r[2], r[4]
-        if not r[1] or not name or not journalID then
-            break
-        end
-        local d = { pcall(EJ_GetEncounterInfo, journalID) }
-        local encounterID = d[1] and d[8] or nil
-        if type(encounterID) == "number" then
-            out[#out + 1] = { encounterID = encounterID, name = name }
-        end
-    end
-    if #out > 0 then
-        raidCache[instanceID] = out
-    end
-    return out
-end
-
 -- Bosses with saved pulls first, then this raid's bosses that have none, then the bosses that only
 -- have a reference: { { key, name, label } }, the label being the name with the pull count for a
 -- boss that has pulls. Each reference goes to the boss Reference:BossKey gives it, so the boss list
@@ -177,7 +135,7 @@ local function buildBossList()
         local name = boss.name ~= "" and boss.name or tostring(boss.encounterID)
         list[#list + 1] = { key = boss.encounterID, name = name, label = name .. " (" .. boss.count .. ")" }
     end
-    for _, boss in ipairs(raidBosses()) do
+    for _, boss in ipairs(Journal:RaidBosses()) do
         if not seen[boss.encounterID] then
             seen[boss.encounterID] = true
             list[#list + 1] = { key = boss.encounterID, name = boss.name, label = boss.name }

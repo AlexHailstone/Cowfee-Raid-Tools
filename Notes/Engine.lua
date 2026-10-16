@@ -12,7 +12,9 @@ local Rules = CRT.AlertRules
 local Engine = { running = false, runId = 0 }
 CRT.NoteEngine = Engine
 
-local note -- the parsed note being run
+local note       -- the parsed note being run
+local noteRunId  -- the engine run the note belongs to; any other run drops it
+local claiming   -- true while Engine:Start starts the engine run for its note
 
 -- Melee damage specializations, used for the "melee" and "ranged" tags. Tanks and healers match
 -- "tank" and "healer" instead. A spec not listed counts as ranged.
@@ -162,8 +164,12 @@ function Engine:Start(parsedNote, reason)
     note = parsedNote
     self.reason = reason
     myTokens = nil
-    if not Alerts.starting then
+    if Alerts.starting then
+        noteRunId = Alerts.runId
+    else
+        claiming = true
         Alerts:Start(parsedNote.encounterID, nil, reason)
+        claiming = false
     end
 end
 
@@ -171,12 +177,18 @@ function Engine:Stop()
     Alerts:Stop()
 end
 
--- Starts the next phase now. Returns the phase that started, or nil.
+-- Starts the next phase of the alerts run now, with or without a note (a pull may run only
+-- reminders). Returns the phase that started, or nil.
 function Engine:NextPhase()
-    if not self.running or not note then
+    if not Alerts.running then
         return nil
     end
     return Alerts:NextPhase()
+end
+
+-- The phase Next phase would start, or nil. Starts nothing.
+function Engine:PeekNextPhase()
+    return Alerts:PeekNextPhase()
 end
 
 function Engine:PhaseStarted(ph)
@@ -273,9 +285,13 @@ end
 
 -- running and runId follow the engine; running is only true while the engine runs a note, so a pull
 -- of a boss with no note shows as not running, as before. When the engine stops (Stop, or the end of
--- the encounter) the note is dropped. Every change tells the note windows and pages.
+-- the encounter) or another run replaces the note's (such as the reminder editor's Test), the note is
+-- dropped. Every change tells the note windows and pages.
 Alerts:OnChange(function()
-    if not Alerts.running then
+    if claiming and Alerts.running then
+        noteRunId = Alerts.runId
+    end
+    if not Alerts.running or Alerts.runId ~= noteRunId then
         note = nil
     end
     Engine.running = Alerts.running and note ~= nil

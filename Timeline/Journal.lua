@@ -18,6 +18,8 @@ local cache = {}
 local missed = {}
 -- boss names looked up in the Journal: [name] = dungeon encounter id, or false when not found
 local byName = {}
+-- the bosses of each raid instance, by Journal instance id
+local raidCache = {}
 
 local zoneFrame = CreateFrame("Frame")
 zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -231,6 +233,47 @@ function Journal:EncounterByName(name)
     end)
     byName[key] = type(id) == "number" and id or false
     return byName[key] or nil
+end
+
+-- The bosses of the raid you are standing in, from the Encounter Journal: { { encounterID, name } }.
+-- Asked out of combat only, only inside a raid, kept per instance, and empty when anything is
+-- missing or fails. The Timeline page and the Reminders and Phases tabs list these bosses.
+function Journal:RaidBosses()
+    local out = {}
+    local okType, _, kind = pcall(GetInstanceInfo)
+    if not okType or kind ~= "raid" then
+        return out
+    end
+    if InCombatLockdown() or not (EJ_GetInstanceForMap and EJ_GetEncounterInfoByIndex and EJ_GetEncounterInfo and C_Map and C_Map.GetBestMapForUnit) then
+        return out
+    end
+    local okMap, mapID = pcall(C_Map.GetBestMapForUnit, "player")
+    if not okMap or not mapID then
+        return out
+    end
+    local okInst, instanceID = pcall(EJ_GetInstanceForMap, mapID)
+    if not okInst or not instanceID or instanceID == 0 then
+        return out
+    end
+    if raidCache[instanceID] then
+        return raidCache[instanceID]
+    end
+    for i = 1, 30 do
+        local r = { pcall(EJ_GetEncounterInfoByIndex, i, instanceID) }
+        local name, journalID = r[2], r[4]
+        if not r[1] or not name or not journalID then
+            break
+        end
+        local d = { pcall(EJ_GetEncounterInfo, journalID) }
+        local encounterID = d[1] and d[8] or nil
+        if type(encounterID) == "number" then
+            out[#out + 1] = { encounterID = encounterID, name = name }
+        end
+    end
+    if #out > 0 then
+        raidCache[instanceID] = out
+    end
+    return out
 end
 
 -- The encounter id to ask the Journal about for a boss key: the key itself when it is a number,
