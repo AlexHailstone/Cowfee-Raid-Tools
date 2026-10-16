@@ -157,8 +157,6 @@ local function draw(w, line, now, s, shownAt)
     local texture = Areas.LineIcon(line)
     w.icon:SetSize(size, size)
     w.iconFrame:SetSize(size, size)
-    w.cooldown:SetSize(size, size)
-    w.over:SetSize(size, size)
     if texture then
         w.icon:SetTexture(texture)
         w.icon:Show()
