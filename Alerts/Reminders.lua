@@ -373,6 +373,49 @@ function Reminders:Times(encounterID, r)
     return {}, "none"
 end
 
+-- Moves one time of a reminder (index in the list Times gives) to phase ph, t seconds in, or adds that
+-- time. The times are saved as typed text, so a reminder that followed the reference now holds its own
+-- list; every other field stays. False when the reminder, its time or its typed times can't be read.
+local function writeTimes(encounterID, id, change)
+    local r = Reminders:Get(encounterID, id)
+    if not r then
+        return false
+    end
+    local list, source = Reminders:Times(encounterID, r)
+    if source == "typed" and #list == 0 then
+        return false
+    end
+    if not change(list) then
+        return false
+    end
+    local saved = copy(r)
+    saved.times = Reminders.FormatTimes(list)
+    return Reminders:Save(encounterID, id, saved) ~= nil
+end
+
+function Reminders:SetTime(encounterID, id, index, ph, t)
+    if type(ph) ~= "number" or type(t) ~= "number" then
+        return false
+    end
+    return writeTimes(encounterID, id, function(list)
+        if not list[index] then
+            return false
+        end
+        list[index] = { ph = ph, t = t }
+        return true
+    end)
+end
+
+function Reminders:AddTime(encounterID, id, ph, t)
+    if type(ph) ~= "number" or type(t) ~= "number" then
+        return false
+    end
+    return writeTimes(encounterID, id, function(list)
+        list[#list + 1] = { ph = ph, t = t }
+        return true
+    end)
+end
+
 -- The block -----------------------------------------------------------------------------------
 
 -- A run with anyDifficulty (the Phases tab asking which phases a boss has) takes every difficulty.

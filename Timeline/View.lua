@@ -46,6 +46,7 @@ local NOTES_ICON = "Interface\\Icons\\INV_Misc_Note_01"
 local FLAG_W, FLAG_HEAD = 12, 14 -- a marker's flag, drawn on a pole as tall as the row less 6 px
 local FLAG_BTN_W = 20 -- the clickable marker: a square at the row top, the flag centred in it
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
+local MOVE_DIST = 4 -- a flag held and moved less than this many pixels is a click, not a drag
 
 local TEXT = {
     notes = "Notes",
@@ -58,6 +59,9 @@ local TEXT = {
     reminder = "Reminder",
     spell = "Spell %d",
     needPull = "Reminders need the boss pulled once, or its reference to have an Encounter line.",
+    moveTo = "Move to %s",
+    addTime = "Alt \194\183 add a time %s",
+    moveRefused = "That alert was not changed: its note line is different from the one the Timeline drew. Nothing was written.",
 }
 
 local function settings()
@@ -388,6 +392,7 @@ function View.Create(parent)
     end)
     f:SetScript("OnHide", function()
         view:StopDrag()
+        view:CancelMove()
     end)
     -- the markers follow the notes and the reminders; only a shown view redraws
     -- a failing redraw must never break the note or reminder save that fired it
@@ -486,6 +491,9 @@ function Methods:StopDrag()
 end
 
 function Methods:OnUpdate()
+    if self.move then
+        self:UpdateMove()
+    end
     if self.dragX then
         if IsMouseButtonDown("RightButton") then
             local x = GetCursorPosition() / self.hscroll:GetEffectiveScale()
@@ -654,7 +662,9 @@ end
 -- The boss's saved alerts that have a time on what is shown: every timed line of its raid notes (each
 -- difficulty's note) and every time of your reminders. On a recorded pull only phase 1 can be placed.
 -- Each gets the lane it goes on; those with no row of their own go on a Notes lane, added at the
--- bottom of lanes. Returns { { t, ph, time, row, text, tags, mine, noteID, line, difficulty, id } }.
+-- bottom of lanes. Returns { { t, ph, time, row, text, tags, kind, encounterID, ... } }: a reminder's
+-- mark (kind "mine") also holds id and index (which of its times), a note line's (kind "note")
+-- noteID, line, difficulty and expected (the raw line as drawn).
 function Methods:Marks(lanes, length)
     local out = {}
     local Reminders = CRT.AlertReminders
@@ -679,15 +689,19 @@ function Methods:Marks(lanes, length)
             if n.record.encounterID == encounterID then
                 local note = Notes:Parsed(n.id)
                 for _, timer in ipairs(note and note.timers or {}) do
+                    -- the raw line as drawn, so a move can tell the line has changed since
+                    local _, raw = Notes:TimerAt(n.id, timer.line)
                     add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
-                        difficulty = n.record.difficulty }, timer.spellId, timer.text)
+                        difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
+                        timer.spellId, timer.text)
                 end
             end
         end
     end
     for _, e in ipairs(Reminders:List(encounterID)) do
-        for _, at in ipairs((Reminders:Times(encounterID, e.r))) do
-            add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id }, e.r.spellID, e.r.text)
+        for index, at in ipairs((Reminders:Times(encounterID, e.r))) do
+            add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
+                kind = "mine" }, e.r.spellID, e.r.text)
         end
     end
     local notesRow
@@ -723,10 +737,18 @@ function Methods:Flag(n)
         f:SetScript("OnLeave", hideTip)
         f:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil
-            self:StartDrag(button)
+            if button == "LeftButton" then
+                self:StartMove(f)
+            else
+                self:StartDrag(button)
+            end
         end)
-        f:SetScript("OnMouseUp", function()
-            self:StopDrag()
+        f:SetScript("OnMouseUp", function(_, button)
+            if button == "LeftButton" then
+                self:FinishMove()
+            else
+                self:StopDrag()
+            end
         end)
         f:SetScript("OnDoubleClick", function()
             self:FlagDoubleClick(f)
@@ -737,6 +759,7 @@ end
 
 -- Opens a marker's note line or reminder in the editor.
 function Methods:FlagDoubleClick(f)
+    self:CancelMove()
     if self.dragX then
         self:ScrollTo(self.dragFrom)
         self:StopDrag()
@@ -749,6 +772,160 @@ function Methods:FlagDoubleClick(f)
         CRT.AlertEditor:OpenNote(m.noteID, m.line)
     else
         CRT.AlertEditor:Open(m.encounterID, m.id)
+    end
+end
+
+-- Moving a flag ------------------------------------------------------------------------------------
+
+-- m:ss, with tenths when there are some.
+local function clock(t)
+    t = tenth(t)
+    local m = math.floor(t / 60)
+    if t == math.floor(t) then
+        return string.format("%d:%02d", m, t % 60)
+    end
+    return string.format("%d:%04.1f", m, t - m * 60)
+end
+
+-- The cursor's screen x in the track's scale.
+local function cursorScreenX(self)
+    return GetCursorPosition() / self.hscroll:GetEffectiveScale()
+end
+
+-- A ghost of the flag that follows the cursor while it is dragged, with a label saying what releasing does.
+function Methods:Ghost()
+    local g = self.ghost
+    if not g then
+        g = CreateFrame("Frame", nil, self.track)
+        g:SetSize(FLAG_BTN_W, FLAG_BTN_W)
+        local inset = (FLAG_BTN_W - FLAG_W) / 2
+        g.pole = g:CreateTexture(nil, "ARTWORK")
+        g.pole:SetPoint("TOPLEFT", g, "TOPLEFT", inset, -3)
+        g.pole:SetSize(2, ROW_H - 6)
+        g.head = g:CreateTexture(nil, "ARTWORK")
+        g.head:SetPoint("TOPLEFT", g, "TOPLEFT", inset, -3)
+        g.head:SetSize(FLAG_W, FLAG_HEAD)
+        g.labelBg = g:CreateTexture(nil, "BACKGROUND")
+        g.labelBg:SetColorTexture(mocha("roast", 0.85))
+        g.label = g:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        g.labelBg:SetPoint("TOPLEFT", g.label, "TOPLEFT", -3, 2)
+        g.labelBg:SetPoint("BOTTOMRIGHT", g.label, "BOTTOMRIGHT", 3, -2)
+        g:Hide()
+        self.ghost = g
+    end
+    return g
+end
+
+-- A left button pressed on a flag: remember where, so the release can tell a click from a drag.
+function Methods:StartMove(f)
+    if f.mark then
+        self.move = { f = f, x0 = cursorScreenX(self), scroll0 = self.hscroll:GetHorizontalScroll() }
+    end
+end
+
+-- The time the dragged flag would land on: where it was plus how far the cursor has moved along the
+-- track, to a tenth and within the view.
+function Methods:MoveTarget(mv)
+    local length = math.max(1, self.extra.length or 0)
+    local dx = (cursorScreenX(self) + self.hscroll:GetHorizontalScroll()) - (mv.x0 + mv.scroll0)
+    local t = mv.f.mark.t + dx * length / math.max(1, self.trackW)
+    return tenth(math.max(0, math.min(length, t)))
+end
+
+function Methods:CancelMove()
+    self.move = nil
+    if self.ghost then
+        self.ghost:Hide()
+    end
+end
+
+-- While a flag is held: once moved MOVE_DIST pixels the ghost and its label follow the cursor. Alt is
+-- read live here, as the release reads it.
+function Methods:UpdateMove()
+    local mv = self.move
+    if not (mv and mv.f.mark) then
+        self:CancelMove()
+        return
+    end
+    if not IsMouseButtonDown("LeftButton") then
+        self:FinishMove() -- the release went elsewhere
+        return
+    end
+    if not mv.moved and math.abs(cursorScreenX(self) - mv.x0) < MOVE_DIST then
+        return
+    end
+    mv.moved = true
+    local m = mv.f.mark
+    local t = self:MoveTarget(mv)
+    local g = self:Ghost()
+    local x = View.TimeToX(t, math.max(1, self.extra.length or 0), self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2
+    local key = m.mine and "cream" or "caramel"
+    g.head:SetColorTexture(mocha(key, 0.6))
+    g.pole:SetColorTexture(mocha(key, 0.6))
+    g:ClearAllPoints()
+    g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H)
+    g:SetFrameLevel((mv.f:GetFrameLevel() or 0) + 1)
+    g.label:ClearAllPoints()
+    if m.row > 1 then
+        g.label:SetPoint("BOTTOM", g.head, "TOP", 0, 2)
+    elseif x > self.trackW - 150 then
+        g.label:SetPoint("RIGHT", g.head, "LEFT", -4, 0)
+    else
+        g.label:SetPoint("LEFT", g.head, "RIGHT", 4, 0)
+    end
+    g.label:SetText(string.format(IsAltKeyDown() and TEXT.addTime or TEXT.moveTo, clock(t)))
+    g:Show()
+end
+
+-- Moves a note line to phase ph, t seconds in, or (add) writes the same line again there, in the same
+-- note. Fields the parser doesn't know stay on the line. False when the line is no longer the one drawn.
+local function writeNote(m, ph, t, add, bossName)
+    local Notes, Parser = CRT.Notes, CRT.NoteParser
+    local timer, raw = Notes:TimerAt(m.noteID, m.line)
+    if not (timer and m.expected ~= nil and raw == m.expected) then
+        return false
+    end
+    local moved = {}
+    for k, v in pairs(timer) do
+        moved[k] = v
+    end
+    moved.ph, moved.time = ph, t
+    local line = Parser.FormatLine(moved) .. Parser.UnknownFields(m.expected)
+    if add then
+        return Notes:AddLine(m.encounterID, m.difficulty, bossName, line) ~= nil
+    end
+    return Notes:ReplaceLine(m.noteID, m.line, line, m.expected)
+end
+
+-- The left button let go of a flag. Under MOVE_DIST pixels it was a click. Otherwise Alt at this moment
+-- decides: held adds a time, else the alert moves. A refused write says so and leaves the flag be.
+function Methods:FinishMove()
+    local mv = self.move
+    self:CancelMove()
+    if not (mv and mv.f.mark) or math.abs(cursorScreenX(self) - mv.x0) < MOVE_DIST then
+        return
+    end
+    local m = mv.f.mark
+    local t = self:MoveTarget(mv)
+    local add = IsAltKeyDown() and true or false
+    if t == m.t and not add then
+        return
+    end
+    local Reminders = CRT.AlertReminders
+    local ph, seconds = Reminders.PhaseAt(self.pull and self.pull.reference, t)
+    seconds = tenth(seconds)
+    local ok
+    if m.kind == "mine" then
+        if add then
+            ok = Reminders:AddTime(m.encounterID, m.id, ph, seconds)
+        else
+            ok = Reminders:SetTime(m.encounterID, m.id, m.index, ph, seconds)
+        end
+    elseif m.kind == "note" then
+        ok = writeNote(m, ph, seconds, add, self.bossName)
+    end
+    if not ok then
+        CRT:Print(TEXT.moveRefused)
     end
 end
 
