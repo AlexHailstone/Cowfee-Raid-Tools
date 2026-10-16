@@ -92,7 +92,8 @@ end
 -- Returns { encounterID, difficulty, name, timers = {...}, phases = {...}, lines = {...}, invite = {...} }.
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`
 -- its line number in the text, and, when the line has them: show (a set), tts, count, glow (true),
--- sound (a key of Speech.SOUNDS), warn, linger (seconds) and iconID.
+-- sound (the text as written; Speech plays it only if it names one of Speech.SOUNDS), warn, linger
+-- (seconds) and iconID.
 function Parser.Parse(text)
     local note = { timers = {}, phases = {}, lines = {}, invite = nil }
     local phaseSeen = {}
@@ -173,12 +174,6 @@ local function num(n)
     return (("%.10g"):format(n))
 end
 
--- A colour part to at most two decimals: 1, 0.5, 0.33.
-local function part(n)
-    local s = ("%.2f"):format(n):gsub("0+$", ""):gsub("%.$", "")
-    return s
-end
-
 -- One timer back into a note line, the reverse of Parse: Parse(FormatLine(t)) gives back the same timer.
 -- Only the fields the timer has are written.
 function Parser.FormatLine(t)
@@ -204,7 +199,7 @@ function Parser.FormatLine(t)
     end
     if t.color then
         local c = t.color
-        add("colors", part(c[1] or 1) .. " " .. part(c[2] or 1) .. " " .. part(c[3] or 1) .. " " .. part(c[4] or 1))
+        add("colors", num(c[1] or 1) .. " " .. num(c[2] or 1) .. " " .. num(c[3] or 1) .. " " .. num(c[4] or 1))
     end
     if t.show then
         local list = {}

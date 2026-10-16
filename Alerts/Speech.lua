@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- A line plays until the game says it finished (or SPEECH_TIMEOUT seconds pass), then the next starts.
 -- When the queue falls behind, the lowest priority line is dropped first: raid-wide lines go first,
 -- your note lines are kept longer, and your reminders are kept longest. Speech plays only while the
--- Raid Notes Text to Speech switch is on. A line's sound cue plays once at zero, whatever that switch says.
+-- Raid Notes Text to Speech switch is on. A line's sound cue plays once at zero, whatever that switch says;
+-- a raid note line's sound only while the Raid Notes alert is on, like its speech.
 
 local Rules = CRT.AlertRules
 local Alerts = CRT.Alerts
@@ -125,7 +126,8 @@ function Speech:Tick(now)
     for _, line in ipairs(lines) do
         for _, member in ipairs(line.members or { line }) do
             local at = member.at or line.at
-            if member.sound and at <= now then
+            local allowed = member.block ~= "note" or settings().enabled
+            if member.sound and at <= now and allowed then
                 local key = tostring(member.id) .. "#sound"
                 if not self.spoken[key] then
                     self.spoken[key] = true

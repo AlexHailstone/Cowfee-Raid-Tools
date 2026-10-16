@@ -88,9 +88,9 @@ local function readable(v)
     return true
 end
 
--- Your class as tag words: the class file name and the class's own name, lower-cased with no spaces, so
--- "druid", "deathknight" and "death knight" all match. Only IsMine reads these: a class word is common
--- in ordinary sentences, so it never marks free text as yours.
+-- Your class as tag words: the class file name and the class's own name, lower-cased with every space
+-- removed, so "druid", "deathknight" and "death knight" all match (and "chevalier de la mort" in French).
+-- Only IsMine reads these: a class word is common in ordinary sentences, so it never marks free text as yours.
 local myClasses, classesAt
 local function classTokens()
     if myClasses and classesAt and GetTime() - classesAt < 5 then
@@ -100,11 +100,15 @@ local function classTokens()
     if UnitClass then
         local ok, localized, file = pcall(UnitClass, "player")
         if ok then
-            for _, v in ipairs({ localized or false, file or false }) do
-                if type(v) == "string" and readable(v) then
-                    local word = v:lower():gsub("%s+", "")
-                    if word ~= "" then
-                        t[word] = true
+            for _, v in ipairs({ { localized }, { file } }) do
+                v = v[1]
+                if readable(v) and type(v) == "string" then
+                    local joined = v:gsub("%s+", "")
+                    for _, lower in ipairs({ string.lower, strlower or string.lower }) do
+                        local word = lower(joined)
+                        if word ~= "" then
+                            t[word] = true
+                        end
                     end
                 end
             end
@@ -143,7 +147,7 @@ local function groupTag(word, nextWord)
 end
 
 -- Whether a timer is for you: your name, your role, your class, everyone, or your raid group. A name in
--- a tag may carry a realm, which is ignored. A two-word class name may be split over two words.
+-- a tag may carry a realm, which is ignored. A class name of several words may be split over them.
 function Engine:IsMine(item)
     local mine = tokens()
     local classes = classTokens()
@@ -155,8 +159,12 @@ function Engine:IsMine(item)
         if mine[word] or classes[word] then
             return true
         end
-        if tags[i + 1] and classes[word .. tags[i + 1]:lower()] then
-            return true
+        local joined = word
+        for j = i + 1, #tags do
+            joined = joined .. tags[j]:lower()
+            if classes[joined] then
+                return true
+            end
         end
         local number, used = groupTag(word, tags[i + 1])
         if number then
