@@ -24,8 +24,8 @@ local TEXT = {
     sampleLater = "Soak",
 }
 
-local WIDTH = 480 -- each text's box; the text is aligned inside it
-local PAD = 8     -- above and below the letters
+local PAD = 8          -- around the letters, so the glow sits just outside them
+local NOW_BELOW = 0.05 -- seconds left that already read NOW, so "0.0" never shows
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 12, 72, 36
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 300 }
 local WHITE = { 1, 1, 1 }
@@ -44,7 +44,7 @@ local ALIGN_OPTIONS = {
 
 -- Tenths under 10 (cut, not rounded, so 9.96 never reads 10.0), whole seconds above, NOW from 0.
 local function seconds(remaining)
-    if remaining <= 0 then
+    if remaining <= NOW_BELOW then
         return TEXT.now
     elseif remaining < 10 then
         return format("%.1f", math.floor(remaining * 10 + 1e-6) / 10)
@@ -66,13 +66,19 @@ local function make(parent)
     return w
 end
 
+local function align(s)
+    return ALIGNS[s.align] and s.align or "CENTER"
+end
+
+-- Each text is as wide as its words, so nothing is cut off; the area lines them up by `align`.
+-- The texts area has no use for when a line first showed (Areas' shownAt).
 local function draw(w, line, now, s)
     local size = fontSize(s)
     Areas.SetFont(w.text, s.font, size, s.outline)
-    w.text:SetJustifyH(ALIGNS[s.align] and s.align or "CENTER")
-    w:SetSize(WIDTH, size + PAD)
+    w.text:SetJustifyH(align(s))
     local text, time = Areas.LineText(line), seconds(line.at - now)
     w.text:SetText(text ~= "" and (text .. " (" .. time .. ")") or time)
+    w:SetSize(math.ceil(w.text:GetStringWidth()) + PAD, size + PAD)
     local c = Areas.LineColor(line) or WHITE
     w.text:SetTextColor(c[1], c[2], c[3])
 end
@@ -124,7 +130,7 @@ local function settings(dialog, s)
     dialog:Dropdown(TEXT.align, {
         options = ALIGN_OPTIONS,
         get = function()
-            return ALIGNS[s.align] and s.align or "CENTER"
+            return align(s)
         end,
         set = function(key)
             s.align = key
@@ -143,4 +149,5 @@ CRT.AlertTexts = Areas.New({
     draw = draw,
     sample = sample,
     settings = settings,
+    align = align,
 })

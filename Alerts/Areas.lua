@@ -14,7 +14,9 @@ local ADDON, CRT = ...
 --     defaultPosition  { point, relativePoint, x, y } until it is moved
 --     make(parent)     -> a new widget, a Frame on parent. Made once per pool slot, never per refresh.
 --                      Widgets never take the mouse, so the alerts let clicks through.
---     draw(widget, line, now, s)  shows one line on a widget and sets its size. s is the area's settings.
+--     draw(widget, line, now, s, shownAt)  shows one line on a widget and sets its size. s is the area's
+--                      settings; shownAt is the GetTime() the line's id first showed in this area (nil
+--                      without an id), kept by id so it survives the line moving to another widget.
 --     sample(now)      -> lines for Previews, each with `at` set
 --     settings(dialog, s)  adds the area's own rows to the settings window with dialog:Dropdown(label,
 --                      opts), dialog:Slider(label, opts) and dialog:Check(label, get, set) (opts as for
@@ -22,18 +24,24 @@ local ADDON, CRT = ...
 --                      first and reused after. A change refreshes the area at once.
 --   Optional, for an area whose settings or lines live elsewhere (the bars):
 --     store()          -> the settings table, instead of CRT.db.alerts.areas[settingsKey]
---     lines(now, s, cap)  -> the lines to show, instead of Rules.Area(Alerts:Lines(now), now, output, cap)
+--     lines(now, s, cap)  -> lines, more: the lines to show and how many were left out, instead of
+--                      Rules.Area(Alerts:Lines(now), now, output, cap)
+--     after(area, n, more)  called after each layout with the widgets shown and the count left out
+--                      (lines beyond the cap included), such as for a "+N more" line
+--     align(s)         -> "LEFT", "CENTER" or "RIGHT": with grow up or down, the widgets line up on that
+--                      edge of a box HANDLE_MIN_WIDTH wide around the saved center
 --   }
 --
 -- An area shows its lines soonest first, at most `cap` (1-10), the first centered on its saved position
 -- and the rest after it in the `grow` direction, 4 px apart. A line glows while line.glow and now >= at.
--- The drag box (title, settings button, reset) shows only with Previews. Every area refreshes from one
+-- The drag box (title, settings button, reset) shows only with Previews, above the area, or below it
+-- when it grows up. Every area refreshes from one
 -- ticker every 0.1 s, and only while a run, a preview or a test is going; otherwise it hides once and
 -- does nothing.
 --   area:Refresh()        draws it now
 --   area:ResetPosition()  back to defaultPosition
 --   area:Test(lines)      shows the given lines (with `at` set) until they have all passed
---   area:Visible()        -> { widget } on screen, for the tests
+--   area:Visible()        -> { widget } on screen, for the tests; area.more is the count left out
 --   area:Open()           opens the settings window on this area (the ⚙ button)
 --   area:Settings()       -> its settings table
 --   Areas.Glow(widget, on)  a pulsing border on a widget's own frame
@@ -86,6 +94,11 @@ local GROW = {
     up = { "BOTTOM", "TOP", 0, GAP },
     left = { "RIGHT", "LEFT", -GAP, 0 },
     right = { "LEFT", "RIGHT", GAP, 0 },
+}
+-- With an alignment, the vertical directions anchor by that edge instead of the middle.
+local ALIGNED = {
+    down = { LEFT = { "TOPLEFT", "BOTTOMLEFT" }, CENTER = { "TOP", "BOTTOM" }, RIGHT = { "TOPRIGHT", "BOTTOMRIGHT" } },
+    up = { LEFT = { "BOTTOMLEFT", "TOPLEFT" }, CENTER = { "BOTTOM", "TOP" }, RIGHT = { "BOTTOMRIGHT", "TOPRIGHT" } },
 }
 local GROW_OPTIONS = {
     { key = "down", label = TEXT.down },
@@ -166,7 +179,9 @@ function Areas.SetFont(fontString, name, size, outline)
         return
     end
     local path = CRT:FontPath(name) or DEFAULT_FONT
-    if not fontString:SetFont(path, size, outline) then
+    fontString:SetFont(path, size, outline)
+    -- A file that fails to load leaves the font unset, which GetFont shows.
+    if not fontString:GetFont() then
         fontString:SetFont(DEFAULT_FONT, size, outline)
     end
     fontString.crtFontKey = key
@@ -265,12 +280,15 @@ local function makeCheck(parent, label, get, set)
 end
 
 -- The next of the open area's own rows: the one made on an earlier open, or a new one from make(slot).
--- slot.opts (or slot.get and slot.set) are replaced on every open, so the rows read fresh settings.
-local function nextSlot(make)
+-- slot.opts is replaced on every open, before any control is made (a control reads its value as it is
+-- made), so the rows always read fresh settings.
+local function nextSlot(opts, make)
     current.cursor = current.cursor + 1
     local slot = current.rows[current.cursor]
-    if not slot then
-        slot = {}
+    if slot then
+        slot.opts = opts
+    else
+        slot = { opts = opts }
         slot.row = make(slot)
         current.rows[current.cursor] = slot
     end
@@ -280,7 +298,7 @@ end
 local methods = {}
 
 function methods:Dropdown(label, opts)
-    local slot = nextSlot(function(slot)
+    local slot = nextSlot(opts, function(slot)
         return UI.Dropdown(dialog, label, {
             options = function()
                 local o = slot.opts.options
@@ -303,12 +321,11 @@ function methods:Dropdown(label, opts)
             end,
         })
     end)
-    slot.opts = opts
     return slot.row
 end
 
 function methods:Slider(label, opts)
-    local slot = nextSlot(function(slot)
+    local slot = nextSlot(opts, function(slot)
         return UI.Slider(dialog, label, {
             min = opts.min,
             max = opts.max,
@@ -329,29 +346,32 @@ function methods:Slider(label, opts)
             end,
         })
     end)
-    slot.opts = opts
     return slot.row
 end
 
 function methods:Check(label, get, set)
-    local slot = nextSlot(function(slot)
+    local slot = nextSlot({ get = get, set = set }, function(slot)
         return makeCheck(dialog, label, function()
-            return slot.get()
+            return slot.opts.get()
         end, function(on)
-            slot.set(on)
+            slot.opts.set(on)
             changed()
         end)
     end)
-    slot.get, slot.set = get, set
     return slot.row
 end
+
+-- Needs `current` set: the common rows read its settings as they are made. `dialog` is only set once
+-- the whole window is made, so a build that failed part way is made afresh on the next open; the
+-- failed one stays hidden.
+local escapeAdded = false
 
 local function buildDialog()
     if dialog then
         return
     end
     local d = CreateFrame("Frame", DIALOG_NAME, UIParent, "BasicFrameTemplateWithInset")
-    dialog = d
+    d:Hide()
     d:SetSize(DIALOG_WIDTH, 200)
     d:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     d:SetClampedToScreen(true)
@@ -361,7 +381,11 @@ local function buildDialog()
     d:SetScript("OnDragStart", d.StartMoving)
     d:SetScript("OnDragStop", d.StopMovingOrSizing)
     UI:RegisterLayer("panel", d)
-    tinsert(UISpecialFrames, DIALOG_NAME)
+    -- Escape finds the window by name, so the newest one.
+    if not escapeAdded then
+        tinsert(UISpecialFrames, DIALOG_NAME)
+        escapeAdded = true
+    end
     for name, fn in pairs(methods) do
         d[name] = fn
     end
@@ -369,7 +393,7 @@ local function buildDialog()
     local function s()
         return current:Settings()
     end
-    d.common = {
+    local common = {
         makeCheck(d, TEXT.show, function()
             return s().shown
         end, function(on)
@@ -398,7 +422,9 @@ local function buildDialog()
             end,
         }),
     }
+    d.common = common
     d:Hide()
+    dialog = d
 end
 
 local function place(row, y)
@@ -460,6 +486,7 @@ function Area:Build()
     self.handle = handle
     handle:SetSize(HANDLE_MIN_WIDTH, HANDLE_HEIGHT)
     handle:SetPoint("BOTTOM", frame, "TOP", 0, 2)
+    self.handleBelow = false
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     handle:SetBackdropColor(0.3, 0.25, 0.05, 0.9)
     handle:SetBackdropBorderColor(1, 0.82, 0, 1)
@@ -508,26 +535,53 @@ function Area:Build()
     frame:Hide()
 end
 
--- Lays out up to `cap` lines on pooled widgets and hides the rest.
-function Area:Draw(lines, now, s)
+-- Lays out up to `cap` lines on pooled widgets and hides the rest. `more` is how many the source left
+-- out; lines past the cap are added to it.
+function Area:Draw(lines, now, s, more)
     local def, frame, pool = self.def, self.frame, self.pool
     local n = math.min(#lines, capOf(s))
-    local g = GROW[s.grow] or GROW.down
+    local grow = GROW[s.grow] and s.grow or "down"
+    local g = GROW[grow]
+    local align = def.align and ALIGNED[grow] and ALIGNED[grow][def.align(s)]
+    local point, relative = g[1], g[2]
+    if align then
+        point, relative = align[1], align[2]
+    end
+
+    -- When each line id first showed, kept by id so it survives the line moving to another widget.
+    local shownAt, seen = self.shownAt, self.seen
     for i = 1, n do
         local line, w = lines[i], pool[i]
         if not w then
             w = def.make(frame)
             pool[i] = w
         end
-        def.draw(w, line, now, s)
+        local id, at = line.id, nil
+        if id ~= nil then
+            seen[id] = true
+            at = shownAt[id]
+            if not at then
+                at = now
+                shownAt[id] = at
+            end
+        end
+        def.draw(w, line, now, s, at)
         w:ClearAllPoints()
         if i == 1 then
-            w:SetPoint(g[1], frame, g[1], 0, 0)
+            w:SetPoint(point, frame, point, 0, 0)
         else
-            w:SetPoint(g[1], pool[i - 1], g[2], g[3], g[4])
+            w:SetPoint(point, pool[i - 1], relative, g[3], g[4])
         end
         w:Show()
         Areas.Glow(w, line.glow == true and now >= line.at)
+    end
+    for id in pairs(shownAt) do
+        if not seen[id] then
+            shownAt[id] = nil
+        end
+    end
+    for id in pairs(seen) do
+        seen[id] = nil
     end
     for i = n + 1, #pool do
         local w = pool[i]
@@ -536,14 +590,34 @@ function Area:Draw(lines, now, s)
         end
         Areas.Glow(w, false)
     end
+
     self.count = n
+    self.more = (more or 0) + (#lines - n)
     if n > 0 then
-        -- The area is the first widget's size, so that widget sits on the saved center.
+        -- The area is the first widget's size, so that widget sits on the saved center. With an
+        -- alignment it is as wide as the drag box, so the aligned edge stays put as the texts change.
         local width, height = pool[1]:GetWidth(), pool[1]:GetHeight()
+        if align then
+            width = HANDLE_MIN_WIDTH
+        end
         frame:SetSize(width, height)
         self.handle:SetWidth(math.max(HANDLE_MIN_WIDTH, width))
     end
+    -- The drag box sits on the side the widgets don't grow into.
+    local below = grow == "up"
+    if self.handleBelow ~= below then
+        self.handleBelow = below
+        self.handle:ClearAllPoints()
+        if below then
+            self.handle:SetPoint("TOP", frame, "BOTTOM", 0, -2)
+        else
+            self.handle:SetPoint("BOTTOM", frame, "TOP", 0, 2)
+        end
+    end
     frame:SetShown(n > 0 or self.preview)
+    if def.after then
+        def.after(self, n, self.more)
+    end
 end
 
 -- The test lines still to show, soonest first, or nil once every one has passed.
@@ -574,7 +648,7 @@ function Area:Refresh()
     local s = self:Settings()
     local now = GetTime()
     self.handle:SetShown(self.preview)
-    local lines
+    local lines, more
     if self.preview then
         lines = self.def.sample(now) or EMPTY
     elseif self.testList then
@@ -585,15 +659,16 @@ function Area:Refresh()
         if s.shown and Alerts.running then
             local cap = capOf(s)
             if self.def.lines then
-                lines = self.def.lines(now, s, cap) or EMPTY
+                lines, more = self.def.lines(now, s, cap)
+                lines = lines or EMPTY
             else
-                lines = Rules.Area(Alerts:Lines(now), now, self.def.output, cap)
+                lines, more = Rules.Area(Alerts:Lines(now), now, self.def.output, cap)
             end
         else
             lines = EMPTY
         end
     end
-    self:Draw(lines, now, s)
+    self:Draw(lines, now, s, more)
 end
 
 -- From the ticker: nothing to do unless a run, a preview or a test is going.
@@ -628,13 +703,13 @@ function Area:Visible()
 end
 
 function Area:Open()
+    current = self
     buildDialog()
     for _, area in ipairs(Areas.list) do
         for _, slot in ipairs(area.rows) do
             slot.row:Hide()
         end
     end
-    current = self
     UI.SetFrameTitle(dialog, self.title)
     self.cursor = 0
     if self.def.settings then
@@ -656,7 +731,8 @@ function Area:Open()
 end
 
 function Areas.New(def)
-    local area = setmetatable({ def = def, title = def.title, pool = {}, count = 0, rows = {}, cursor = 0, preview = false }, Area)
+    local area = setmetatable({ def = def, title = def.title, pool = {}, count = 0, more = 0, rows = {}, cursor = 0,
+        preview = false, shownAt = {}, seen = {} }, Area)
     Areas.list[#Areas.list + 1] = area
     UI:RegisterPreview("alert" .. def.key, function(on)
         area:Build()
@@ -685,8 +761,12 @@ ticker:SetScript("OnUpdate", function(_, dt)
     elapsed = 0
     for _, area in ipairs(Areas.list) do
         -- One area failing must not stop the others.
+        -- A failure is reported once, until the area works again.
         local ok, err = pcall(area.Tick, area)
-        if not ok then
+        if ok then
+            area.failed = nil
+        elseif not area.failed then
+            area.failed = true
             report(err)
         end
     end
