@@ -44,7 +44,7 @@ local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local NOTES_ICON = "Interface\\Icons\\INV_Misc_Note_01"
 local FLAG_W, FLAG_HEAD = 12, 14 -- a marker's flag, drawn on a pole as tall as the row less 6 px
-local FLAG_BTN_W = 20 -- the clickable marker: this wide, the full row high, the flag centred in it
+local FLAG_BTN_W = 20 -- the clickable marker: a square at the row top, the flag centred in it
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
 
 local TEXT = {
@@ -592,17 +592,6 @@ function Methods:IconDoubleClick(b)
     self:OpenAt(mark.t, spellID, text)
 end
 
--- The lane under the cursor, from its height in the track; nil below the last lane.
-function Methods:LaneAt()
-    local _, y = GetCursorPosition()
-    local top = self.hscroll:GetTop()
-    if not top then
-        return nil
-    end
-    local i = math.floor((top - y / self.hscroll:GetEffectiveScale()) / ROW_H) + 1
-    return self.lanes[i]
-end
-
 -- A left click on the track itself (icons and markers take their own clicks). The second of two
 -- within DOUBLE_TIME seconds and DOUBLE_DIST pixels is a double-click; a single click does nothing.
 -- A drag that scrolled the track since the first click (the mouse-up ending it comes here too) means
@@ -714,11 +703,12 @@ function Methods:Marks(lanes, length)
     return out
 end
 
--- One marker from the pool: a pole with a flag at its top.
+-- One marker from the pool: a pole with a flag at its top. Only a square around the flag is the
+-- button; the pole below it is a plain texture, so the lower part of the row still reaches an icon.
 function Methods:Flag(n)
     return pooled(self.flags, n, function()
         local f = CreateFrame("Button", nil, self.track)
-        f:SetSize(FLAG_BTN_W, ROW_H)
+        f:SetSize(FLAG_BTN_W, FLAG_BTN_W)
         f:EnableMouse(true)
         local inset = (FLAG_BTN_W - FLAG_W) / 2
         f.pole = f:CreateTexture(nil, "ARTWORK")
@@ -762,7 +752,8 @@ function Methods:FlagDoubleClick(f)
     end
 end
 
--- Draws the markers above the icons (their buttons sit a level above every cast icon, so one over an icon is the one clicked): raid note lines in caramel, your reminders in cream.
+-- Draws the markers above the icons: raid note lines in caramel, your reminders in cream. A button
+-- sits a level above every cast icon, so a flag over an icon is the one clicked.
 function Methods:DrawMarks(length)
     local level = (self.track:GetFrameLevel() or 0) + 8
     for n, m in ipairs(self.marks) do

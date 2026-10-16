@@ -923,7 +923,6 @@ local function buildExport()
     x:EnableMouse(true)
     -- above every window, not on the "panel" layer (that one follows the main window's strata)
     x:SetFrameStrata("FULLSCREEN_DIALOG")
-    x:SetToplevel(true)
     UI.SetFrameTitle(x, TEXT.exportTitle)
     tinsert(UISpecialFrames, EXPORT_NAME)
     x.text = ""
@@ -970,6 +969,7 @@ local function buildExport()
         x:Hide()
     end)
     x.edit:SetScript("OnEditFocusGained", function(self)
+        x:Raise() -- over the editor when clicked, without being toplevel itself
         self:HighlightText()
     end)
     UI:SkinTree(x)
@@ -1012,6 +1012,44 @@ function Editor:Export()
     return line
 end
 
+-- Lifts a game dialog (strata below ours) over the editor, putting its strata back when it hides.
+-- The hook is added once per frame; each lift saves the strata to restore.
+local function liftOver(dialog)
+    if not (dialog and dialog.SetFrameStrata) then
+        return
+    end
+    if not dialog.crtLifted then
+        dialog.crtLifted = dialog:GetFrameStrata()
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        if not dialog.crtHooked then
+            dialog.crtHooked = true
+            dialog:HookScript("OnHide", function(self)
+                if self.crtLifted then
+                    self:SetFrameStrata(self.crtLifted)
+                    self.crtLifted = nil
+                end
+            end)
+        end
+    end
+    dialog:Raise()
+end
+
+-- The confirmation the game just showed: the popup the call returns, else the first visible one.
+local function confirm(info)
+    local shown = StaticPopup_ShowCustomGenericConfirmation(info)
+    if type(shown) ~= "table" then
+        shown = nil
+        for i = 1, 4 do
+            local p = _G["StaticPopup" .. i]
+            if p and p:IsShown() then
+                shown = p
+                break
+            end
+        end
+    end
+    liftOver(shown)
+end
+
 -- The game's color picker on the draft's color; Cancel puts the old one back.
 local function pickColor()
     if not (draft and ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) then
@@ -1037,9 +1075,8 @@ local function pickColor()
             end
         end,
     })
-    -- the picker is DIALOG strata, below the editor: lift it over
-    ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    ColorPickerFrame:Raise()
+    -- the picker is DIALOG strata, below the editor: lift it over until it hides
+    liftOver(ColorPickerFrame)
 end
 
 local function build()
@@ -1278,7 +1315,7 @@ local function build()
             return
         end
         local from = ctx
-        StaticPopup_ShowCustomGenericConfirmation({
+        confirm({
             text = TEXT.deleteConfirm,
             acceptText = TEXT.delete,
             cancelText = TEXT.cancel,
