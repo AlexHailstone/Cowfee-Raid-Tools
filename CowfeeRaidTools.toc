@@ -69,6 +69,8 @@ Alerts\Texts.lua
 Alerts\Icons.lua
 Alerts\Circles.lua
 Alerts\Editor.lua
+Markers\Database.lua
+Markers\Display.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua
@@ -77,4 +79,5 @@ UI\SettingsPage.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
+Dev\MarkerEditor.lua
 #@end-do-not-package@
