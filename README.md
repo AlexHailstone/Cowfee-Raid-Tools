@@ -77,6 +77,7 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 | Drag a name onto another slot | The two names swap, or the name moves into an empty slot |
 | Right-click a slot | The slot is cleared |
 | Click a layout in Quick Load | It loads into the grid |
+| Click or drag a name under **In group, not in layout** | Puts someone who is in your group but not in the grid (a renamed or new character, say) into the first empty slot of their raid group, or onto the slot you drop them on |
 | Edit the name at the top | The layout is renamed when you press Enter or click away |
 | Press **Set current roster** | The grid fills from your live group, in its current subgroups, after asking if the grid has names |
 | Press **Clear grid** | The grid empties |
