@@ -119,6 +119,7 @@ local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle" }
 local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
+local SAVED_SHIFT = 48 -- a saved alert has no Relative to / Time row or Saves to line: the rows below move up by this
 local ROW1_EXTRA = 14 -- room under the first row for the Saves to line; every row below moves down by it
 local EXPORT_CHROME = 56 -- the copy window above and below its text box
 local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
@@ -644,7 +645,6 @@ local function refresh(rows)
     end
     local savedMode = ctx ~= nil and ctx.savedMode == true
     frame.forRow:SetShown(draft.saveAs == "note")
-    frame.saveAsRow:SetShown(not savedMode)
     frame.relativeRow:SetShown(not savedMode)
     frame.difficultyRow:SetShown(not savedMode)
     frame.timeLabel:SetShown(not savedMode)
@@ -909,9 +909,30 @@ local function makeButton(parent, label, width)
     return b
 end
 
+-- Where the rows below the Relative to / Time row sit, so a saved alert's editor can close the gap.
+local placed = {}
+local LOWER_Y = -(98 + ROW1_EXTRA)
+
+local function lay(el, x, y)
+    el:SetPoint("TOPLEFT", x, y)
+    if y <= LOWER_Y then
+        placed[#placed + 1] = { el, x, y }
+    end
+    return el
+end
+
+local function applyLayout(savedMode)
+    local d = savedMode and SAVED_SHIFT or 0
+    for _, p in ipairs(placed) do
+        p[1]:ClearAllPoints()
+        p[1]:SetPoint("TOPLEFT", p[2], p[3] + d)
+    end
+    frame:SetHeight(HEIGHT - d)
+end
+
 local function makeLabel(parent, label, x, y)
     local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    fs:SetPoint("TOPLEFT", x, y)
+    lay(fs, x, y)
     fs:SetText(label)
     return fs
 end
@@ -922,7 +943,7 @@ local function makeEdit(parent, x, y, width, onChange)
     edit:SetAutoFocus(false)
     edit:SetFontObject(CRTFontEdit)
     edit:SetSize(width, 20)
-    edit:SetPoint("TOPLEFT", x, y)
+    lay(edit, x, y)
     edit:SetScript("OnTextChanged", function(self, userInput)
         onChange(self:GetText(), userInput)
     end)
@@ -938,7 +959,7 @@ end
 local function makeCheck(parent, label, x, y, onClick)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetSize(24, 24)
-    check:SetPoint("TOPLEFT", x, y)
+    lay(check, x, y)
     local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", check, "RIGHT", 2, 0)
     text:SetText(label)
@@ -1123,7 +1144,13 @@ local function acceptName(dialog, data)
     end
     fields.name = trim(edit:GetText())
     local id = CRT.AlertSaved:Save(nil, fields)
-    local s = id and CRT.AlertSaved:Get(id)
+    if not id then
+        if draft then
+            fail(TEXT.savedFailed)
+        end
+        return
+    end
+    local s = CRT.AlertSaved:Get(id)
     if s and CRT.Print then
         CRT:Print(string.format(TEXT.savedMade, s.name))
     end
@@ -1180,6 +1207,14 @@ local function askSavedName()
     local fields = savedFields()
     fields.name = nil
     local data = { fields = fields, default = CRT.AlertSaved.DefaultName(fields) }
+    -- already asking: the open popup is reused, taking the draft as it is now
+    local openName = StaticPopup_Visible and StaticPopup_Visible(POPUP_NAME)
+    local open = openName and _G[openName]
+    if open and open.IsShown and open:IsShown() then
+        open.data = data
+        liftOver(open)
+        return
+    end
     liftOver(shownPopup(StaticPopup_Show(POPUP_NAME, nil, nil, data)))
 end
 
@@ -1268,13 +1303,13 @@ local function build()
     end)
     f.rows = {}
     local function row(r, x, y)
-        r:SetPoint("TOPLEFT", x, y)
+        lay(r, x, y)
         f.rows[#f.rows + 1] = r
         return r
     end
 
     -- Save as, For, Difficulty
-    f.saveAsRow = row(UI.Dropdown(f, TEXT.saveAs, {
+    row(UI.Dropdown(f, TEXT.saveAs, {
         labelWidth = 56, width = 118,
         options = { { key = "note", label = TEXT.asNote }, { key = "mine", label = TEXT.asMine } },
         get = function() return draft and draft.saveAs or "mine" end,
@@ -1372,13 +1407,13 @@ local function build()
             changed()
         end
     end)
-    UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp):SetPoint("TOPLEFT", 296, -140 - ROW1_EXTRA)
+    lay(UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp), 296, -140 - ROW1_EXTRA)
     f.iconPreview = f:CreateTexture(nil, "ARTWORK")
     f.iconPreview:SetSize(24, 24)
-    f.iconPreview:SetPoint("TOPLEFT", 326, -136 - ROW1_EXTRA)
+    lay(f.iconPreview, 326, -136 - ROW1_EXTRA)
     f.iconPreview:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     f.spellName = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    f.spellName:SetPoint("TOPLEFT", 358, -142 - ROW1_EXTRA)
+    lay(f.spellName, 358, -142 - ROW1_EXTRA)
     f.spellName:SetWidth(WIDTH - 358 - LEFT)
     f.spellName:SetJustifyH("LEFT")
     f.spellName:SetWordWrap(false)
@@ -1396,7 +1431,7 @@ local function build()
     makeLabel(f, TEXT.color, LEFT, -210 - ROW1_EXTRA)
     f.colorSwatch = CreateFrame("Button", nil, f)
     f.colorSwatch:SetSize(20, 20)
-    f.colorSwatch:SetPoint("TOPLEFT", FIELD_X, -206 - ROW1_EXTRA)
+    lay(f.colorSwatch, FIELD_X, -206 - ROW1_EXTRA)
     f.colorSwatch.edge = f.colorSwatch:CreateTexture(nil, "BACKGROUND")
     f.colorSwatch.edge:SetAllPoints()
     f.colorSwatch.edge:SetColorTexture(0.5, 0.5, 0.5, 1)
@@ -1405,7 +1440,7 @@ local function build()
     f.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
     f.colorSwatch:SetScript("OnClick", pickColor)
     f.colorDefault = makeButton(f, TEXT.colorDefault, 80)
-    f.colorDefault:SetPoint("TOPLEFT", FIELD_X + 28, -204 - ROW1_EXTRA)
+    lay(f.colorDefault, FIELD_X + 28, -204 - ROW1_EXTRA)
     f.colorDefault:SetScript("OnClick", function()
         if draft then
             draft.color = nil
@@ -1437,7 +1472,7 @@ local function build()
     }), LEFT, -304 - ROW1_EXTRA)
 
     f.messageText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    f.messageText:SetPoint("TOPLEFT", LEFT, -350 - ROW1_EXTRA)
+    lay(f.messageText, LEFT, -350 - ROW1_EXTRA)
     f.messageText:SetWidth(WIDTH - 2 * LEFT)
     f.messageText:SetJustifyH("LEFT")
 
@@ -1549,6 +1584,7 @@ local function show()
         title = ctx.savedName and string.format(TEXT.savedTitle, ctx.savedName) or TEXT.savedTitleNew
     end
     UI.SetFrameTitle(frame, title)
+    applyLayout(ctx.savedMode == true)
     if not ctx.savedMode and not draft.timeTouched then
         local ph, t = firstTime((Reminders:Times(ctx.encounterID, timesProbe())))
         if ph then
@@ -1574,21 +1610,21 @@ function Editor:Open(encounterID, id, prefill)
     ctx = { encounterID = encounterID }
     draft = newDraft()
     local saved = id and Reminders:Get(encounterID, id)
-    local template = prefill and prefill.saved and CRT.AlertSaved and CRT.AlertSaved:Get(prefill.saved)
+    local savedAlert = prefill and prefill.saved and CRT.AlertSaved and CRT.AlertSaved:Get(prefill.saved)
     if saved then
         ctx.id = id
         ctx.reminder = copy(saved)
         fromReminder(saved)
     else
         prefill = prefill or {}
-        if template then
-            fromSaved(template)
+        if savedAlert then
+            fromSaved(savedAlert)
             -- a spell dropped on an icon replaces the saved alert's own, and its icon with it
-            if validID(prefill.spellID) and validID(prefill.spellID) ~= template.spellID then
+            if validID(prefill.spellID) and validID(prefill.spellID) ~= savedAlert.spellID then
                 draft.iconID, draft.iconType = nil, "spell"
             end
         end
-        draft.spellID = validID(prefill.spellID) or (template and draft.spellID) or nil
+        draft.spellID = validID(prefill.spellID) or (savedAlert and draft.spellID) or nil
         if type(prefill.text) == "string" and trim(prefill.text) ~= "" then
             draft.text = prefill.text
         elseif trim(draft.text) == "" then
