@@ -74,6 +74,10 @@ local TEXT = {
     cancel = CANCEL or "Cancel",
     testInPull = "Test is off during a pull.",
     testTrigger = "Nothing to test: this alert starts in phase %s, which waits for its trigger.",
+    testBlock = "Alert test",
+    saveFailed = "The reminder could not be saved.",
+    noEncounter = "Pick a boss first: this alert has no boss to be saved for.",
+    keptBad = "The saved times don't read (%s). Type a time to replace them.",
     nothing = "Tick a Show as box, Speak the text or Count down: a sound alone shows nothing.",
     noTime = "Type a time.",
     badTime = "bad time '%s'",
@@ -98,6 +102,7 @@ local EXPORT_NAME = "CowfeeRaidToolsAlertExport"
 local WIDTH, HEIGHT = 600, 480
 local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle" }
 local LEFT = 16
+local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
 
 local frame, exportFrame
@@ -209,7 +214,15 @@ local function firstTime(list)
 end
 
 -- The message for a time that does not read; `strict` (Save and Test) also asks a note line for one.
+-- A reminder's kept times text is checked while Relative to and Time are untouched.
 local function timeError(strict)
+    if not draft.timeTouched and draft.saveAs == "mine" and draft.keptTimes then
+        local list, err = Reminders.ParseTimes(draft.keptTimes)
+        if not list then
+            return string.format(TEXT.keptBad, tostring(err))
+        end
+        return nil
+    end
     local text = trim(draft.timeText)
     if text == "" then
         return (strict and draft.saveAs == "note") and TEXT.noTime or nil
@@ -536,13 +549,13 @@ end
 local function saveMine()
     local encounterID = ctx.encounterID
     if encounterID == nil then
-        return false
+        return fail(TEXT.noEncounter)
     end
     if ctx.noteID and not lineUnchanged() then
         return fail(TEXT.stale)
     end
     if not Reminders:Save(encounterID, ctx.id, buildReminder()) then
-        return false
+        return fail(TEXT.saveFailed)
     end
     if ctx.noteID then
         CRT.Notes:RemoveLine(ctx.noteID, ctx.line, ctx.expected)
@@ -577,8 +590,7 @@ function Editor:Test()
     end
     -- A real pull is never cut short by a test.
     if Alerts.running and Alerts.run and Alerts.run.reason == "encounter" then
-        CRT:Print(TEXT.testInPull)
-        return false
+        return fail(TEXT.testInPull)
     end
     local err = timeError(true)
     if err then
@@ -616,14 +628,13 @@ function Editor:Test()
     -- A lowest phase with an event trigger waits for its event, so the test would show nothing.
     if Alerts.running and Alerts.run and Alerts.run.reason == "test" and not Alerts:PhaseStart(lowest) then
         Alerts:Stop()
-        CRT:Print(string.format(TEXT.testTrigger, tostring(lowest)))
-        return false
+        return fail(string.format(TEXT.testTrigger, tostring(lowest)))
     end
     return true
 end
 
 -- The draft's items, given out once and only to a test run. A note line's item keeps block "note".
-Alerts:RegisterBlock(TEST_BLOCK, { label = "Alert test", group = true, keepBlock = true, Entries = function(run)
+Alerts:RegisterBlock(TEST_BLOCK, { label = TEXT.testBlock, group = true, keepBlock = true, Entries = function(run)
     if not (run and run.reason == "test" and testItems) then
         return {}
     end
@@ -740,6 +751,12 @@ function Editor:Export()
     if not (frame and draft) then
         return nil
     end
+    -- a note line needs a time that reads, as Save does
+    local err = timeError(true) or (parseTime(draft.timeText) == nil and TEXT.noTime or nil)
+    if err then
+        fail(err)
+        return nil
+    end
     buildExport()
     local line = CRT.NoteParser.FormatLine(noteTimer())
     exportFrame.text = line
@@ -756,19 +773,21 @@ local function pickColor()
     if not (draft and ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) then
         return
     end
+    -- the alert open now: a picker left open never writes into the next one
+    local target = draft
     local before = copy(draft.color)
     local c = draft.color or { 1, 1, 1, 1 }
     ColorPickerFrame:SetupColorPickerAndShow({
         r = c[1], g = c[2], b = c[3], hasOpacity = false,
         swatchFunc = function()
             local r, g, b = ColorPickerFrame:GetColorRGB()
-            if draft then
+            if draft and draft == target then
                 draft.color = { r, g, b, 1 }
                 changed()
             end
         end,
         cancelFunc = function()
-            if draft then
+            if draft and draft == target then
                 draft.color = copy(before)
                 changed()
             end
@@ -833,7 +852,7 @@ local function build()
         set = setter(function(v) draft.saveAs = v end),
     }), LEFT, -30)
     f.forRow = row(UI.Dropdown(f, TEXT.forLabel, {
-        labelWidth = 30, width = 160,
+        labelWidth = 30, width = 160, maxHeight = MENU_MAX_HEIGHT,
         options = forOptions,
         get = function() return draft and draft.tag or "" end,
         set = setter(function(v) draft.tag = v end),
@@ -969,7 +988,7 @@ local function build()
         glow = makeCheck(f, TEXT.glow, 386, -274, setter(function(on) draft.glow = on end)),
     }
     row(UI.Dropdown(f, TEXT.sound, {
-        labelWidth = 70, width = 160,
+        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT,
         options = soundOptions,
         get = function() return draft and draft.sound or NO_SOUND end,
         set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),

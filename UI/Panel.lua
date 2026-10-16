@@ -212,6 +212,10 @@ function UI:ApplyWindow(f)
     end
     f.crtTitleLine:SetShown(modern)
     f.crtTitleLine:SetColorTexture(mocha("caramel"))
+    -- the template's inset (its own frame on some clients) is part of the Classic art
+    if type(f.Inset) == "table" and f.Inset.SetShown then
+        f.Inset:SetShown(not modern)
+    end
 end
 
 function UI:StyleWindow(f)

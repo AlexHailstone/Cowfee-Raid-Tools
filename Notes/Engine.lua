@@ -295,6 +295,11 @@ function Engine.ItemFor(t, index, mine)
         text = t.kind == "spell" and (info and info.name or ("Spell " .. tostring(t.spellId))) or (t.text or ""),
         color = t.color,
     }
+    -- A line with show: is labelled by its text: when it has one, as a reminder is; the spell gives the
+    -- icon. A line without show: keeps the spell's name.
+    if t.show and type(t.text) == "string" and t.text ~= "" then
+        item.text = t.text
+    end
     if t.show and type(t.iconID) == "number" and t.iconID > 0 then
         item.icon = t.iconID
     end

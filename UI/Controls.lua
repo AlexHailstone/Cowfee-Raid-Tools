@@ -42,6 +42,7 @@ end
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
+--   maxHeight  optional: the open menu scrolls past this many pixels, for a long list
 --   decorate(button, option)  optional: adds to each item in the open menu, such as a Play button.
 --                             It may return the item's width and height. Anything it attaches with
 --                             button:AttachFrame or AttachFontString is removed when the menu closes.
@@ -59,6 +60,9 @@ function UI.Dropdown(parent, text, opts)
         dropdown.Text:SetFontObject(CRTFontStandardHighlight)
     end
     dropdown:SetupMenu(function(_, root)
+        if opts.maxHeight and root.SetScrollMode then
+            root:SetScrollMode(opts.maxHeight)
+        end
         local list = type(opts.options) == "function" and opts.options() or opts.options
         for _, option in ipairs(list) do
             local radio = root:CreateRadio(option.label, function(key)
