@@ -2,8 +2,8 @@ local ADDON, CRT = ...
 
 -- The circles area: a ring that empties as the time runs out, the seconds inside it and the alert's text
 -- under it. Built on Alerts/Areas.lua; its settings are CRT.db.alerts.areas.circles (size, fontSize, font,
--- outline, beside the common shown, cap, grow). The ring is a Cooldown with a round swipe, reversed so
--- the coloured part empties, over a faint full ring, under a dark disc that makes it read as a ring.
+-- outline, beside the common shown, cap, grow). The ring is a Cooldown with a round swipe, whose coloured part
+-- shrinks as the time runs out (REVERSE below), over a faint full ring, under a dark disc that makes it read as a ring.
 
 local Areas = CRT.AlertAreas
 
