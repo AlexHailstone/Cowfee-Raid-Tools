@@ -25,7 +25,7 @@ local TEXT = {
 }
 
 local PAD = 8          -- around the letters, so the glow sits just outside them
-local NOW_BELOW = 0.05 -- seconds left that already read NOW, so "0.0" never shows
+local NOW_BELOW = 0.1  -- under this many seconds left reads NOW: tenths are cut, so it would read "0.0"
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 12, 72, 36
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 300 }
 local WHITE = { 1, 1, 1 }
@@ -42,9 +42,10 @@ local ALIGN_OPTIONS = {
     { key = "RIGHT", label = TEXT.right },
 }
 
--- Tenths under 10 (cut, not rounded, so 9.96 never reads 10.0), whole seconds above, NOW from 0.
+-- Tenths under 10 (cut, not rounded, so 9.96 never reads 10.0), whole seconds from 10, and NOW once
+-- under a tenth is left, through 0 and while the line lingers.
 local function seconds(remaining)
-    if remaining <= NOW_BELOW then
+    if remaining < NOW_BELOW then
         return TEXT.now
     elseif remaining < 10 then
         return format("%.1f", math.floor(remaining * 10 + 1e-6) / 10)
@@ -59,8 +60,9 @@ end
 
 local function make(parent)
     local w = CreateFrame("Frame", nil, parent)
+    -- Anchored by one point (set in draw), not to the widget's edges, so its width is never bounded by
+    -- the widget's last size.
     w.text = w:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    w.text:SetAllPoints()
     w.text:SetWordWrap(false)
     w.text:SetShadowOffset(1, -1)
     return w
@@ -70,15 +72,32 @@ local function align(s)
     return ALIGNS[s.align] and s.align or "CENTER"
 end
 
+-- Where the text sits in its widget, for each alignment: the point and its x offset.
+local TEXT_POINT = { LEFT = { "LEFT", PAD / 2 }, CENTER = { "CENTER", 0 }, RIGHT = { "RIGHT", -PAD / 2 } }
+
+-- The words' full width. GetStringWidth is bounded by the region's size, GetUnboundedStringWidth is not.
+local function textWidth(fs)
+    if fs.GetUnboundedStringWidth then
+        return fs:GetUnboundedStringWidth()
+    end
+    return fs:GetStringWidth()
+end
+
 -- Each text is as wide as its words, so nothing is cut off; the area lines them up by `align`.
 -- The texts area has no use for when a line first showed (Areas' shownAt).
 local function draw(w, line, now, s)
-    local size = fontSize(s)
+    local size, edge = fontSize(s), align(s)
     Areas.SetFont(w.text, s.font, size, s.outline)
-    w.text:SetJustifyH(align(s))
+    if w.edge ~= edge then
+        w.edge = edge
+        local p = TEXT_POINT[edge]
+        w.text:ClearAllPoints()
+        w.text:SetPoint(p[1], w, p[1], p[2], 0)
+        w.text:SetJustifyH(edge)
+    end
     local text, time = Areas.LineText(line), seconds(line.at - now)
     w.text:SetText(text ~= "" and (text .. " (" .. time .. ")") or time)
-    w:SetSize(math.ceil(w.text:GetStringWidth()) + PAD, size + PAD)
+    w:SetSize(math.ceil(textWidth(w.text)) + PAD, size + PAD)
     local c = Areas.LineColor(line) or WHITE
     w.text:SetTextColor(c[1], c[2], c[3])
 end

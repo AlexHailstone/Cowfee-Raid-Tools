@@ -32,12 +32,12 @@ local ADDON, CRT = ...
 --                      edge of a box HANDLE_MIN_WIDTH wide around the saved center
 --   }
 --
--- An area shows its lines soonest first, at most `cap` (1-10), the first centered on its saved position
--- and the rest after it in the `grow` direction, 4 px apart. A line glows while line.glow and now >= at.
--- The drag box (title, settings button, reset) shows only with Previews, above the area, or below it
--- when it grows up. Every area refreshes from one
--- ticker every 0.1 s, and only while a run, a preview or a test is going; otherwise it hides once and
--- does nothing.
+-- An area shows its lines soonest first, at most `cap` (1-10), the rest after the first in the `grow`
+-- direction, 4 px apart. The first is centered on the saved position; with def.align and grow up or
+-- down, it sits on that edge of a box HANDLE_MIN_WIDTH wide centered there instead. A line glows while
+-- line.glow and now >= at. The drag box (title, settings button, reset) shows only with Previews, above
+-- the area, or below it when it grows up. Every area refreshes from one ticker every 0.1 s, and only
+-- while a run, a preview or a test is going; otherwise it hides once and does nothing.
 --   area:Refresh()        draws it now
 --   area:ResetPosition()  back to defaultPosition
 --   area:Test(lines)      shows the given lines (with `at` set) until they have all passed
