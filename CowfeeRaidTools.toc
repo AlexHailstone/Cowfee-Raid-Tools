@@ -57,6 +57,8 @@ Timeline\View.lua
 Timeline\ReferencePage.lua
 Timeline\Page.lua
 Alerts\Reminders.lua
+Alerts\PhaseDatabase.lua
+Alerts\Phases.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua

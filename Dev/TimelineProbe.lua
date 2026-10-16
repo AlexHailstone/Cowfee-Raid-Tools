@@ -16,8 +16,13 @@ local ADDON, CRT = ...
 -- on boss1 to boss5), meter (Deaths meter fields), recap.self and recap.other (C_DeathRecap events),
 -- deadly (the spells a dead player's meter entry lists) and ej (the Journal lookup of the pulled boss;
 -- ej.match says whether it was found). added.prepull holds the timeline events that arrived while
--- armed but before ENCOUNTER_START. A value is never compared or tested before the secret check
--- says it is safe.
+-- armed but before ENCOUNTER_START. The phase event sources are logged while armed in a raid and
+-- during the pull: emote and chatemote (RAID_BOSS_EMOTE and CHAT_MSG_RAID_BOSS_EMOTE: text, sender),
+-- targetable (UNIT_TARGETABLE_CHANGED: unit, and canAttack, which is UnitCanAttack("player", unit)
+-- read after it), engage (INSTANCE_ENCOUNTER_ENGAGE_UNIT: bossN.exists and bossN.guid for boss1 to
+-- boss5) and other.<EVENT>.argN (the arguments of any other event whose name starts with
+-- ENCOUNTER_TIMELINE_, caught with RegisterAllEvents while armed and during the pull, then
+-- unregistered). A value is never compared or tested before the secret check says it is safe.
 --
 -- This file never ships: the .toc line that loads it is inside a do-not-package block.
 
@@ -36,7 +41,13 @@ local DEADLY_FIELDS = { "spellID", "totalAmount", "overkillAmount", "isDeadly" }
 local EJ_FIELDS = { "name", "description", "journalEncounterID", "rootSectionID", "link", "journalInstanceID",
     "dungeonEncounterID", "instanceID" }
 local EVENTS = { "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_ENABLED", "ENCOUNTER_TIMELINE_EVENT_ADDED",
-    "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED" }
+    "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED", "RAID_BOSS_EMOTE", "CHAT_MSG_RAID_BOSS_EMOTE",
+    "UNIT_TARGETABLE_CHANGED", "INSTANCE_ENCOUNTER_ENGAGE_UNIT" }
+local HANDLED = {}
+for _, e in ipairs(EVENTS) do
+    HANDLED[e] = true
+end
+local TIMELINE_PREFIX = "ENCOUNTER_TIMELINE_"
 
 local stage = "idle" -- idle, armed (waiting for a raid boss pull), pull, ended (waiting to leave combat)
 local seenIDs = {}
@@ -234,11 +245,75 @@ local function readSeen(moment)
     end
 end
 
+-- Registers the normal event list (after an UnregisterAllEvents).
+local function registerNormal()
+    for _, e in ipairs(EVENTS) do
+        frame:RegisterEvent(e)
+    end
+end
+
 local function disarm()
     stage = "idle"
     if frame then
         frame:UnregisterAllEvents()
+        registerNormal()
     end
+end
+
+-- The phase event sources and any other ENCOUNTER_TIMELINE_ event. Returns true when the event was one
+-- of them. Armed outside a raid it records nothing.
+local function readPhaseSources(event, ...)
+    local kind
+    if event == "RAID_BOSS_EMOTE" or event == "CHAT_MSG_RAID_BOSS_EMOTE" or event == "UNIT_TARGETABLE_CHANGED"
+        or event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
+        kind = event
+    elseif not HANDLED[event] and event:sub(1, #TIMELINE_PREFIX) == TIMELINE_PREFIX then
+        kind = "other"
+    else
+        return false
+    end
+    if stage == "armed" then
+        local okType, _, instanceType = pcall(GetInstanceInfo)
+        if not okType or instanceType ~= "raid" then
+            return true
+        end
+    end
+    if kind == "other" then
+        local n = select("#", ...)
+        if n == 0 then
+            bump("other", event .. ".args", "event", "missing")
+        end
+        for i = 1, n do
+            record("other", event .. ".arg" .. i, "event", (select(i, ...)))
+        end
+    elseif kind == "RAID_BOSS_EMOTE" or kind == "CHAT_MSG_RAID_BOSS_EMOTE" then
+        local source = kind == "RAID_BOSS_EMOTE" and "emote" or "chatemote"
+        local text, sender = ...
+        record(source, "text", "event", text)
+        record(source, "sender", "event", sender)
+    elseif kind == "UNIT_TARGETABLE_CHANGED" then
+        local unit = ...
+        record("targetable", "unit", "event", unit)
+        if classify(unit) == "readable" and type(unit) == "string" then
+            local canAttack, ok = call("targetable", "canAttack", "event", UnitCanAttack, "player", unit)
+            if ok then
+                record("targetable", "canAttack", "event", canAttack)
+            end
+        end
+    else
+        for i = 1, 5 do
+            local unit = "boss" .. i
+            local exists, okExists = call("engage", unit .. ".exists", "event", UnitExists, unit)
+            if okExists then
+                record("engage", unit .. ".exists", "event", exists)
+            end
+            local guid, okGuid = call("engage", unit .. ".guid", "event", UnitGUID, unit)
+            if okGuid then
+                record("engage", unit .. ".guid", "event", guid)
+            end
+        end
+    end
+    return true
 end
 
 function Probe.HandleEvent(event, ...)
@@ -246,6 +321,9 @@ function Probe.HandleEvent(event, ...)
         return
     end
     local data = probeData()
+    if (stage == "armed" or stage == "pull") and readPhaseSources(event, ...) then
+        return
+    end
     if event == "ENCOUNTER_START" and stage == "armed" then
         local ok, _, instanceType = pcall(GetInstanceInfo)
         if not ok or instanceType ~= "raid" then
@@ -333,9 +411,9 @@ function Probe:Arm()
     end
     if frame then
         frame:UnregisterAllEvents()
-        for _, e in ipairs(EVENTS) do
-            frame:RegisterEvent(e)
-        end
+        registerNormal()
+        -- Dev only: every event arrives, and the handler keeps just the ENCOUNTER_TIMELINE_ ones.
+        pcall(frame.RegisterAllEvents, frame)
     end
     CRT:Print("Timeline probe armed for the next raid boss pull.")
 end
