@@ -90,6 +90,7 @@ local ROW_HEIGHT = 32
 -- The settings panel's rows: label and control, unless a row asks for others, to fit half the tab.
 local PANEL_LABEL_WIDTH, PANEL_CONTROL_WIDTH = 120, 180
 local COLOR_GAP, COLOR_SWATCH = 5, 40 -- a color row's swatch, after a label as wide as the others'
+local SLIDER_VALUE_WIDTH = 44 -- a slider's value beside its bar (UI/Controls.lua VALUE_W)
 
 -- Each direction: the point a widget anchors by, the point of the one before it, and the gap's offset.
 local GROW = {
@@ -544,7 +545,7 @@ end
 -- onChange() is called after any change made on it.
 function Areas.Panel(parent, onChange)
     local frame = CreateFrame("Frame", nil, parent)
-    frame:SetSize(PANEL_LABEL_WIDTH + PANEL_CONTROL_WIDTH + 60, ROW_HEIGHT)
+    frame:SetSize(PANEL_LABEL_WIDTH + COLOR_GAP + PANEL_CONTROL_WIDTH + SLIDER_VALUE_WIDTH, ROW_HEIGHT)
     local panel = setmetatable({ frame = frame, rows = {}, cursor = 0, onChange = onChange }, Panel)
     return panel
 end

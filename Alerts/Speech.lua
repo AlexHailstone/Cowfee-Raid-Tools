@@ -4,8 +4,9 @@ local ADDON, CRT = ...
 -- A line plays until the game says it finished (or SPEECH_TIMEOUT seconds pass), then the next starts.
 -- When the queue falls behind, the lowest priority line is dropped first: raid-wide lines go first,
 -- your note lines are kept longer, and your reminders are kept longest. Speech plays only while the
--- Raid Notes Text to Speech switch is on. A line's sound cue plays once at zero, whatever that switch says;
--- a raid note line's sound only while the Raid Notes alert is on, like its speech.
+-- Raid Notes "Read them out" switch (notes.alert.tts) is on, for every block. A line's sound cue plays once
+-- at zero, whatever that switch says; a raid note line's sound only while it is on, like its speech, and
+-- whether or not the Next spell alert is on (ruling B2).
 
 local Rules = CRT.AlertRules
 local Alerts = CRT.Alerts
@@ -126,7 +127,7 @@ function Speech:Tick(now)
     for _, line in ipairs(lines) do
         for _, member in ipairs(line.members or { line }) do
             local at = member.at or line.at
-            local allowed = member.block ~= "note" or settings().enabled
+            local allowed = member.block ~= "note" or settings().tts
             if member.sound and at <= now and allowed then
                 local key = tostring(member.id) .. "#sound"
                 if not self.spoken[key] then
@@ -146,13 +147,11 @@ function Speech:Tick(now)
 
     local due = Rules.SpeechDue(lines, now, self.spoken)
     if #due > 0 then
-        local noteOn = settings().enabled
         for _, item in ipairs(due) do
-            -- The raid note's speech also follows the alert switch (checked live); an empty or unreadable
-            -- text is skipped.
+            -- An empty or unreadable text is skipped.
             local text = item.text
             local readable = not (CRT.Timeline and CRT.Timeline.readable) or CRT.Timeline.readable(text)
-            if readable and type(text) == "string" and text ~= "" and (item.block ~= "note" or noteOn) then
+            if readable and type(text) == "string" and text ~= "" then
                 arrivals = arrivals + 1
                 item.seq = arrivals
                 item.text = text

@@ -220,7 +220,8 @@ local function build(pf)
     end
 
     -- Alerts, on the left, and sharing, on the right. The seconds row greys out while alerts are off,
-    -- and the speech rows while text to speech is off; both switches are on the Alerts tab.
+    -- and the speech rows while "Read them out" is off (whatever the alert is); both switches are on the
+    -- Alerts tab.
     local function alertsOn()
         return Notes:Alert().enabled and true or false
     end

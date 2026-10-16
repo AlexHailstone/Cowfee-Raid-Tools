@@ -335,7 +335,8 @@ function Engine.ItemFor(t, index, mine)
     item.outputs = {
         alert = s.enabled and true or false,
         bar = (bars.shown and bars.noteLines) and true or false,
-        speech = (s.enabled and s.tts) and true or false,
+        -- Read out wherever the line shows, with or without the Next spell alert (ruling B2).
+        speech = s.tts and true or false,
     }
     -- Where else the player sends their own note lines (Raid Notes > Alerts); each is off unless chosen,
     -- so the outputs stay as they were for anyone who has not.

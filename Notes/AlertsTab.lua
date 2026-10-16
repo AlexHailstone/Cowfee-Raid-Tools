@@ -19,13 +19,16 @@ local UI = CRT.UI
 local TEXT = {
     routeTitle = "Your note lines go to",
     routeHelp = "Where your own lines from the raid note show, and whether they are read out. Tick as many as you like.\n\n"
-        .. "This is for your note lines without their own displays. A line that names its own displays keeps them, though each display's own switch can still turn it off.",
+        .. "This is for your note lines without their own displays. A line that names its own displays keeps them, though each display's own switch can still turn it off.\n\n"
+        .. "Your note lines are read when the pull starts, so a change takes effect on the next pull.",
     nextSpell = "Next spell alert",
     text = "Text",
     icon = "Icon",
     bar = "Bar",
     circle = "Circle",
     speech = "Read them out (text to speech)",
+    speechHelp = "Reads your note lines out wherever they show, with or without the Next spell alert, and plays their sounds.\n\n"
+        .. "It is also the switch for all speech: turning it off silences your reminders' speech too.",
 
     tryIt = "Try it",
     tryHelp = "Previews shows every alert with samples, so you can drag them into place; the cog on each opens its settings here. Test all areas counts three test alerts down in each.",
@@ -87,6 +90,7 @@ local function makeCheck(parent, x, y, label, enabledIf, get, set)
     local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", check, "RIGHT", 2, 0)
     text:SetText(label)
+    check.label = text
     check:SetScript("OnClick", function(self)
         set(self:GetChecked() and true or false)
     end)
@@ -207,7 +211,8 @@ local function build(pf)
         end
     end)
     makeCheck(pf, 4, nextRow(), TEXT.circle, areaOn("circles"), route("circle"))
-    makeCheck(pf, 4, nextRow(), TEXT.speech, nil, alertField("tts"))
+    local speech = makeCheck(pf, 4, nextRow(), TEXT.speech, nil, alertField("tts"))
+    UI.Help(pf, TEXT.speech, TEXT.speechHelp):SetPoint("LEFT", speech.label, "RIGHT", 6, 0)
 
     local tryTop = y - 20
     local tryTitle = heading(pf, 8, tryTop, TEXT.tryIt)
