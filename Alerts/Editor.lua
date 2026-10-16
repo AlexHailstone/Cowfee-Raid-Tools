@@ -86,6 +86,7 @@ local TEXT = {
     savedMade = "Saved alert \"%s\" saved.",
     deleteSavedConfirm = "Delete this saved alert?",
     savedFailed = "The saved alert could not be saved.",
+    savedGone = "This saved alert was deleted, so there is nothing to save it to. Cancel to close.",
     cancel = CANCEL or "Cancel",
     testInPull = "Test is off during a pull.",
     testTrigger = "Nothing to test: this alert starts in phase %s, which waits for its trigger.",
@@ -787,18 +788,22 @@ local function saveMine()
     return true
 end
 
--- The draft as a saved alert's fields (CRT.AlertSaved:Save keeps only the ones a saved alert has).
+-- The draft as a saved alert's fields (CRT.AlertSaved:Save keeps only the ones a saved alert has). No
+-- name: Save keeps the stored one, so a rename on its chip while the editor is open stays.
 local function savedFields()
     local r = buildReminder()
     r.saveAs = draft.saveAs
     r.tags = words(draft.tag)
-    r.name = ctx and ctx.savedName
     return r
 end
 
--- Saving a saved alert itself: overwrites it, or makes it for a new one.
+-- Saving a saved alert itself: overwrites it, or makes it for a new one. One deleted while it was open
+-- (from its chip) is not made again.
 local function saveSaved()
     local Saved = CRT.AlertSaved
+    if ctx.savedID and not (Saved and Saved:Get(ctx.savedID)) then
+        return fail(TEXT.savedGone)
+    end
     if not (Saved and Saved:Save(ctx.savedID, savedFields())) then
         return fail(TEXT.savedFailed)
     end
@@ -1535,14 +1540,43 @@ local function fromSaved(s)
     draft.saveAs = s.saveAs == "note" and "note" or "mine"
 end
 
--- Fills the boxes from the draft and shows the window on top.
-local function show()
-    notice = nil
+-- The window's title: Alert, or the saved alert's name (New saved alert for a new one).
+local function setTitle()
     local title = TEXT.title
     if ctx.savedMode then
         title = ctx.savedName and string.format(TEXT.savedTitle, ctx.savedName) or TEXT.savedTitleNew
     end
     UI.SetFrameTitle(frame, title)
+end
+
+-- A saved alert changed somewhere (its chip renamed or deleted it): the one open here shows its new
+-- name, or says it is gone (Save then makes nothing).
+local function savedChanged()
+    if not (frame and frame:IsShown() and ctx and ctx.savedMode and ctx.savedID) then
+        return
+    end
+    local s = CRT.AlertSaved and CRT.AlertSaved:Get(ctx.savedID)
+    if s then
+        ctx.savedName = s.name
+        setTitle()
+    else
+        fail(TEXT.savedGone)
+    end
+end
+
+-- Saved.lua loads after this file: the editor starts listening the first time it opens a saved alert.
+local listening = false
+local function listenToSaved()
+    if not listening and CRT.AlertSaved then
+        listening = true
+        CRT.AlertSaved:OnChange(savedChanged)
+    end
+end
+
+-- Fills the boxes from the draft and shows the window on top.
+local function show()
+    notice = nil
+    setTitle()
     applyLayout(ctx.savedMode == true)
     if not ctx.savedMode and not draft.timeTouched then
         local ph, t = firstTime((Reminders:Times(ctx.encounterID, timesProbe())))
@@ -1624,6 +1658,7 @@ function Editor:EditSaved(id)
     if id and not s then
         return false
     end
+    listenToSaved()
     build()
     ctx = { savedMode = true, savedID = id, savedName = s and s.name }
     draft = newDraft()
