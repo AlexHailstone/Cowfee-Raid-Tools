@@ -11,8 +11,9 @@ local ADDON, CRT = ...
 -- the note block's own (CRT.NoteEngine.ItemFor) and stays a "note" item, so the note's switches apply.
 -- Export shows the draft as a note line in a copy box.
 -- Save as saved alert keeps the draft's setup, without its time, as a saved alert (CRT.AlertSaved), and
--- Open takes prefill.saved to start from one. EditSaved opens a saved alert itself: no Save as, Relative
--- to, Time or Difficulty, Save overwrites it, and Test previews it ten seconds ahead.
+-- Open takes prefill.saved to start from one. EditSaved opens a saved alert itself: no Save as saved alert,
+-- Export, Relative to, Time or Difficulty; Save overwrites it (keeping the name its chip gave it, and
+-- making nothing once it was deleted), and Test previews it ten seconds ahead.
 
 local TEXT = {
     title = "Alert",
@@ -652,6 +653,7 @@ local function refresh(rows)
     frame.timeEdit:SetShown(not savedMode)
     frame.timeHelp:SetShown(not savedMode)
     frame.saveSavedBtn:SetShown(not savedMode)
+    frame.exportBtn:SetShown(not savedMode) -- a saved alert has no time to write a note line with
     if rows then
         for _, row in ipairs(frame.rows) do
             row.refresh()
