@@ -214,8 +214,14 @@ local defaults = {
     -- Alerts. Reminders, phase events and bar settings for the alerts engine (Alerts/Engine.lua).
     -- reminders are the player's own timed reminders, phases the phase events they set up, overrides
     -- their changes to shared packs, and nextId numbers them. The bars window position is added when moved.
+    -- areas are the icon, text and circle areas' settings (Alerts/Areas.lua); position is added when moved.
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
+        areas = {
+            icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down" },
+            texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
+            circles = { shown = true, cap = 3, size = 64, fontSize = 16, grow = "right" },
+        },
         reminders = {},
         phases = {},
         overrides = {},
