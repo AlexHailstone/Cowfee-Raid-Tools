@@ -14,6 +14,10 @@ local ADDON, CRT = ...
 -- casts and a line where it ended. Bars, lines and ticks come from pools like the icons.
 -- The page builds one with View.Create(parent) and hands it a pull or { reference = ref }, and an
 -- optional pull to lay over it, with view:SetData.
+-- Two left clicks on the track (not on an icon or a marker) drop a new alert there: the editor opens
+-- with the row's spell and the clicked time as phase + seconds. Every saved note line and reminder of
+-- the boss is drawn as a small flag on its spell's row, or on a "Notes" row added at the bottom for
+-- the ones with no row; a double-click on a flag opens it in the editor.
 
 local View = {}
 CRT.TimelineView = View
@@ -38,6 +42,21 @@ local MAX_DOTS = 3
 local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+local NOTES_ICON = "Interface\\Icons\\INV_Misc_Note_01"
+local FLAG_W, FLAG_HEAD = 6, 10 -- a marker: as tall as the row less 6 px, its top 10 px the flag
+local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
+
+local TEXT = {
+    notes = "Notes",
+    everyone = "Everyone",
+    onlyMe = "Only me",
+    raidNote = "Raid note",
+    raidNoteOf = "Raid note (%s)",
+    yourReminder = "Your reminder",
+    reminder = "Reminder",
+    spell = "Spell %d",
+    needPull = "Reminders need the boss pulled once, or its reference to have an Encounter line.",
+}
 
 local function settings()
     return CRT.Timeline:Settings()
@@ -78,6 +97,16 @@ end
 function View.TimeToX(t, span, width)
     -- t * width / span rather than t / span * width, so whole seconds land on whole pixels
     return t * width / span
+end
+
+-- The reverse of TimeToX: the time at x pixels.
+function View.XToTime(x, span, width)
+    return x * span / width
+end
+
+-- t to the nearest tenth of a second.
+local function tenth(t)
+    return math.floor(t * 10 + 0.5) / 10
 end
 
 function View.Format(t)
@@ -163,6 +192,25 @@ local function iconEnter(b)
     GameTooltip:Show()
 end
 
+-- A marker: the alert's text, who it is for, its phase and time, and where it is saved.
+local function flagEnter(f)
+    local m = f.mark
+    GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
+    GameTooltip:SetText(m.text, 1, 0.82, 0)
+    local who = TEXT.onlyMe
+    if not m.mine then
+        who = (m.tags and #m.tags > 0) and table.concat(m.tags, " ") or TEXT.everyone
+    end
+    GameTooltip:AddLine(who, 1, 1, 1)
+    GameTooltip:AddLine(CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } }), 0.85, 0.85, 0.85)
+    local source = TEXT.yourReminder
+    if not m.mine then
+        source = m.difficulty and string.format(TEXT.raidNoteOf, m.difficulty) or TEXT.raidNote
+    end
+    GameTooltip:AddLine(source, 0.85, 0.85, 0.85)
+    GameTooltip:Show()
+end
+
 local function labelEnter(l)
     local lane = l.lane
     if lane and lane.kind == "spell" then
@@ -211,6 +259,7 @@ function View.Create(parent)
     local view = setmetatable({
         icons = {}, labels = {}, lines = {}, ticks = {}, texts = {}, lanes = {}, unknown = {}, trackW = 1,
         bars = {}, leads = {}, phaseLines = {}, phaseTexts = {}, pullTicks = {}, extra = { phases = {}, length = 0 },
+        flags = {}, marks = {},
     }, Methods)
     local f = CreateFrame("Frame", nil, parent)
     f:SetAllPoints(parent)
@@ -298,8 +347,9 @@ function View.Create(parent)
     hscroll:SetScript("OnMouseDown", function(_, button)
         view:StartDrag(button)
     end)
-    hscroll:SetScript("OnMouseUp", function()
+    hscroll:SetScript("OnMouseUp", function(_, button)
         view:StopDrag()
+        view:TrackClick(button)
     end)
     f:SetScript("OnUpdate", function()
         view:OnUpdate()
@@ -310,6 +360,18 @@ function View.Create(parent)
     f:SetScript("OnHide", function()
         view:StopDrag()
     end)
+    -- the markers follow the notes and the reminders; only a shown view redraws
+    local function changed()
+        if f:IsVisible() then
+            view:Refresh()
+        end
+    end
+    if CRT.Notes and CRT.Notes.OnChange then
+        CRT.Notes:OnChange(changed)
+    end
+    if CRT.Alerts and CRT.Alerts.OnChange then
+        CRT.Alerts:OnChange(changed)
+    end
     return view
 end
 
@@ -426,6 +488,7 @@ function Methods:Icon(n)
         b:SetScript("OnEnter", iconEnter)
         b:SetScript("OnLeave", hideTip)
         b:SetScript("OnMouseDown", function(_, button)
+            self.clickAt = nil -- a click here is the icon's, so it never pairs with one on the track
             self:StartDrag(button)
         end)
         b:SetScript("OnMouseUp", function()
@@ -438,10 +501,38 @@ function Methods:Icon(n)
     end)
 end
 
--- Double-click on a cast icon opens the reminder editor for that boss with the spell and the time
--- filled in. Deaths and the overlaid pull's ticks do nothing. Reminders are keyed by encounter ID: a
--- boss shown under a reference's name uses the reference's Encounter line, or the boss the Journal
--- finds by that name, and only when neither is known asks to be pulled once first.
+-- The boss's encounter ID as a number: a boss shown under a reference's name uses the reference's
+-- Encounter line, or the boss the Journal finds by that name. Nil when neither is known.
+function Methods:EncounterNumber()
+    local encounterID = self.encounterID
+    if type(encounterID) ~= "number" and CRT.TimelineJournal and CRT.TimelineJournal.ResolveID then
+        encounterID = CRT.TimelineJournal:ResolveID(encounterID, self.pull and self.pull.reference)
+    end
+    return type(encounterID) == "number" and encounterID or nil
+end
+
+-- Opens the editor on a new alert t seconds from the pull, as phase + seconds through the shown
+-- reference's phase lines (on a recorded pull, phase 1 from the pull), saved as your own by default.
+-- Reminders are keyed by encounter ID, so a boss with none asks to be pulled once first.
+function Methods:OpenAt(t, spellID, text)
+    local encounterID = self:EncounterNumber()
+    if not encounterID then
+        CRT:Print(TEXT.needPull)
+        return
+    end
+    local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
+    CRT.AlertEditor:Open(encounterID, nil, {
+        spellID = spellID,
+        text = text or (spellID and CRT.AlertReminders.SpellName(spellID)) or nil,
+        ph = ph,
+        time = tenth(seconds),
+        boss = self.bossName,
+        saveAs = "mine",
+    })
+end
+
+-- Double-click on a cast icon opens the editor for that boss with the spell and the time filled in.
+-- Deaths and the overlaid pull's ticks do nothing.
 function Methods:IconDoubleClick(b)
     -- the click's mouse-down started a drag; undo it so the view stays where it was
     if self.dragX then
@@ -452,21 +543,7 @@ function Methods:IconDoubleClick(b)
     if not (lane and mark and type(mark.t) == "number") or mark.death then
         return
     end
-    local times
-    if lane.kind == "reference" and self.pull and self.pull.reference then
-        local ref = self.pull.reference
-        times = CRT.AlertReminders.FromReference({ phases = ref.phases }, { casts = { { t = mark.t } } })
-    elseif lane.kind == "spell" or lane.kind == "unnamed" then
-        times = { { ph = 1, t = math.floor(mark.t + 0.5) } }
-    else
-        return
-    end
-    local encounterID = self.encounterID
-    if type(encounterID) ~= "number" and CRT.TimelineJournal and CRT.TimelineJournal.ResolveID then
-        encounterID = CRT.TimelineJournal:ResolveID(encounterID, self.pull and self.pull.reference)
-    end
-    if type(encounterID) ~= "number" then
-        CRT:Print("Reminders need the boss pulled once, or its reference to have an Encounter line.")
+    if not (lane.kind == "reference" or lane.kind == "spell" or lane.kind == "unnamed") then
         return
     end
     -- the lane's spell, else the cast's own (an unnamed lane holds casts the Journal doesn't list)
@@ -479,12 +556,192 @@ function Methods:IconDoubleClick(b)
     if not text and lane.kind == "reference" and type(lane.label) == "string" and lane.label ~= "" then
         text = lane.label
     end
-    CRT.AlertEditor:Open(encounterID, nil, {
-        spellID = spellID,
-        text = text,
-        times = CRT.AlertReminders.FormatTimes(times),
-        boss = self.bossName,
-    })
+    self:OpenAt(mark.t, spellID, text)
+end
+
+-- The lane under the cursor, from its height in the track; nil below the last lane.
+function Methods:LaneAt()
+    local _, y = GetCursorPosition()
+    local top = self.hscroll:GetTop()
+    if not top then
+        return nil
+    end
+    local i = math.floor((top - y / self.hscroll:GetEffectiveScale()) / ROW_H) + 1
+    return self.lanes[i]
+end
+
+-- A left click on the track itself (icons and markers take their own clicks). The second of two
+-- within DOUBLE_TIME seconds and DOUBLE_DIST pixels is a double-click; a single click does nothing.
+function Methods:TrackClick(button)
+    if button ~= "LeftButton" or not self.pull then
+        return
+    end
+    local scale = self.hscroll:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    x, y = x / scale, y / scale
+    local now = GetTime()
+    if self.clickAt and now - self.clickAt <= DOUBLE_TIME
+        and math.abs(x - self.clickX) <= DOUBLE_DIST and math.abs(y - self.clickY) <= DOUBLE_DIST then
+        self.clickAt = nil
+        self:TrackDoubleClick()
+    else
+        self.clickAt, self.clickX, self.clickY = now, x, y
+    end
+end
+
+-- Drops a new alert at the cursor: an ability row gives its spell (a reference row with none, its
+-- name); the Deaths row, the ticks, the Notes row and empty space give the time only.
+function Methods:TrackDoubleClick()
+    local length = math.max(1, self.extra.length or 0)
+    local x = self.hscroll:GetHorizontalScroll() + cursorX(self.hscroll)
+    local t = math.max(0, math.min(length, View.XToTime(x, length, self.trackW)))
+    local lane = self:LaneAt()
+    local spellID, text
+    if lane and (lane.kind == "reference" or lane.kind == "spell") then
+        spellID = type(lane.spellID) == "number" and lane.spellID > 0 and lane.spellID or nil
+        if not spellID and lane.kind == "reference" and type(lane.label) == "string" and lane.label ~= "" then
+            text = lane.label
+        end
+    end
+    self:OpenAt(t, spellID, text)
+end
+
+-- Markers -------------------------------------------------------------------------------------------
+
+local function lowerTrim(s)
+    return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")):lower()
+end
+
+-- The lane of an ability row for a marker: by spell, else by the row's name; nil for none.
+local function rowFor(lanes, spellID, text)
+    local want = type(spellID) == "number" and spellID > 0 and spellID or nil
+    local name = type(text) == "string" and lowerTrim(text) or ""
+    for i, lane in ipairs(lanes) do
+        if (lane.kind == "reference" or lane.kind == "spell") and want and lane.spellID == want then
+            return i
+        end
+    end
+    if name ~= "" then
+        for i, lane in ipairs(lanes) do
+            if (lane.kind == "reference" or lane.kind == "spell") and lowerTrim(lane.label) == name then
+                return i
+            end
+        end
+    end
+    return nil
+end
+
+-- The boss's saved alerts that have a time on what is shown: every timed line of its raid notes (each
+-- difficulty's note) and every time of your reminders. On a recorded pull only phase 1 can be placed.
+-- Each gets the lane it goes on; those with no row of their own go on a Notes lane, added at the
+-- bottom of lanes. Returns { { t, ph, time, row, text, tags, mine, noteID, line, difficulty, id } }.
+function Methods:Marks(lanes, length)
+    local out = {}
+    local Reminders = CRT.AlertReminders
+    local encounterID = self.pull and Reminders and self:EncounterNumber()
+    if not encounterID then
+        return out
+    end
+    local ref = self.pull.reference
+    local function add(m, spellID, text)
+        m.t = Reminders.AbsoluteTime(ref, m.ph, m.time)
+        if not (m.t and m.t >= 0 and m.t <= length) then
+            return
+        end
+        m.text = (type(text) == "string" and text ~= "" and text) or Reminders.SpellName(spellID)
+            or (type(spellID) == "number" and string.format(TEXT.spell, spellID)) or TEXT.reminder
+        m.row = rowFor(lanes, spellID, text)
+        out[#out + 1] = m
+    end
+    local Notes = CRT.Notes
+    if Notes and Notes.List then
+        for _, n in ipairs(Notes:List()) do
+            if n.record.encounterID == encounterID then
+                local note = Notes:Parsed(n.id)
+                for _, timer in ipairs(note and note.timers or {}) do
+                    add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
+                        difficulty = n.record.difficulty }, timer.spellId, timer.text)
+                end
+            end
+        end
+    end
+    for _, e in ipairs(Reminders:List(encounterID)) do
+        for _, at in ipairs((Reminders:Times(encounterID, e.r))) do
+            add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id }, e.r.spellID, e.r.text)
+        end
+    end
+    local notesRow
+    for _, m in ipairs(out) do
+        if not m.row then
+            if not notesRow then
+                lanes[#lanes + 1] = { key = "notes", label = TEXT.notes, icon = NOTES_ICON, kind = "notes", marks = {} }
+                notesRow = #lanes
+            end
+            m.row = notesRow
+        end
+    end
+    return out
+end
+
+-- One marker from the pool: a pole with a flag at its top.
+function Methods:Flag(n)
+    return pooled(self.flags, n, function()
+        local f = CreateFrame("Button", nil, self.track)
+        f:SetSize(FLAG_W, ROW_H - 6)
+        f:EnableMouse(true)
+        f.pole = f:CreateTexture(nil, "ARTWORK")
+        f.pole:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+        f.pole:SetSize(2, ROW_H - 6)
+        f.head = f:CreateTexture(nil, "ARTWORK")
+        f.head:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+        f.head:SetSize(FLAG_W, FLAG_HEAD)
+        f:SetScript("OnEnter", flagEnter)
+        f:SetScript("OnLeave", hideTip)
+        f:SetScript("OnMouseDown", function(_, button)
+            self.clickAt = nil
+            self:StartDrag(button)
+        end)
+        f:SetScript("OnMouseUp", function()
+            self:StopDrag()
+        end)
+        f:SetScript("OnDoubleClick", function()
+            self:FlagDoubleClick(f)
+        end)
+        return f
+    end)
+end
+
+-- Opens a marker's note line or reminder in the editor.
+function Methods:FlagDoubleClick(f)
+    if self.dragX then
+        self:ScrollTo(self.dragFrom)
+        self:StopDrag()
+    end
+    local m = f.mark
+    if not m then
+        return
+    end
+    if m.noteID then
+        CRT.AlertEditor:OpenNote(m.noteID, m.line)
+    else
+        CRT.AlertEditor:Open(m.encounterID, m.id)
+    end
+end
+
+-- Draws the markers above the icons: raid note lines in caramel, your reminders in cream.
+function Methods:DrawMarks(length)
+    local level = (self.track:GetFrameLevel() or 0) + 8
+    for n, m in ipairs(self.marks) do
+        local f = self:Flag(n)
+        f.mark = m
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(m.t, length, self.trackW) - 1, -(m.row - 1) * ROW_H - 3)
+        f:SetFrameLevel(level)
+        local key = m.mine and "cream" or "caramel"
+        f.pole:SetColorTexture(mocha(key))
+        f.head:SetColorTexture(mocha(key))
+    end
+    hideFrom(self.flags, #self.marks + 1)
 end
 
 function Methods:Label(n)
@@ -661,6 +918,8 @@ function Methods:Refresh()
     local lanes = self.lanes
     local width = self:VisibleWidth()
     local length = pull and math.max(1, self.extra.length or 0) or 1
+    -- the saved notes' markers, collected before the lanes are drawn since they may add the Notes lane
+    self.marks = self:Marks(lanes, length)
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1
     local height = math.max(1, #lanes * ROW_H)
     self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), height)
@@ -774,5 +1033,6 @@ function Methods:Refresh()
         names[#names + 1] = death.name or "Unknown"
     end
     self.unknownText:SetText(#names > 0 and ("Time unknown: " .. table.concat(names, ", ")) or "")
+    self:DrawMarks(length)
     self:ScrollTo(self.hscroll:GetHorizontalScroll())
 end

@@ -49,22 +49,48 @@ function Reminders.PhaseNumber(label)
     return num and tonumber(num) or nil
 end
 
--- The casts of a reference row as { ph, t }: the phase is that of the last numbered phase line at or
--- before the cast (1 before any), and t counts from that line (from the pull before any).
+-- The phase and the seconds into it of a time t from the pull: the phase is that of the last numbered
+-- phase line at or before t (1 before any), and the seconds count from that line (from the pull before
+-- any). With no reference (a recorded pull) it is phase 1 from the pull.
+function Reminders.PhaseAt(ref, t)
+    local ph, from = 1, 0
+    for _, p in ipairs(ref and ref.phases or {}) do
+        local n = Reminders.PhaseNumber(p.label)
+        if n and type(p.t) == "number" and p.t <= t then
+            ph, from = n, p.t
+        end
+    end
+    return ph, t - from
+end
+
+-- The reverse of PhaseAt: the time from the pull of seconds into phase ph, through the reference's
+-- first phase line of that number. Phase 1 with no line of its own starts at the pull. Nil for a phase
+-- the reference doesn't have, and for any phase above 1 with no reference (a recorded pull, whose
+-- phase times aren't known).
+function Reminders.AbsoluteTime(ref, ph, seconds)
+    if type(ph) ~= "number" or type(seconds) ~= "number" then
+        return nil
+    end
+    for _, p in ipairs(ref and ref.phases or {}) do
+        if type(p.t) == "number" and Reminders.PhaseNumber(p.label) == ph then
+            return p.t + seconds
+        end
+    end
+    if ph == 1 then
+        return seconds
+    end
+    return nil
+end
+
+-- The casts of a reference row as { ph, t }, each through PhaseAt.
 function Reminders.FromReference(ref, row)
     local out = {}
     if not (ref and row) then
         return out
     end
     for _, cast in ipairs(row.casts or {}) do
-        local ph, from = 1, 0
-        for _, p in ipairs(ref.phases or {}) do
-            local n = Reminders.PhaseNumber(p.label)
-            if n and p.t <= cast.t then
-                ph, from = n, p.t
-            end
-        end
-        out[#out + 1] = { ph = ph, t = cast.t - from }
+        local ph, t = Reminders.PhaseAt(ref, cast.t)
+        out[#out + 1] = { ph = ph, t = t }
     end
     return out
 end
