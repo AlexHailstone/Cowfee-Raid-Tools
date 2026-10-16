@@ -220,8 +220,10 @@ local defaults = {
     -- you turned off on the Reminders tab; position is added when the window is moved.
     markers = { disabled = {} },
     -- Pace (Pace/): own[encounterID] is your own plan, used in place of the shipped one;
-    -- disabled[encounterID] turns a boss's pace window off; shown turns the window off everywhere.
-    pace = { disabled = {}, own = {}, shown = true },
+    -- disabled[encounterID] turns a boss's pace window off; shown turns the window off everywhere;
+    -- shared[encounterID] is the raid's plan, shared by the raid leader or an assistant (Pace/Comm.lua),
+    -- and use[encounterID] = "own" uses your own plan in place of it.
+    pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
         areas = {

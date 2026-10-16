@@ -73,6 +73,7 @@ Markers\Display.lua
 Pace\Database.lua
 Pace\Data.lua
 Pace\Display.lua
+Pace\Comm.lua
 Pace\Page.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua

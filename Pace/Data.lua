@@ -1,9 +1,12 @@
 local ADDON, CRT = ...
 
 -- Pace: where a boss's health should be at each point of the fight, to compare with where it is.
--- A plan is shipped (Pace/Database.lua) or your own (CRTDB.pace.own[encounterID], used in place of the
--- shipped one), with a mode ("phase" or "time") and rows of phase, seconds, boss unit and expected
--- health. CRTDB.pace.disabled[encounterID] turns a boss's pace window off for you.
+-- A boss can have three plans: the raid's (shared by the raid leader or an assistant, Pace/Comm.lua,
+-- in CRTDB.pace.shared[encounterID]), your own (CRTDB.pace.own[encounterID]) and the shipped one
+-- (Pace/Database.lua). The plan in use is the raid's while there is one, unless you switched that boss
+-- to your own (CRTDB.pace.use[encounterID] = "own"); a new share always switches you back to the
+-- raid's. Then your own, then the shipped one. Each has a mode ("phase" or "time") and rows of phase,
+-- seconds, boss unit and expected health. CRTDB.pace.disabled[encounterID] turns a boss off for you.
 --
 -- Phases come from the alerts engine's phase clock (the pull, a phase event or Next phase), so in
 -- "phase" mode a row's seconds count from when its phase started. In "time" mode they count from the
@@ -37,9 +40,51 @@ local function copyPlan(plan)
     return out
 end
 
--- The plan for a boss: your own, else the shipped one, else nil.
+-- The plan in use for a boss, and where it comes from: "raid", "own", "shipped", or nil.
+function Pace:Source(encounterID)
+    if not encounterID then
+        return nil
+    end
+    if db().shared[encounterID] and db().use[encounterID] ~= "own" then
+        return "raid"
+    elseif db().own[encounterID] then
+        return "own"
+    elseif CRT.PaceDB.bosses[encounterID] then
+        return "shipped"
+    end
+    return nil
+end
+
 function Pace:Plan(encounterID)
-    return encounterID and (db().own[encounterID] or CRT.PaceDB.bosses[encounterID]) or nil
+    local source = self:Source(encounterID)
+    if source == "raid" then
+        return db().shared[encounterID]
+    elseif source == "own" then
+        return db().own[encounterID]
+    elseif source == "shipped" then
+        return CRT.PaceDB.bosses[encounterID]
+    end
+    return nil
+end
+
+function Pace:Shared(encounterID)
+    return encounterID and db().shared[encounterID] or nil
+end
+
+-- Which plan to use for a boss: "raid" or "own".
+function Pace:SetUse(encounterID, use)
+    db().use[encounterID] = (use == "own") and "own" or nil
+    self:Fire()
+end
+
+function Pace:BossName(encounterID)
+    local list = CRT.NoteReminders and CRT.NoteReminders.BossList and CRT.NoteReminders.BossList() or {}
+    for _, b in ipairs(list) do
+        if b.key == encounterID then
+            return b.name or b.label
+        end
+    end
+    return "encounter " .. tostring(encounterID)
 end
 
 function Pace:IsOwn(encounterID)
@@ -50,12 +95,16 @@ function Pace:IsShipped(encounterID)
     return encounterID and CRT.PaceDB.bosses[encounterID] ~= nil or false
 end
 
--- Your own copy of a boss's plan, made from the shipped one (or empty) the first time it is edited.
+-- Your own plan for a boss, made from the plan in use (or empty) the first time it is edited. Editing
+-- always edits your own plan and makes it the one in use, so you see your change.
 local function own(encounterID)
     local mine = db().own[encounterID]
     if not mine then
-        mine = copyPlan(CRT.PaceDB.bosses[encounterID] or {})
+        mine = copyPlan(Pace:Plan(encounterID) or {})
         db().own[encounterID] = mine
+    end
+    if db().shared[encounterID] then
+        db().use[encounterID] = "own"
     end
     return mine
 end
@@ -93,6 +142,7 @@ end
 -- Back to the shipped plan (or none), dropping your own.
 function Pace:Reset(encounterID)
     db().own[encounterID] = nil
+    db().use[encounterID] = nil
     self:Fire()
 end
 
@@ -186,8 +236,8 @@ function Pace:ExportLua(encounterID)
     return string.format('[%d] = { mode = %q, rows = { %s } },', encounterID, plan.mode or "phase", table.concat(rows, ", "))
 end
 
--- Replaces your plan for a boss with pasted text. Returns the number of rows, or nil and the reason.
-function Pace:Import(encounterID, text)
+-- Reads plan text into a plan. Returns the plan and its number of rows, or nil and the reason.
+local function parse(text)
     local plan = { mode = "phase", rows = {} }
     local n = 0
     for line in (text or ""):gmatch("[^\r\n]+") do
@@ -208,7 +258,41 @@ function Pace:Import(encounterID, text)
         return nil, "Nothing to import."
     end
     sortRows(plan.rows)
+    return plan, n
+end
+
+-- Replaces your own plan for a boss with pasted text, and uses it. Returns the number of rows, or nil
+-- and the reason.
+function Pace:Import(encounterID, text)
+    local plan, n = parse(text)
+    if not plan then
+        return nil, n
+    end
     db().own[encounterID] = plan
+    if db().shared[encounterID] then
+        db().use[encounterID] = "own"
+    end
     self:Fire()
     return n
+end
+
+-- A plan shared by the raid leader or an assistant: saved as the raid's plan and put in use, leaving
+-- your own plan as it is. Returns the number of rows, or nil and the reason.
+function Pace:ReceiveShared(encounterID, text, from)
+    local plan, n = parse(text)
+    if not plan then
+        return nil, n
+    end
+    plan.from, plan.at = from, time()
+    db().shared[encounterID] = plan
+    db().use[encounterID] = nil
+    self:Fire()
+    return n
+end
+
+-- Drops the raid's plan for a boss, going back to your own or the shipped one.
+function Pace:ClearShared(encounterID)
+    db().shared[encounterID] = nil
+    db().use[encounterID] = nil
+    self:Fire()
 end

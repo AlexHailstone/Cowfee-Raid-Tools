@@ -27,8 +27,15 @@ local TEXT = {
     noBoss = "No bosses yet: pull one, stand in its raid, or add its reference on the Timeline.",
     noRows = "Add your next checkpoint above, or Import a list.",
     start = "start, automatic",
-    shipped = "Shipped with the addon",
-    yours = "Your own plan",
+    shipped = "In use: the plan shipped with the addon",
+    yours = "In use: your own plan",
+    raid = "In use: the raid's plan, shared by %s",
+    use = "Plan in use",
+    useRaid = "The raid's plan (from %s)",
+    useOwn = "Your own plan",
+    share = "Share to raid",
+    shareAll = "Share all",
+    shareHelp = "Share to raid sends this boss's plan in use to everyone in the group with the addon; Share all sends every boss that has one. Only the raid leader or an assistant can share, and only their plans are accepted.\n\nA shared plan is saved as the raid's plan, apart from each raider's own, and becomes the plan in use. Sharing again always puts everyone back on the raid's plan. Anyone can switch a boss to their own plan under Plan in use, and editing a boss's rows switches you to your own plan.\n\nAddon messages are blocked during a boss fight, so share before the pull.",
 }
 
 local MODES = { { key = "phase", label = "By phase (seconds into each phase)" }, { key = "time", label = "By time from the pull" } }
@@ -230,7 +237,9 @@ refresh = function()
     if not id then
         statusText:SetText(TEXT.noBoss)
     else
-        statusText:SetText(Pace:IsOwn(id) and TEXT.yours or (Pace:IsShipped(id) and TEXT.shipped or ""))
+        local source = Pace:Source(id)
+        local shared = Pace:Shared(id)
+        statusText:SetText((source == "raid" and string.format(TEXT.raid, shared.from or "?")) or (source == "own" and TEXT.yours) or (source == "shipped" and TEXT.shipped) or "")
     end
     emptyText:SetShown(id ~= nil and #list == 0)
     startRow:SetShown(id ~= nil)
@@ -342,6 +351,29 @@ local function build(pf)
     head:SetText("Phase             Time                    Unit                    Expected")
     statusText = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     statusText:SetPoint("TOPLEFT", 8, -150)
+    local useRow = UI.Dropdown(pf, TEXT.use, { labelWidth = 80, width = 200,
+        options = function()
+            local shared = boss() and Pace:Shared(boss())
+            local out = {}
+            if shared then
+                out[#out + 1] = { key = "raid", label = string.format(TEXT.useRaid, shared.from or "?") }
+            end
+            out[#out + 1] = { key = "own", label = TEXT.useOwn }
+            return out
+        end,
+        get = function()
+            return Pace:Source(boss()) == "raid" and "raid" or "own"
+        end,
+        set = function(key)
+            Pace:SetUse(boss(), key)
+        end })
+    useRow:SetPoint("TOPLEFT", 330, -142)
+    local useRefresh = useRow.refresh
+    useRow.refresh = function()
+        useRefresh()
+        useRow:SetShown(boss() ~= nil and Pace:Shared(boss()) ~= nil)
+    end
+    controls[#controls + 1] = useRow
     emptyText = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     emptyText:SetPoint("TOPLEFT", 16, -222)
     emptyText:SetText(TEXT.noRows)
@@ -408,6 +440,28 @@ local function build(pf)
         d.edit:SetFocus()
         d.edit:HighlightText()
     end)
+    -- Sharing, for the raid leader and assistants.
+    local share = button(pf, TEXT.share, 120)
+    share:SetPoint("BOTTOMRIGHT", -8, 10)
+    share:SetScript("OnClick", function()
+        if boss() then
+            CRT.PaceComm:Share({ boss() })
+        end
+    end)
+    local shareAll = button(pf, TEXT.shareAll, 90)
+    shareAll:SetPoint("RIGHT", share, "LEFT", -6, 0)
+    shareAll:SetScript("OnClick", function()
+        CRT.PaceComm:Share(CRT.PaceComm:AllPlanned())
+    end)
+    UI.Help(pf, TEXT.share, TEXT.shareHelp):SetPoint("RIGHT", shareAll, "LEFT", -4, 0)
+    controls[#controls + 1] = {
+        refresh = function()
+            local can = CRT.PaceComm:CanShare()
+            share:SetEnabled(can and boss() ~= nil and Pace:Plan(boss()) ~= nil)
+            shareAll:SetEnabled(can and true or false)
+        end,
+    }
+
     local reset = button(pf, TEXT.reset, 140)
     reset:SetPoint("LEFT", export, "RIGHT", 6, 0)
     reset:SetScript("OnClick", function()
