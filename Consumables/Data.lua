@@ -226,6 +226,9 @@ end
 -- are kept until then too. Reading every bag slot twice a second made thousands of tables a minute.
 
 local bagNames = {} -- names of items in your bags, keyed by item ID; the game's own name is what /use needs
+-- Item IDs in your bags by name. Crafted consumables come in quality ranks with an item ID each but
+-- the same name, so a listed item also counts its other ranks found in your bags this way.
+local bagByName = {}
 local countCache = {} -- item ID -> count in your bags, until the bags change
 local bagsDirty = true
 
@@ -293,6 +296,7 @@ function Consumables:RefreshBags(force)
     end
     bagsDirty = false
     wipe(bagNames)
+    wipe(bagByName)
     if not (C_Container and C_Container.GetContainerItemInfo and C_Container.GetContainerNumSlots) then
         return
     end
@@ -303,6 +307,12 @@ function Consumables:RefreshBags(force)
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info and info.itemID and info.itemName and not bagNames[info.itemID] then
                 bagNames[info.itemID] = info.itemName
+                local ids = bagByName[info.itemName]
+                if not ids then
+                    ids = {}
+                    bagByName[info.itemName] = ids
+                end
+                ids[#ids + 1] = info.itemID
             end
         end
     end
@@ -328,13 +338,32 @@ function Consumables:ItemName(entry)
     return entry.name or ("Item " .. entry.item)
 end
 
--- The entry a click on this slot should use: the first listed item that is in your bags.
--- Returns { id, name, icon, count } or nil. The name is the one the game gave your bags.
+-- The item IDs in your bags for an entry: its own ID and any other quality rank of it (an item of
+-- the same name). Read from the last bag read.
+local function bagIds(entry)
+    local ids = {}
+    if bagNames[entry.item] then
+        ids[1] = entry.item
+    end
+    local name = Consumables:ItemName(entry)
+    for _, id in ipairs(bagByName[name] or {}) do
+        if id ~= entry.item then
+            ids[#ids + 1] = id
+        end
+    end
+    return ids
+end
+Consumables.BagIds = bagIds
+
+-- The entry a click on this slot should use: the first listed item that is in your bags, in any
+-- quality rank. Returns { id, name, icon, count } or nil. The name is the one the game gave your bags.
 function Consumables:NextItem(key)
     for _, entry in ipairs(self:Entries(key)) do
-        local count = itemCount(entry.item)
-        if count > 0 and bagNames[entry.item] then
-            return { id = entry.item, name = bagNames[entry.item], icon = itemIcon(entry.item), count = count }
+        for _, id in ipairs(bagIds(entry)) do
+            local count = itemCount(id)
+            if count > 0 and bagNames[id] then
+                return { id = id, name = bagNames[id], icon = itemIcon(id), count = count }
+            end
         end
     end
     return nil
@@ -560,10 +589,21 @@ end)
 
 -- Status ------------------------------------------------------------------
 
+-- Everything in your bags for a category, every quality rank included. A rank in your bags under
+-- two entries (one listed by ID, the other by its name) is counted once.
 local function totalCount(entries)
-    local total = 0
+    local total, counted = 0, {}
     for _, entry in ipairs(entries) do
-        total = total + itemCount(entry.item)
+        if not counted[entry.item] then
+            counted[entry.item] = true
+            total = total + itemCount(entry.item)
+        end
+        for _, id in ipairs(bagIds(entry)) do
+            if not counted[id] then
+                counted[id] = true
+                total = total + itemCount(id)
+            end
+        end
     end
     return total
 end
