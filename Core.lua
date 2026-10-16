@@ -7,8 +7,9 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 local defaults = {
     window = { point = "CENTER", x = 0, y = 0, scale = 100 }, -- the main panel; scale is a percent, 50 to 200
     -- The General Settings page. font is "default" (the game's own) or a name from CRT.FONTS, outline is
-    -- "", "OUTLINE" or "THICKOUTLINE", textSize a percent. style is "game" (the game's window art) or
-    -- "minimal" (flat black), bgAlpha the main window background's opacity in percent. layers holds a
+    -- "", "OUTLINE" or "THICKOUTLINE", fontSize the body text size in points (set the first time from
+    -- textSize, the percent used before 0.17.2). style is "game" (the game's window art) or
+    -- "minimal" (flat black), bgAlpha the main window's opacity in percent (30 to 100). layers holds a
     -- frame strata for each kind of window moved off its default (UI.LAYERS in UI/Panel.lua).
     -- soundChannel is the game sound channel every sound the addon plays goes through (CRT:PlaySound).
     -- modern is the Modern look (UI:ApplyStyle in UI/Panel.lua); off is the Classic look.
@@ -340,7 +341,13 @@ function CRT:ApplyFonts()
     if not s then
         return
     end
-    local factor = (s.textSize or 100) / 100
+    -- Text size is fontSize, the body text size in points (8 to 22); headings and small text keep
+    -- their sizes relative to it. Before 0.17.2 it was textSize, a percent, which becomes the nearest
+    -- point size the first time.
+    if not s.fontSize then
+        s.fontSize = math.max(8, math.min(22, math.floor(self.BODY_SIZE * (s.textSize or 100) / 100 + 0.5)))
+    end
+    local factor = s.fontSize / self.BODY_SIZE
     local modern = s.modern
     -- Arial Narrow is drawn smaller than the game's font at the same size, so Modern sizes it up a step.
     local modernDefault = modern and not self:FontPath(s.font)
@@ -384,6 +391,8 @@ function CRT:SetAddonFont(name)
 end
 
 makeFont("CRTFontNormal", GameFontNormal)
+-- The body text size in points at the default text size: the game's normal font scaled up.
+CRT.BODY_SIZE = fonts[1].size
 makeFont("CRTFontHighlight", GameFontHighlight)
 makeFont("CRTFontDisable", GameFontDisable)
 makeFont("CRTFontSmall", GameFontHighlightSmall)

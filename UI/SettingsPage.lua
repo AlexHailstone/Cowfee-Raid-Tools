@@ -23,6 +23,12 @@ local STYLES = {
     { key = "game", label = "Game window" },
     { key = "minimal", label = "Minimal black" },
 }
+-- Text size in points, for the body text: 8 to 22 pt.
+local TEXT_SIZES = {}
+for pt = 8, 22 do
+    TEXT_SIZES[#TEXT_SIZES + 1] = { key = pt, label = pt .. " pt" }
+end
+
 local OUTLINES = {
     { key = "", label = "None" },
     { key = "OUTLINE", label = "Outline" },
@@ -229,7 +235,7 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "Modern look gives the whole addon coffee colors, flat dropdowns and buttons, the menu in grouped blocks, and Arial Narrow text when the font below is Default. Unticked, it uses the Classic look, with the Style choice below.\n\nWindow Scale applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.\n\nIn the Classic look, Minimal black swaps the game's stone and marble window art for a flat black background. Background sets the opacity of the window's background and frame art, never the text or buttons.")
+    heading(pf, x, -44, "Window", "Modern look gives the whole addon coffee colors, flat dropdowns and buttons, the menu in grouped blocks, and Arial Narrow text when the font below is Default. Unticked, it uses the Classic look, with the Style choice below.\n\nWindow Scale applies when you let go of the slider. Ctrl + mouse wheel over the window also changes it.\n\nIn the Classic look, Minimal black swaps the game's stone and marble window art for a flat black background. Opacity fades the whole window, text and buttons included, down to 30%.")
     checkbox(pf, x, -62, "Modern look (unticked: Classic)", function()
         return ui().modern
     end, function(on)
@@ -274,15 +280,15 @@ local function buildLeft(pf)
             refresh()
         end,
     }), x, -148)
-    add(UI.Slider(pf, "Background", {
-        min = 0,
+    add(UI.Slider(pf, "Opacity", {
+        min = 30,
         max = 100,
         step = 5,
         labelWidth = LABEL_W,
         width = CONTROL_W,
         format = percent,
         get = function()
-            return ui().bgAlpha
+            return math.max(30, ui().bgAlpha or 100)
         end,
         set = function(v)
             ui().bgAlpha = v
@@ -290,7 +296,7 @@ local function buildLeft(pf)
         end,
     }), x, -180)
 
-    heading(pf, x, -224, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Default is the game's own font in the Classic look and Arial Narrow in the Modern look. The game's font also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
+    heading(pf, x, -224, "Text", "The font, outline and size of every text the addon draws: this window, the note windows and their titles, your next spell alert, and the ready check bar and window.\n\nThe font list has the game's fonts, plus any font other addons share through LibSharedMedia, when one of them is installed. Default is the game's own font in the Classic look and Arial Narrow in the Modern look. The game's font also suits clients in other languages.\n\nChanging the font sets every note window to it too. You can still give a note window its own font on Raid Notes afterwards. Text size is the body text size in points, 8 to 22 pt (14 pt is the default); headings and small text grow or shrink with it. It doesn't change the note windows, which have their own size.\n\nBoss debuff timers are drawn by the game in its own font, which no addon can change, so the debuff preview keeps that font too.")
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
         labelWidth = LABEL_W,
@@ -320,20 +326,17 @@ local function buildLeft(pf)
             refresh()
         end,
     }), x, -286)
-    add(UI.Slider(pf, "Text size", {
-        min = 80,
-        max = 150,
-        step = 5,
+    add(UI.Dropdown(pf, "Text size", {
+        options = TEXT_SIZES,
         labelWidth = LABEL_W,
         width = CONTROL_W,
-        format = percent,
-        onRelease = true,
         get = function()
-            return ui().textSize
+            return ui().fontSize
         end,
-        set = function(v)
-            ui().textSize = v
+        set = function(pt)
+            ui().fontSize = pt
             CRT:ApplyFonts()
+            refresh()
         end,
     }), x, -318)
 
