@@ -171,7 +171,12 @@ local function draw(w, line, now, s, shownAt)
     local at = line.at
     local c = Areas.LineColor(line) or WHITE
     w.ring:SetSize(size, size)
+    -- an alert's own colour wins on the ring, like on bars; the ring colour setting is for the rest
     local texture, ring = ringTexture(s), ringColor(s)
+    local r, g, b, a = ring[1], ring[2], ring[3], ring[4]
+    if c ~= WHITE then
+        r, g, b = c[1], c[2], c[3]
+    end
     if w.ringTexture ~= texture then
         w.ringTexture = texture
         w.track:SetTexture(texture)
@@ -179,9 +184,9 @@ local function draw(w, line, now, s, shownAt)
             w.cooldown:SetSwipeTexture(texture)
         end
     end
-    w.track:SetVertexColor(ring[1], ring[2], ring[3], ring[4] * TRACK_ALPHA)
+    w.track:SetVertexColor(r, g, b, a * TRACK_ALPHA)
     if w.cooldown.SetSwipeColor then
-        w.cooldown:SetSwipeColor(ring[1], ring[2], ring[3], ring[4])
+        w.cooldown:SetSwipeColor(r, g, b, a)
     end
     local total = at - (shownAt or now)
     if type(line.warn) == "number" then
