@@ -66,6 +66,7 @@ Alerts\Bars.lua
 Alerts\Areas.lua
 Alerts\Texts.lua
 Alerts\Icons.lua
+Alerts\Circles.lua
 Alerts\Editor.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
