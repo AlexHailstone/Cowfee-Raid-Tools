@@ -28,6 +28,7 @@ Consumables\Page.lua
 ReadyCheck\Report.lua
 ReadyCheck\Window.lua
 ReadyCheck\BuffLock.lua
+ReadyCheck\EarlyPull.lua
 ReadyCheck\Page.lua
 Debuffs\Data.lua
 Debuffs\Panel.lua

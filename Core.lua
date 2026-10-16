@@ -53,6 +53,8 @@ local defaults = {
         include = { food = true, flask = true, rune = true, vantus = false, buffs = true },
         buffLock = true, -- grey out your Ready button until everyone has your class's raid buff
         fadeOnPull = true, -- fade out your bar and the ready check window when a pull timer starts
+        earlyPull = true, -- report who entered combat first when it happens before a pull timer ends
+        earlyPullOutput = "self", -- where that report goes: "self", "raid" or "officer"
         food = "any", -- before 0.13.2: "best" counted only the best food. Ignored now.
         flaskWarn = 5,
         lowFlask = true,
