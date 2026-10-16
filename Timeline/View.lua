@@ -994,13 +994,22 @@ local function overTrack(self)
         and y <= vtop and y >= vtop - (self.vscroll:GetHeight() or 0)
 end
 
+-- Whether the cursor is over the open alert editor, which sits above the track: a drag let go there was
+-- aimed at the editor, not the track.
+local function overEditor()
+    local E = CRT.AlertEditor
+    local f = E and E.Frame and E:Frame()
+    return f ~= nil and f:IsShown() and MouseIsOver ~= nil and MouseIsOver(f) and true or false
+end
+
 -- The left button let go of a flag. Under MOVE_DIST pixels it was a click. Otherwise Alt at this moment
--- decides: held adds a time, else the alert moves. A release off the track cancels the drag. A refused
--- write (the alert is no longer what was grabbed) says so and leaves the flag be.
+-- decides: held adds a time, else the alert moves. A release off the track, or over the open alert
+-- editor, cancels the drag. A refused write (the alert is no longer what was grabbed) says so and leaves
+-- the flag be.
 function Methods:FinishMove()
     local mv = self.move
     self:CancelMove()
-    if not mv or math.abs(cursorScreenX(self) - mv.x0) < MOVE_DIST or not overTrack(self) then
+    if not mv or math.abs(cursorScreenX(self) - mv.x0) < MOVE_DIST or not overTrack(self) or overEditor() then
         return
     end
     local m = mv.m
@@ -1529,7 +1538,7 @@ function Methods:UpdateChipMove()
     g:ClearAllPoints()
     g:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
     g:Show()
-    if self.pull and overTrack(self) then
+    if self.pull and overTrack(self) and not overEditor() then
         local tx, ty = cursorOnTrack(self)
         self:DrawDropLine(self:TimeAtX(tx), ty)
     elseif self.dropLine then
@@ -1538,11 +1547,11 @@ function Methods:UpdateChipMove()
 end
 
 -- The left button let go of a chip. Not moved, it was a click and does nothing; released over the track,
--- the saved alert is placed there; anywhere else, nothing.
+-- the saved alert is placed there; anywhere else (or over the open alert editor), nothing.
 function Methods:FinishChipMove()
     local cm = self.chipMove
     self:CancelChipMove()
-    if not (cm and chipMoved(cm) and self.pull and overTrack(self)) then
+    if not (cm and chipMoved(cm) and self.pull and overTrack(self)) or overEditor() then
         return
     end
     local x, y = cursorOnTrack(self)

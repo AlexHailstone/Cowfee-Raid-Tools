@@ -708,6 +708,11 @@ local function leaveCorner()
     end
 end
 
+-- The editor's window (nil until first opened), for a drag on the Timeline released over it.
+function Editor:Frame()
+    return frame
+end
+
 function Editor:Close()
     if frame then
         frame:Hide()
