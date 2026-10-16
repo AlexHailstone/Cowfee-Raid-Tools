@@ -1578,9 +1578,17 @@ function Editor:Open(encounterID, id, prefill)
         prefill = prefill or {}
         if savedAlert then
             fromSaved(savedAlert)
-            -- a spell dropped on an icon replaces the saved alert's own, and its icon with it
-            if validID(prefill.spellID) and validID(prefill.spellID) ~= savedAlert.spellID then
+            -- a spell dropped on an icon replaces the saved alert's own, and its icon with it; text that
+            -- only named its own spell (or none) becomes the new spell's name, typed text stays
+            local dropped = validID(prefill.spellID)
+            if dropped and dropped ~= savedAlert.spellID then
                 draft.iconID, draft.iconType = nil, "spell"
+                local own = validID(savedAlert.spellID)
+                local ownName = own and Reminders.SpellName(own)
+                local text = trim(draft.text)
+                if text == "" or (ownName and text == trim(ownName)) then
+                    draft.text = Reminders.SpellName(dropped) or ""
+                end
             end
         end
         draft.spellID = validID(prefill.spellID) or (savedAlert and draft.spellID) or nil
