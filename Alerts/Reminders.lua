@@ -259,6 +259,8 @@ local function referenceFor(encounterID, r)
     return found[1].ref
 end
 
+Reminders.ReferenceFor = referenceFor
+
 local function spellName(id)
     if type(id) ~= "number" or id <= 0 or not (C_Spell and C_Spell.GetSpellName) then
         return nil
@@ -269,6 +271,8 @@ local function spellName(id)
     end
     return nil
 end
+
+Reminders.SpellName = spellName
 
 -- The row of a reference for a reminder: by spell ID (a row's own [spell] or its Journal spell), else
 -- by name (the spell's name or the reminder's text).
@@ -345,6 +349,49 @@ local function speechList(r, text)
     return out
 end
 
+-- The alert items of one reminder (r with any overrides already laid over it), one per time. Used by
+-- the block and by the editor's Test, which runs a reminder that is not saved.
+-- difficulty is not checked here; the block does that.
+function Reminders:Items(encounterID, id, r)
+    local out = {}
+    local times = Reminders:Times(encounterID, r)
+    local icon
+    if type(r.spellID) == "number" and r.spellID > 0 and C_Spell and C_Spell.GetSpellTexture then
+        local ok, tex = pcall(C_Spell.GetSpellTexture, r.spellID)
+        if ok and tex ~= nil and readable(tex) then
+            icon = tex
+        end
+    end
+    local text
+    if type(r.text) == "string" and trim(r.text) ~= "" then
+        text = r.text
+    else
+        text = spellName(r.spellID)
+        if not text then
+            local hasSpell = type(r.spellID) == "number" and r.spellID > 0
+            text = hasSpell and ("Spell " .. tostring(r.spellID)) or "Reminder"
+        end
+    end
+    local o = r.outputs or {}
+    for n, t in ipairs(times) do
+        out[#out + 1] = {
+            id = "mine:" .. tostring(id) .. ":" .. n,
+            ph = t.ph,
+            time = t.t,
+            spellID = r.spellID,
+            icon = icon,
+            text = text,
+            priority = Rules.Priority(3, r.priority),
+            warn = r.warn or 5,
+            hold = 0.5,
+            outputs = { alert = o.alert and true or false, bar = o.bar and true or false,
+                speech = o.speech and true or false },
+            speech = speechList(r, text),
+        }
+    end
+    return out
+end
+
 local function entries(run)
     local out = {}
     if not (run and run.encounterID) then
@@ -353,40 +400,8 @@ local function entries(run)
     for _, e in ipairs(Reminders:List(run.encounterID)) do
         local r = Reminders:Effective(BLOCK, e.id, e.r)
         if r.enabled ~= false and matchesDifficulty(r, run) then
-            local times = Reminders:Times(run.encounterID, r)
-            local icon
-            if type(r.spellID) == "number" and r.spellID > 0 and C_Spell and C_Spell.GetSpellTexture then
-                local ok, tex = pcall(C_Spell.GetSpellTexture, r.spellID)
-                if ok and tex ~= nil and readable(tex) then
-                    icon = tex
-                end
-            end
-            local text
-            if type(r.text) == "string" and trim(r.text) ~= "" then
-                text = r.text
-            else
-                text = spellName(r.spellID)
-                if not text then
-                    local hasSpell = type(r.spellID) == "number" and r.spellID > 0
-                    text = hasSpell and ("Spell " .. tostring(r.spellID)) or "Reminder"
-                end
-            end
-            local o = r.outputs or {}
-            for n, t in ipairs(times) do
-                out[#out + 1] = {
-                    id = "mine:" .. tostring(e.id) .. ":" .. n,
-                    ph = t.ph,
-                    time = t.t,
-                    spellID = r.spellID,
-                    icon = icon,
-                    text = text,
-                    priority = Rules.Priority(3, r.priority),
-                    warn = r.warn or 5,
-                    hold = 0.5,
-                    outputs = { alert = o.alert and true or false, bar = o.bar and true or false,
-                        speech = o.speech and true or false },
-                    speech = speechList(r, text),
-                }
+            for _, item in ipairs(Reminders:Items(run.encounterID, e.id, r)) do
+                out[#out + 1] = item
             end
         end
     end

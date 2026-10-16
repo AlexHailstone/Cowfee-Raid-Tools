@@ -60,6 +60,7 @@ Alerts\Reminders.lua
 Alerts\PhaseDatabase.lua
 Alerts\Phases.lua
 Alerts\Bars.lua
+Alerts\Editor.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua

@@ -127,6 +127,8 @@ end
 
 -- Starts a run. reason "encounter" also runs the onPull hooks (the note engine picks its note there).
 -- Alerts.starting is true while the hooks and the first phase run, so a hook can tell not to start again.
+-- opts.firstAt is the start time recorded for the lowest phase (default now): the editor's Test uses it to
+-- begin a reminder a few seconds before its first time.
 function Alerts:Start(encounterID, difficultyName, reason, opts)
     if self.running then
         self:Stop(true)
@@ -148,7 +150,7 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     local ok, err = pcall(function()
         if self.run == run then
             self.items = self:Collect(run, opts)
-            self:StartPhase(self:Phases()[1], "start", GetTime())
+            self:StartPhase(self:Phases()[1], "start", opts and type(opts.firstAt) == "number" and opts.firstAt or GetTime())
         end
     end)
     self.starting = false
