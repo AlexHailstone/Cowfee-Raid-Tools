@@ -165,6 +165,7 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         end
     elseif msg == "dev" then
         if CRT.UI.pages.dev then
+            CRT.UI:SetPageHidden("dev", false)
             CRT.UI:Show("dev")
         else
             CRT:Print("The Development page is not loaded.")

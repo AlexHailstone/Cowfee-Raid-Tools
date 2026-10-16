@@ -12,6 +12,22 @@ function UI:RegisterPage(key, title, builder)
     self.order[#self.order + 1] = key
 end
 
+-- A hidden page has no menu button and can't be opened, such as the Development page until /crt dev.
+-- closeHides hides it again whenever the main window closes.
+function UI:SetPageHidden(key, hidden, closeHides)
+    local page = self.pages[key]
+    if not page then
+        return
+    end
+    page.hidden = hidden and true or false
+    if closeHides ~= nil then
+        page.closeHides = closeHides and true or false
+    end
+    if self.frame then
+        self:LayoutMenu()
+    end
+end
+
 -- Previews: the panels that appear on their own, such as the ready check bar and the debuff panel,
 -- register here. "Previews" in the corner of the main panel shows them all so they can be
 -- dragged into place, and hides them again. setFn(on) shows or hides one panel's preview.
@@ -457,6 +473,14 @@ local function menuGroups()
             table.insert(groups[#groups], key)
         end
     end
+    -- Hidden pages leave the menu.
+    for _, keys in ipairs(groups) do
+        for i = #keys, 1, -1 do
+            if UI.pages[keys[i]].hidden then
+                table.remove(keys, i)
+            end
+        end
+    end
     return groups
 end
 
@@ -516,6 +540,7 @@ function UI:LayoutMenu()
     end
     for _, page in pairs(self.pages) do
         if page.button then
+            page.button:SetShown(not page.hidden)
             self:StyleMenuButton(page.button, page.button.selected)
         end
     end
@@ -776,6 +801,11 @@ function UI:Create()
     -- Closing the panel also turns the previews off, so nothing is left floating on screen.
     f:SetScript("OnHide", function()
         UI:SetPreviews(false)
+        for key, page in pairs(UI.pages) do
+            if page.closeHides and not page.hidden then
+                UI:SetPageHidden(key, true)
+            end
+        end
     end)
 
     -- "Previews", in the title bar beside the close button. It uses the game's small size, not the
@@ -914,7 +944,10 @@ function UI:BuildPage(page)
 end
 
 function UI:SelectPage(key)
-    local page = self.pages[key] or self.pages[self.order[1]]
+    local page = self.pages[key]
+    if not page or page.hidden then
+        page = self.pages[self.order[1]]
+    end
     if not page then
         return
     end
