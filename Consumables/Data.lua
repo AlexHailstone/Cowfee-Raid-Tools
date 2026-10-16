@@ -338,31 +338,65 @@ function Consumables:ItemName(entry)
     return entry.name or ("Item " .. entry.item)
 end
 
--- The item IDs in your bags for an entry: its own ID and any other quality rank of it (an item of
--- the same name). Read from the last bag read.
-local function bagIds(entry)
-    local ids = {}
-    if bagNames[entry.item] then
-        ids[1] = entry.item
+-- An item's crafted quality rank (1, 2, ...), or 0 when it has none or the game doesn't say.
+local function qualityRank(id)
+    local api = C_TradeSkillUI and C_TradeSkillUI.GetItemCraftedQualityByItemInfo
+    if not api then
+        return 0
     end
+    local ok, quality = pcall(api, id)
+    return (ok and type(quality) == "number") and quality or 0
+end
+
+-- The fleeting version of an item, from a cauldron: the same name with "Fleeting " in front.
+local FLEETING = "Fleeting "
+
+-- The item IDs in your bags for an entry: its own ID, its other quality ranks (items of the same
+-- name) and its fleeting versions, in the order a click should use them: fleeting first, then the
+-- highest rank. Each is { id, fleeting }. Read from the last bag read.
+local function bagIds(entry)
     local name = Consumables:ItemName(entry)
-    for _, id in ipairs(bagByName[name] or {}) do
-        if id ~= entry.item then
-            ids[#ids + 1] = id
+    local out, seen = {}, {}
+    local function add(id, fleeting)
+        if not seen[id] then
+            seen[id] = true
+            out[#out + 1] = { id = id, fleeting = fleeting, rank = qualityRank(id) }
         end
     end
-    return ids
+    for _, id in ipairs(bagByName[FLEETING .. name] or {}) do
+        add(id, true)
+    end
+    if bagNames[entry.item] then
+        add(entry.item, false)
+    end
+    for _, id in ipairs(bagByName[name] or {}) do
+        add(id, false)
+    end
+    table.sort(out, function(a, b)
+        if a.fleeting ~= b.fleeting then
+            return a.fleeting
+        end
+        if a.rank ~= b.rank then
+            return a.rank > b.rank
+        end
+        return a.id < b.id
+    end)
+    return out
 end
 Consumables.BagIds = bagIds
 
--- The entry a click on this slot should use: the first listed item that is in your bags, in any
--- quality rank. Returns { id, name, icon, count } or nil. The name is the one the game gave your bags.
+-- The entry a click on this slot should use. Fleeting items (which expire) come first, in your
+-- item order, then the first listed item in your bags at its highest quality rank. Returns
+-- { id, name, icon, count } or nil. The name is the one the game gave your bags.
 function Consumables:NextItem(key)
-    for _, entry in ipairs(self:Entries(key)) do
-        for _, id in ipairs(bagIds(entry)) do
-            local count = itemCount(id)
-            if count > 0 and bagNames[id] then
-                return { id = id, name = bagNames[id], icon = itemIcon(id), count = count }
+    local entries = self:Entries(key)
+    for _, fleetingPass in ipairs({ true, false }) do
+        for _, entry in ipairs(entries) do
+            for _, found in ipairs(bagIds(entry)) do
+                local count = itemCount(found.id)
+                if found.fleeting == fleetingPass and count > 0 and bagNames[found.id] then
+                    return { id = found.id, name = bagNames[found.id], icon = itemIcon(found.id), count = count }
+                end
             end
         end
     end
@@ -598,10 +632,10 @@ local function totalCount(entries)
             counted[entry.item] = true
             total = total + itemCount(entry.item)
         end
-        for _, id in ipairs(bagIds(entry)) do
-            if not counted[id] then
-                counted[id] = true
-                total = total + itemCount(id)
+        for _, found in ipairs(bagIds(entry)) do
+            if not counted[found.id] then
+                counted[found.id] = true
+                total = total + itemCount(found.id)
             end
         end
     end

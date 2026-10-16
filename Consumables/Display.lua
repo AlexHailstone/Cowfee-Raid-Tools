@@ -141,7 +141,10 @@ local function updateClickAction(slot, clickable)
     end
     local item = clickable and Consumables:NextItem(slot.key) or nil
     slot.useItem = item
-    local signature = item and (slot.key .. ":" .. item.name) or "none"
+    -- Used by item ID, not by name: every quality rank of a consumable has the same name, and /use
+    -- with a name could take a lower rank than the one picked.
+    local use = item and ("item:" .. item.id)
+    local signature = item and (slot.key .. ":" .. use) or "none"
     if slot.appliedSignature == signature then
         return
     end
@@ -155,12 +158,12 @@ local function updateClickAction(slot, clickable)
     elseif slot.key == "weapon" then
         -- Use the oil or stone, then apply it to the main hand. Shift-click uses the off hand.
         slot:SetAttribute("type", "macro")
-        slot:SetAttribute("macrotext", "/use " .. item.name .. "\n/use " .. (INVSLOT_MAINHAND or 16))
+        slot:SetAttribute("macrotext", "/use " .. use .. "\n/use " .. (INVSLOT_MAINHAND or 16))
         slot:SetAttribute("shift-type1", "macro")
-        slot:SetAttribute("shift-macrotext1", "/use " .. item.name .. "\n/use " .. (INVSLOT_OFFHAND or 17))
+        slot:SetAttribute("shift-macrotext1", "/use " .. use .. "\n/use " .. (INVSLOT_OFFHAND or 17))
     else
         slot:SetAttribute("type", "macro")
-        slot:SetAttribute("macrotext", "/use " .. item.name)
+        slot:SetAttribute("macrotext", "/use " .. use)
     end
 end
 
