@@ -1,9 +1,10 @@
 local ADDON, CRT = ...
 
 -- The circles area: a ring that empties as the time runs out, the seconds inside it and the alert's text
--- under it. Built on Alerts/Areas.lua; its settings are CRT.db.alerts.areas.circles (size, fontSize, font,
--- outline, beside the common shown, cap, grow). The ring is a Cooldown with a round swipe, whose coloured part
--- shrinks as the time runs out (REVERSE below), over a faint full ring, under a dark disc that makes it read as a ring.
+-- under it. Built on Alerts/Areas.lua; its settings are CRT.db.alerts.areas.circles (size, thickness,
+-- ringColor, fontSize, font, outline, beside the common shown, cap, grow). The ring is a Cooldown whose swipe
+-- is a ring texture from Media/ (Thin, Medium or Thick, a see-through centre), so its coloured part shrinks as
+-- the time runs out (REVERSE below) over a faint full ring of the same texture. The centre is left clear.
 
 local Areas = CRT.AlertAreas
 
@@ -17,17 +18,27 @@ local TEXT = {
     none = "None",
     thin = "Outline",
     thick = "Thick",
+    thickness = "Ring thickness",
+    ringThin = "Thin",
+    ringMedium = "Medium",
+    ringThick = "Thick",
+    ringColor = "Ring colour",
     sampleNow = "Spread",
     sampleSoon = "Stack on the boss",
     sampleLater = "Soak",
 }
 
 -- Tune the look in game here.
-local RING_TEXTURE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask" -- the swipe, the faint ring and the disc
-local RING_ALPHA = 0.9       -- the coloured swipe
-local TRACK_ALPHA = 0.2      -- the faint full ring behind it
-local DISC_ALPHA = 0.6       -- the dark disc inside
-local DISC_INSET = 0.18      -- of the size, on each side
+-- The swipe and the faint ring: 256 px white rings, outer radius 126 px, 12 / 22 / 36 px wide (make_rings.js).
+local MEDIA = "Interface\\AddOns\\CowfeeRaidTools\\Media\\"
+local RING_TEXTURES = {
+    thin = MEDIA .. "RingThin",
+    medium = MEDIA .. "RingMedium",
+    thick = MEDIA .. "RingThick",
+}
+local DEFAULT_THICKNESS = "medium"
+local DEFAULT_RING_COLOR = { 1, 1, 1, 0.9 }
+local TRACK_ALPHA = 0.2      -- the faint full ring behind the swipe, of the ring colour's alpha
 -- A default cooldown shrinks its swiped part as time runs out, which is the emptying ring; reversed it
 -- grows. Flip this if the ring fills instead of empties in game.
 local REVERSE = false
@@ -38,8 +49,8 @@ local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 32, 160, 64
 local MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 32, 16
 local MIN_SECONDS_FONT = 8
 local TEXT_GAP = 2           -- between the ring and its text
--- Right of the bars, clear of them and of their drag box (the icons sit as far to the left).
-local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 300, y = 100 }
+-- Over the player's character, a little below the middle of the screen.
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = -40 }
 local WHITE = { 1, 1, 1 }
 local SAMPLE_GAP = 1         -- seconds between preview ticks that mean it was turned off
 local SAMPLE_SPAN = 14       -- the preview starts over this long after it began
@@ -50,6 +61,12 @@ local OUTLINE_OPTIONS = {
     { key = "THICKOUTLINE", label = TEXT.thick },
 }
 
+local THICKNESS_OPTIONS = {
+    { key = "thin", label = TEXT.ringThin },
+    { key = "medium", label = TEXT.ringMedium },
+    { key = "thick", label = TEXT.ringThick },
+}
+
 local function clamp(v, min, max, default)
     v = type(v) == "number" and v or default
     return math.max(min, math.min(max, v))
@@ -57,6 +74,22 @@ end
 
 local function ringSize(s)
     return clamp(s.size, MIN_SIZE, MAX_SIZE, DEFAULT_SIZE)
+end
+
+local function ringTexture(s)
+    return RING_TEXTURES[s.thickness] or RING_TEXTURES[DEFAULT_THICKNESS]
+end
+
+local function ringColor(s)
+    local c = s.ringColor
+    if type(c) ~= "table" then
+        return DEFAULT_RING_COLOR
+    end
+    local out = {}
+    for i = 1, 4 do
+        out[i] = clamp(c[i], 0, 1, DEFAULT_RING_COLOR[i])
+    end
+    return out
 end
 
 local function fontSize(s)
@@ -86,8 +119,6 @@ local function make(parent)
     w.ring:SetPoint("TOP", w, "TOP", 0, 0)
     w.track = w.ring:CreateTexture(nil, "BACKGROUND")
     w.track:SetAllPoints(w.ring)
-    w.track:SetTexture(RING_TEXTURE)
-    w.track:SetVertexColor(1, 1, 1, TRACK_ALPHA)
     w.cooldown = CreateFrame("Cooldown", nil, w.ring, "CooldownFrameTemplate")
     w.cooldown:SetAllPoints(w.ring)
     if w.cooldown.SetHideCountdownNumbers then
@@ -99,20 +130,14 @@ local function make(parent)
     if w.cooldown.SetDrawBling then
         w.cooldown:SetDrawBling(false) -- no finish flash over NOW and the glow
     end
-    if w.cooldown.SetSwipeTexture then
-        w.cooldown:SetSwipeTexture(RING_TEXTURE)
-    end
     if w.cooldown.SetReverse then
         w.cooldown:SetReverse(REVERSE)
     end
     w.cooldown.noCooldownCount = true -- other addons paint no numbers over ours
-    -- The disc and the seconds sit on a frame above the swipe.
+    -- The seconds sit on a frame above the swipe.
     w.over = CreateFrame("Frame", nil, w.ring)
     w.over:SetAllPoints(w.ring)
     w.over:SetFrameLevel((w.cooldown:GetFrameLevel() or 1) + 2)
-    w.disc = w.over:CreateTexture(nil, "ARTWORK")
-    w.disc:SetTexture(RING_TEXTURE)
-    w.disc:SetVertexColor(0, 0, 0, DISC_ALPHA)
     w.seconds = w.over:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     w.seconds:SetPoint("CENTER", w.over, "CENTER", 0, 0)
     w.seconds:SetShadowOffset(1, -1)
@@ -146,15 +171,17 @@ local function draw(w, line, now, s, shownAt)
     local at = line.at
     local c = Areas.LineColor(line) or WHITE
     w.ring:SetSize(size, size)
-    if w.discAt ~= size then
-        w.discAt = size
-        local inset = math.floor(size * DISC_INSET + 0.5)
-        w.disc:ClearAllPoints()
-        w.disc:SetPoint("TOPLEFT", w.over, "TOPLEFT", inset, -inset)
-        w.disc:SetPoint("BOTTOMRIGHT", w.over, "BOTTOMRIGHT", -inset, inset)
+    local texture, ring = ringTexture(s), ringColor(s)
+    if w.ringTexture ~= texture then
+        w.ringTexture = texture
+        w.track:SetTexture(texture)
+        if w.cooldown.SetSwipeTexture then
+            w.cooldown:SetSwipeTexture(texture)
+        end
     end
+    w.track:SetVertexColor(ring[1], ring[2], ring[3], ring[4] * TRACK_ALPHA)
     if w.cooldown.SetSwipeColor then
-        w.cooldown:SetSwipeColor(c[1], c[2], c[3], RING_ALPHA)
+        w.cooldown:SetSwipeColor(ring[1], ring[2], ring[3], ring[4])
     end
     local total = at - (shownAt or now)
     if type(line.warn) == "number" then
@@ -198,6 +225,20 @@ local function settings(dialog, s)
             s.size = value
         end,
     })
+    dialog:Dropdown(TEXT.thickness, {
+        options = THICKNESS_OPTIONS,
+        get = function()
+            return RING_TEXTURES[s.thickness] and s.thickness or DEFAULT_THICKNESS
+        end,
+        set = function(key)
+            s.thickness = key
+        end,
+    })
+    dialog:Color(TEXT.ringColor, function()
+        return ringColor(s)
+    end, function(c)
+        s.ringColor = c
+    end)
     dialog:Dropdown(TEXT.font, {
         -- Read each time the menu opens, so fonts another addon shares later appear.
         options = function()

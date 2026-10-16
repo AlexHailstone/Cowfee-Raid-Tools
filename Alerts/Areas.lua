@@ -19,8 +19,9 @@ local ADDON, CRT = ...
 --                      without an id), kept by id so it survives the line moving to another widget.
 --     sample(now)      -> lines for Previews, each with `at` set
 --     settings(dialog, s)  adds the area's own rows to the settings window with dialog:Dropdown(label,
---                      opts), dialog:Slider(label, opts) and dialog:Check(label, get, set) (opts as for
---                      UI.Dropdown and UI.Slider). It is called on every open; the rows are made on the
+--                      opts), dialog:Slider(label, opts), dialog:Check(label, get, set) and dialog:Color(label, get, set)
+--                      (a swatch for the game's color picker; get() -> { r, g, b, a }, set(new table);
+--                      opts as for UI.Dropdown and UI.Slider). It is called on every open; the rows are made on the
 --                      first and reused after. A change refreshes the area at once.
 --   Optional, for an area whose settings or lines live elsewhere (the bars):
 --     store()          -> the settings table, instead of CRT.db.alerts.areas[settingsKey]
@@ -87,6 +88,7 @@ local DIALOG_WIDTH = 440
 local DIALOG_TOP = 32    -- below the title bar
 local DIALOG_LEFT = 16
 local ROW_HEIGHT = 32
+local COLOR_LABEL_WIDTH, COLOR_GAP, COLOR_SWATCH = 140, 5, 40 -- a color row, as wide as the others' label and control
 
 -- Each direction: the point a widget anchors by, the point of the one before it, and the gap's offset.
 local GROW = {
@@ -279,6 +281,73 @@ local function makeCheck(parent, label, get, set)
     return check
 end
 
+local function copyColor(c)
+    return { c[1], c[2], c[3], c[4] }
+end
+
+-- A row with a label and a swatch that opens the game's color picker (with opacity). get() returns
+-- { r, g, b, a }; set(color) is given a new table. The picker writes through the set it opened with, so
+-- one left open never writes into another area's settings, and Cancel puts the old color back.
+local function makeColor(parent, label, slot)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(COLOR_LABEL_WIDTH + COLOR_GAP + COLOR_SWATCH, ROW_HEIGHT)
+    row.colorLabel = label
+    local text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    text:SetPoint("LEFT", row, "LEFT", 0, 0)
+    text:SetWidth(COLOR_LABEL_WIDTH)
+    text:SetJustifyH("LEFT")
+    text:SetWordWrap(false)
+    text:SetText(label)
+    local swatch = CreateFrame("Button", nil, row)
+    swatch:SetSize(COLOR_SWATCH, 20)
+    swatch:SetPoint("LEFT", row, "LEFT", COLOR_LABEL_WIDTH + COLOR_GAP, 0)
+    swatch.edge = swatch:CreateTexture(nil, "BACKGROUND")
+    swatch.edge:SetAllPoints()
+    swatch.edge:SetColorTexture(0.5, 0.5, 0.5, 1)
+    swatch.tex = swatch:CreateTexture(nil, "ARTWORK")
+    swatch.tex:SetPoint("TOPLEFT", 1, -1)
+    swatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
+    row.swatch = swatch
+    row.refresh = function()
+        local c = slot.opts.get()
+        swatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
+    end
+    swatch:SetScript("OnClick", function()
+        if not ColorPickerFrame then
+            return
+        end
+        local set = slot.opts.set -- this open's settings, kept until the picker closes
+        local before = copyColor(slot.opts.get())
+        local function apply()
+            local r, g, b = ColorPickerFrame:GetColorRGB()
+            local a = ColorPickerFrame.GetColorAlpha and ColorPickerFrame:GetColorAlpha() or before[4]
+            set({ r, g, b, a })
+            changed()
+        end
+        local function cancel()
+            set(copyColor(before))
+            changed()
+        end
+        if ColorPickerFrame.SetupColorPickerAndShow then
+            ColorPickerFrame:SetupColorPickerAndShow({
+                r = before[1], g = before[2], b = before[3], opacity = before[4], hasOpacity = true,
+                swatchFunc = apply, opacityFunc = apply, cancelFunc = cancel,
+            })
+        else
+            ColorPickerFrame.hasOpacity = true
+            ColorPickerFrame.opacity = 1 - before[4] -- the older picker counts transparency
+            ColorPickerFrame.previousValues = { before[1], before[2], before[3], before[4] }
+            ColorPickerFrame.func = apply
+            ColorPickerFrame.opacityFunc = apply
+            ColorPickerFrame.cancelFunc = cancel
+            ColorPickerFrame:SetColorRGB(before[1], before[2], before[3])
+            ColorPickerFrame:Hide()
+            ColorPickerFrame:Show()
+        end
+    end)
+    return row
+end
+
 -- The next of the open area's own rows: the one made on an earlier open, or a new one from make(slot).
 -- slot.opts is replaced on every open, before any control is made (a control reads its value as it is
 -- made), so the rows always read fresh settings.
@@ -357,6 +426,13 @@ function methods:Check(label, get, set)
             slot.opts.set(on)
             changed()
         end)
+    end)
+    return slot.row
+end
+
+function methods:Color(label, get, set)
+    local slot = nextSlot({ get = get, set = set }, function(slot)
+        return makeColor(dialog, label, slot)
     end)
     return slot.row
 end
