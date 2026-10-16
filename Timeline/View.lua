@@ -1527,11 +1527,14 @@ function Methods:UpdateChipMove()
     if not chipMoved(cm) then
         return
     end
-    cm.moved = true
     local g = self:ChipGhost()
-    local s = CRT.AlertSaved and CRT.AlertSaved:Get(cm.id)
-    if s then
-        fillChip(g, s)
+    if not cm.moved then
+        -- filled once, as the drag starts; after that it only follows the cursor
+        cm.moved = true
+        local s = CRT.AlertSaved and CRT.AlertSaved:Get(cm.id)
+        if s then
+            fillChip(g, s)
+        end
     end
     local scale = UIParent:GetEffectiveScale() or 1
     local x, y = GetCursorPosition()
