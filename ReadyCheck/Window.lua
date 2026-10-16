@@ -898,6 +898,7 @@ function Window:Show(seconds, sample, stay)
     elseif not stayOpen then
         shownUntil = GetTime() + (seconds or settings().seconds or 30)
     end
+    CRT.UI.CancelFade(frame)
     frame:Show()
     self:Refresh()
 end
@@ -957,6 +958,7 @@ events:RegisterEvent("READY_CHECK")
 events:RegisterEvent("READY_CHECK_CONFIRM")
 events:RegisterEvent("READY_CHECK_FINISHED")
 events:RegisterEvent("CHAT_MSG_ADDON")
+events:RegisterEvent("START_PLAYER_COUNTDOWN")
 events:SetScript("OnEvent", function(_, event, ...)
     if not CRT.db then
         return
@@ -976,6 +978,14 @@ events:SetScript("OnEvent", function(_, event, ...)
     elseif event == "READY_CHECK_FINISHED" then
         checkActive = false
         Window:Refresh()
+    elseif event == "START_PLAYER_COUNTDOWN" then
+        -- A pull timer started: the window fades out over 2 seconds (Ready Check settings).
+        if frame and frame:IsShown() and not previewOn and CRT.db.readycheck.fadeOnPull then
+            CRT.UI.FadeOut(frame, 2, function()
+                stayOpen = false
+                Window:Hide()
+            end)
+        end
     elseif event == "READY_CHECK_CONFIRM" then
         local unit, isReady = ...
         local name = unit and GetUnitName(unit, true)

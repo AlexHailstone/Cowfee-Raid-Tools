@@ -543,6 +543,37 @@ function UI.ResetButton(parent, onClick)
     return b
 end
 
+-- Fades a frame out over seconds, then calls done (which hides it). Showing it again should call
+-- UI.CancelFade first, which stops a fade and puts the frame back to full opacity.
+local fades = {}
+
+function UI.FadeOut(frame, seconds, done)
+    local driver = fades[frame]
+    if not driver then
+        driver = CreateFrame("Frame")
+        fades[frame] = driver
+    end
+    local start, elapsed = frame:GetAlpha() or 1, 0
+    driver:SetScript("OnUpdate", function(self, dt)
+        elapsed = elapsed + dt
+        if elapsed >= seconds then
+            self:SetScript("OnUpdate", nil)
+            frame:SetAlpha(0)
+            done()
+            return
+        end
+        frame:SetAlpha(start * (1 - elapsed / seconds))
+    end)
+end
+
+function UI.CancelFade(frame)
+    local driver = fades[frame]
+    if driver then
+        driver:SetScript("OnUpdate", nil)
+    end
+    frame:SetAlpha(1)
+end
+
 function UI.SetFrameTitle(frame, text)
     if frame.SetTitle then
         frame:SetTitle(text)

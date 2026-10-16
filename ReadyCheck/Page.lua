@@ -141,6 +141,8 @@ local function buildAuto(f)
     makeDropdown(f, 8, -240, "Flask and oil expiring warning", "flaskWarn", WARNS, nil, 200, 170)
     makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
     local lock = makeCheck(f, 4, -304, "Lock my Ready button until everyone has my raid buff", "buffLock")
+    local fade = makeCheck(f, 4, -334, "Fade out my bar and the ready check window on a pull timer", "fadeOnPull")
+    UI.Help(f, "Fade on a pull timer", "When anyone starts a pull timer, your bar and the ready check window fade out over 2 seconds, so they're gone before the pull. They come back on the next ready check, and Previews keeps them up."):SetPoint("LEFT", fade, "RIGHT", 330, 0)
     UI.Help(f, "Ready button lock", "When a ready check starts and someone in the group is missing your class's raid buff (Arcane Intellect, Fortitude, Battle Shout, Mark of the Wild, Skyfury or Blessing of the Bronze), your Ready button is greyed out until they have it. Hover it to see who.\n\nHold Shift and click Ready to ready anyway, and it unlocks by itself after 10 seconds, in case you can't buff.\n\nOnly players the game lets the addon read count. Anyone offline, out of sight, or whose buffs the game hides never locks you."):SetPoint("LEFT", lock, "RIGHT", 330, 0)
 
     -- Your bar, top right. The bar itself is arranged on the Your bar tab.

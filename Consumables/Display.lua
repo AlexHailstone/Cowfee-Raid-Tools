@@ -234,6 +234,7 @@ local function show(seconds, preview)
         return
     end
     build()
+    CRT.UI.CancelFade(frame)
     pendingHide = false
     Display.preview = preview
     sawReadyCheckFrame = false
@@ -285,6 +286,7 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("READY_CHECK")
 events:RegisterEvent("READY_CHECK_FINISHED")
+events:RegisterEvent("START_PLAYER_COUNTDOWN")
 -- True when the ready check was started by you. The name can come with a realm, or be hidden from
 -- addons, in which case it does not count as yours.
 local function startedByMe(initiator)
@@ -305,6 +307,13 @@ events:SetScript("OnEvent", function(_, event, initiator, timeLeft)
             hideFrame()
         elseif frame and frame:IsShown() then
             Display:Refresh()
+        end
+    elseif event == "START_PLAYER_COUNTDOWN" then
+        -- A pull timer started: the bar fades out over 2 seconds (Ready Check settings).
+        if frame and frame:IsShown() and not Display.persistent and CRT.db.readycheck.fadeOnPull then
+            CRT.UI.FadeOut(frame, 2, function()
+                Display:Hide()
+            end)
         end
     elseif event == "READY_CHECK" then
         if Consumables:NotStarter() and startedByMe(initiator) then
