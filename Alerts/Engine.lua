@@ -260,11 +260,11 @@ function Alerts:Elapsed()
     return GetTime() - self.run.firstAt
 end
 
--- Whether an item shows anywhere: an alert, a bar or speech. Anyone else's note timers have none; they
+-- Whether an item shows anywhere: an alert, a bar, speech, or the text, icon or circle areas. Anyone else's note timers have none; they
 -- only show in the timers window, which reads the note itself.
 local function hasOutput(it)
     local o = it.outputs
-    return type(o) == "table" and (o.alert or o.bar or o.speech) and true or false
+    return type(o) == "table" and (o.alert or o.bar or o.speech or o.text or o.icon or o.circle) and true or false
 end
 
 -- The timed lines of the run: items of started phases that show anywhere, through the conflict rules.

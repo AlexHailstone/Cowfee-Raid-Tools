@@ -4,12 +4,26 @@ local ADDON, CRT = ...
 -- A line plays until the game says it finished (or SPEECH_TIMEOUT seconds pass), then the next starts.
 -- When the queue falls behind, the lowest priority line is dropped first: raid-wide lines go first,
 -- your note lines are kept longer, and your reminders are kept longest. Speech plays only while the
--- Raid Notes Text to Speech switch is on.
+-- Raid Notes Text to Speech switch is on. A line's sound cue plays once at zero, whatever that switch says.
 
 local Rules = CRT.AlertRules
 local Alerts = CRT.Alerts
 
 local TICK = 0.1
+local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds ago is not played
+
+-- The sounds an alert can play: the choices in the editor, from the game's own sound kit names.
+-- A name this client does not have is left out.
+local SOUND_NAMES = {
+    { "RAID_WARNING", "Raid warning" },
+    { "READY_CHECK", "Ready check" },
+    { "ALARM_CLOCK_WARNING_3", "Alarm clock" },
+    { "UI_BNET_TOAST", "Toast" },
+    { "IG_PLAYER_INVITE", "Invite" },
+    { "MAP_PING", "Map ping" },
+    { "IG_QUEST_LIST_OPEN", "Quest list" },
+    { "IG_MAINMENU_OPTION_CHECKBOX_ON", "Checkbox" },
+}
 
 local Speech = {
     queue = {},     -- items waiting, oldest first
@@ -19,6 +33,20 @@ local Speech = {
     runId = nil,
 }
 CRT.AlertSpeech = Speech
+
+Speech.SOUNDS = {}  -- { { key, label, kit } }, in the order above
+for _, def in ipairs(SOUND_NAMES) do
+    local kit = SOUNDKIT and SOUNDKIT[def[1]]
+    if kit then
+        Speech.SOUNDS[#Speech.SOUNDS + 1] = { key = def[1], label = def[2], kit = kit }
+    end
+end
+
+local function soundKit(key)
+    for _, s in ipairs(Speech.SOUNDS) do
+        if s.key == key then return s.kit end
+    end
+end
 
 local function settings()
     local notes = CRT.db and CRT.db.notes
@@ -89,11 +117,27 @@ function Speech:Tick(now)
         self:Reset()
         self.runId = Alerts.runId
     end
+    local lines = Alerts:Lines(now)
+
+    -- Sound cues, keyed like speech so a line never plays twice.
+    for _, line in ipairs(lines) do
+        if line.sound and line.at <= now then
+            local key = tostring(line.id) .. "#sound"
+            if not self.spoken[key] then
+                self.spoken[key] = true
+                local kit = soundKit(line.sound)
+                if kit and now - line.at <= SOUND_LATE then
+                    CRT:PlaySound(kit)
+                end
+            end
+        end
+    end
+
     if not settings().tts then
         return
     end
 
-    local due = Rules.SpeechDue(Alerts:Lines(now), now, self.spoken)
+    local due = Rules.SpeechDue(lines, now, self.spoken)
     if #due > 0 then
         local noteOn = settings().enabled
         for _, item in ipairs(due) do

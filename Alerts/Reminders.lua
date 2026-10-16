@@ -4,8 +4,8 @@ local ADDON, CRT = ...
 -- timeline (the cast schedule of one ability, converted to a phase and seconds into it) or from times
 -- you type, and it runs on the alerts engine as the "mine" block beside the raid note. A reminder is
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
---   { boss, spellID, text, times, outputs = { alert, bar, speech }, warn, speech, priority,
---     difficulty, enabled }
+--   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle }, warn, speech,
+--     priority, difficulty, enabled, linger, sound, glow, iconID, color }
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
 -- "text", "textcount" (the text, then 3, 2, 1) or "count", and `difficulty` nil means any.
 
@@ -335,19 +335,8 @@ local function matchesDifficulty(r, run)
 end
 
 local function speechList(r, text)
-    local mode, warn = r.speech, r.warn or 5
-    local out = {}
-    if mode == "textcount" then
-        out[1] = { offset = math.max(warn, 4), text = text }
-    elseif mode ~= "count" then
-        out[1] = { offset = warn, text = text }
-    end
-    if mode == "textcount" or mode == "count" then
-        for n = 3, 1, -1 do
-            out[#out + 1] = { offset = n, text = tostring(n) }
-        end
-    end
-    return out
+    local mode = r.speech
+    return Rules.SpeechItems(text, r.warn or 5, mode ~= "count", mode == "textcount" or mode == "count")
 end
 
 -- The alert items of one reminder (r with any overrides already laid over it), one per time. Used by
@@ -357,7 +346,9 @@ function Reminders:Items(encounterID, id, r)
     local out = {}
     local times = Reminders:Times(encounterID, r)
     local icon
-    if type(r.spellID) == "number" and r.spellID > 0 and C_Spell and C_Spell.GetSpellTexture then
+    if type(r.iconID) == "number" and r.iconID > 0 then
+        icon = r.iconID
+    elseif type(r.spellID) == "number" and r.spellID > 0 and C_Spell and C_Spell.GetSpellTexture then
         local ok, tex = pcall(C_Spell.GetSpellTexture, r.spellID)
         if ok and tex ~= nil and readable(tex) then
             icon = tex
@@ -384,9 +375,13 @@ function Reminders:Items(encounterID, id, r)
             text = text,
             priority = Rules.Priority(3, r.priority),
             warn = r.warn or 5,
-            hold = 0.5,
+            hold = math.max(0.5, r.linger or 0),
+            color = r.color,
+            sound = r.sound,
+            glow = r.glow and true or nil,
             outputs = { alert = o.alert and true or false, bar = o.bar and true or false,
-                speech = o.speech and true or false },
+                speech = o.speech and true or false, text = o.text and true or false,
+                icon = o.icon and true or false, circle = o.circle and true or false },
             speech = speechList(r, text),
         }
     end

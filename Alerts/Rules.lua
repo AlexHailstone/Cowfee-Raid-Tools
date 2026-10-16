@@ -2,8 +2,9 @@ local ADDON, CRT = ...
 
 -- The conflict rules for alerts: which entries show, which merge into one line, and what is due now.
 -- Pure functions with no game calls, so the engine, speech queue and bars all share one set of rules.
--- An entry is { block, id, at, spellID, text, icon, color, priority, hold, warn,
---               outputs = { alert, bar, speech }, speech = { { at, text } } }, with `at` the GetTime() it is due.
+-- An entry is { block, id, at, spellID, text, icon, color, priority, hold, warn, glow, sound,
+--               outputs = { alert, bar, speech, text, icon, circle }, speech = { { at, text } } },
+-- with `at` the GetTime() it is due.
 -- A line is an entry plus `members`, the original entries it stands for. Blocks never compete with
 -- each other: duplicates and grouping only apply inside one block listed in `groupBlocks`.
 
@@ -45,12 +46,14 @@ local function dupKey(e)
     return "t" .. tostring(e.text)
 end
 
+local OUTPUTS = { "alert", "bar", "speech", "text", "icon", "circle" }
+
 -- A line standing for one entry, copied so the input is never changed.
 local function newLine(e)
     local line = {}
     for k, v in pairs(e) do line[k] = v end
-    line.outputs = { alert = e.outputs and e.outputs.alert, bar = e.outputs and e.outputs.bar,
-        speech = e.outputs and e.outputs.speech }
+    line.outputs = {}
+    for _, k in ipairs(OUTPUTS) do line.outputs[k] = e.outputs and e.outputs[k] end
     line.speech = {}
     for i, s in ipairs(e.speech or {}) do line.speech[i] = s end
     line.members = { e }
@@ -63,10 +66,11 @@ local function join(line, e)
     line.warn = math.max(line.warn or 0, e.warn or 0)
     line.hold = math.max(line.hold or 0, e.hold or 0)
     if e.outputs then
-        for _, k in ipairs({ "alert", "bar", "speech" }) do
+        for _, k in ipairs(OUTPUTS) do
             if e.outputs[k] then line.outputs[k] = true end
         end
     end
+    if e.glow then line.glow = true end
     for _, s in ipairs(e.speech or {}) do line.speech[#line.speech + 1] = s end
     line.members[#line.members + 1] = e
 end
@@ -126,6 +130,37 @@ function Rules.Bars(lines, now, ahead, cap)
     local out = {}
     for i = 1, math.min(cap, #list) do out[i] = list[i] end
     return out, #list - #out
+end
+
+-- Lines for the text, icon and circle areas: those with `output` on, from `warn` seconds before they are
+-- due until `hold` seconds after, soonest first, at most `cap`. Second value: how many were left out.
+function Rules.Area(lines, now, output, cap)
+    local list = {}
+    for _, line in ipairs(lines) do
+        if line.outputs and line.outputs[output] and now >= line.at - (line.warn or 0)
+            and now < line.at + (line.hold or 0) then
+            list[#list + 1] = line
+        end
+    end
+    list = sorted(list)
+    local out = {}
+    for i = 1, math.min(cap, #list) do out[i] = list[i] end
+    return out, #list - #out
+end
+
+-- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due: `speak` says
+-- the text at `warn` seconds (at least 4 when counting), `count` says 3, 2, 1 at those seconds.
+function Rules.SpeechItems(text, warn, speak, count)
+    local out = {}
+    if speak then
+        out[1] = { offset = count and math.max(warn, 4) or warn, text = text }
+    end
+    if count then
+        for n = 3, 1, -1 do
+            out[#out + 1] = { offset = n, text = tostring(n) }
+        end
+    end
+    return out
 end
 
 -- Speech items that have come due and were not spoken yet, oldest first. `spoken` is the caller's table
