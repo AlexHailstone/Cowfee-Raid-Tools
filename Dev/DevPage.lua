@@ -1,8 +1,9 @@
 local ADDON, CRT = ...
 
 -- DEVELOPER ONLY. The Development page (/crt dev): every developer tool in one place, so none of them
--- needs a slash command to find. It shows in the menu only in a developer build, since this file
--- never ships: its .toc line is inside the do-not-package block.
+-- needs a slash command to find. It is in the menu only after /crt dev, until the main window closes,
+-- and only in a developer build, since this file never ships: its .toc line is inside the
+-- do-not-package block.
 --   Layout editor     open it, and Move pieces (off by default, so the panel works as usual)
 --   Windows           reset every movable window and the main panel
 --   Diagnostics       the debuff panel's diagnostics
@@ -135,3 +136,5 @@ local function build(pf)
 end
 
 UI:RegisterPage("dev", "Development", build)
+-- Only /crt dev shows it, until the main window closes.
+UI:SetPageHidden("dev", true, true)
