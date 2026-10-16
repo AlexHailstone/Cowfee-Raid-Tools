@@ -105,8 +105,9 @@ local function setKind(enc, ph, kind)
     elseif kind == "emote" and e and e.kind == "emote" then
         value = e.value
     end
+    -- Cleared first, so the refresh Set causes draws the new kind.
+    pending[ph] = nil
     if CRT.AlertPhases:Set(enc, ph, kind, value) then
-        pending[ph] = nil
         return true -- Set told the listeners, which refresh the tab
     end
     -- An emote needs words first: the box shows and the trigger is saved when they are typed.

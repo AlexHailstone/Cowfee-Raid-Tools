@@ -85,9 +85,9 @@ function Alerts:Collect(run, opts)
 end
 
 -- The sorted phases for a run: those of the given items and of the phase sources, or just 1 when
--- nothing names a phase. The lowest is the one that starts at the pull.
+-- nothing names a phase. The lowest is the one that starts at the pull, unless it has a trigger.
 local function phaseList(self, run, items)
-    local seen, list = {}, {}
+    local seen, list, triggered = {}, {}, {}
     local function add(ph)
         if type(ph) == "number" and not seen[ph] then
             seen[ph] = true
@@ -102,6 +102,7 @@ local function phaseList(self, run, items)
         if ok and type(res) == "table" then
             for _, ph in ipairs(res) do
                 add(ph)
+                triggered[ph] = true
             end
         end
     end
@@ -109,6 +110,11 @@ local function phaseList(self, run, items)
         list[1] = 1
     end
     table.sort(list)
+    -- A phase with an event trigger waits for its event, so it is never the one that starts at the
+    -- pull: phase 1 is then the pull.
+    if triggered[list[1]] and list[1] > 1 then
+        table.insert(list, 1, 1)
+    end
     return list
 end
 
