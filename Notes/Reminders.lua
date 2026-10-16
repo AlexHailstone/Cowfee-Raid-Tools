@@ -27,6 +27,7 @@ local TEXT = {
 
 local ROW_H = 24
 local MAX_ROWS = 14
+local ROW_W = 650 -- the tab is 686 wide; the scroll slider takes the rest
 local ANY = "any"
 
 local WHITE = { 1, 1, 1 }
@@ -268,7 +269,6 @@ local function onTick(row)
     elseif on then
         Reminders:Save(enc, nil, { spellID = item.spellID, boss = name, text = itemName(item), enabled = true })
     end
-    refresh()
 end
 
 local function onEdit(row)
@@ -297,7 +297,7 @@ end
 
 local function makeRow(f, i)
     local frame = CreateFrame("Frame", nil, f)
-    frame:SetSize(790, ROW_H - 2)
+    frame:SetSize(ROW_W, ROW_H - 2)
     frame:SetPoint("TOPLEFT", 8, -92 - (i - 1) * ROW_H)
     local row = { frame = frame }
     row.check = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
@@ -311,12 +311,12 @@ local function makeRow(f, i)
     row.icon:SetPoint("LEFT", 30, 0)
     row.name = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     row.name:SetPoint("LEFT", 56, 0)
-    row.name:SetWidth(210)
+    row.name:SetWidth(190)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     row.times = frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.times:SetPoint("LEFT", 276, 0)
-    row.times:SetWidth(430)
+    row.times:SetPoint("LEFT", 254, 0)
+    row.times:SetWidth(330)
     row.times:SetJustifyH("LEFT")
     row.times:SetWordWrap(false)
     row.edit = makeButton(frame, TEXT.edit, 56, 20)

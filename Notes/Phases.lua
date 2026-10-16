@@ -14,7 +14,7 @@ local TEXT = {
     title = "Phases",
     help = "What starts each phase after the first one. The first phase starts with the pull. A phase set to Next phase only starts when you press Next phase on the Notes tab or type /crt note next, which also starts any phase here by hand, whatever its trigger.\n\nA phase appears here when your note or reminders use it, or when it has a trigger.\n\nShipped triggers come with the addon. Change one and it becomes yours; Use shipped puts the shipped one back.",
     boss = "Boss",
-    phase1 = "Phase 1 \226\128\148 the pull",
+    phasePull = "Phase %s \226\128\148 the pull",
     phase = "Phase %s",
     shipped = "Shipped",
     yours = "Yours",
@@ -23,6 +23,7 @@ local TEXT = {
 
 local ROW_H = 28
 local MAX_ROWS = 12
+local ROW_W = 650 -- the tab is 686 wide
 local UNITS_ALL = { "boss1", "boss2", "boss3", "boss4", "boss5" }
 local UNITS_NEW = { "boss2", "boss3", "boss4", "boss5" }
 
@@ -61,9 +62,10 @@ local function isUnitKind(kind)
     return kind == "untargetable" or kind == "targetable" or kind == "newboss"
 end
 
--- The phases to show after phase 1: those the note and reminders use, and those with a trigger.
+-- The phases to show: those the note and reminders use, and those with a trigger. The lowest one starts
+-- at the pull, so it is the fixed first row.
 local function phaseList(enc)
-    local seen, list = { [1] = true }, {}
+    local seen, list = {}, {}
     local function add(ph)
         if type(ph) == "number" and not seen[ph] then
             seen[ph] = true
@@ -75,6 +77,9 @@ local function phaseList(enc)
     end
     for ph in pairs(CRT.AlertPhases:For(enc)) do
         add(ph)
+    end
+    if #list == 0 then
+        list[1] = 1
     end
     table.sort(list)
     return list
@@ -102,10 +107,11 @@ local function setKind(enc, ph, kind)
     end
     if CRT.AlertPhases:Set(enc, ph, kind, value) then
         pending[ph] = nil
-    else
-        -- An emote needs words first: the box shows and the trigger is saved when they are typed.
-        pending[ph] = kind == "emote" and kind or nil
+        return true -- Set told the listeners, which refresh the tab
     end
+    -- An emote needs words first: the box shows and the trigger is saved when they are typed.
+    pending[ph] = kind == "emote" and kind or nil
+    return false
 end
 
 local function refresh()
@@ -115,12 +121,12 @@ local function refresh()
     local enc = pickBoss(CRT.NoteReminders.BossList())
     local phases = enc and phaseList(enc) or {}
     for i, row in ipairs(rows) do
-        local ph = i == 1 and 1 or phases[i - 1]
+        local ph = phases[i]
         if enc and ph then
             row.ph = ph
             row.frame:Show()
             if i == 1 then
-                row.name:SetText(TEXT.phase1)
+                row.name:SetText(string.format(TEXT.phasePull, tostring(ph)))
             else
                 row.name:SetText(string.format(TEXT.phase, tostring(ph)))
                 local kind, value, e = current(enc, ph)
@@ -154,12 +160,12 @@ end
 
 local function makeRow(f, i)
     local frame = CreateFrame("Frame", nil, f)
-    frame:SetSize(790, ROW_H - 2)
+    frame:SetSize(ROW_W, ROW_H - 2)
     frame:SetPoint("TOPLEFT", 8, -60 - (i - 1) * ROW_H)
     local row = { frame = frame }
     row.name = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     row.name:SetPoint("LEFT", 0, 0)
-    row.name:SetWidth(170)
+    row.name:SetWidth(135)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     if i == 1 then
@@ -168,7 +174,7 @@ local function makeRow(f, i)
 
     row.kind = UI.Dropdown(frame, "", {
         labelWidth = 1,
-        width = 210,
+        width = 180,
         options = function()
             local out = {}
             for _, k in ipairs(CRT.AlertPhases.KINDS) do
@@ -181,12 +187,13 @@ local function makeRow(f, i)
         end,
         set = function(key)
             if row.ph and selected then
-                setKind(selected, row.ph, key)
-                refresh()
+                if not setKind(selected, row.ph, key) then
+                    refresh()
+                end
             end
         end,
     })
-    row.kind:SetPoint("LEFT", 180, 0)
+    row.kind:SetPoint("LEFT", 140, 0)
 
     row.value = UI.Dropdown(frame, "", {
         labelWidth = 1,
@@ -206,22 +213,23 @@ local function makeRow(f, i)
             if row.ph and selected then
                 local kind = current(selected, row.ph)
                 CRT.AlertPhases:Set(selected, row.ph, kind, key)
-                refresh()
             end
         end,
     })
-    row.value:SetPoint("LEFT", 410, 0)
+    row.value:SetPoint("LEFT", 340, 0)
 
     row.edit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    row.edit:SetSize(220, 20)
-    row.edit:SetPoint("LEFT", 420, 0)
+    row.edit:SetSize(150, 20)
+    row.edit:SetPoint("LEFT", 350, 0)
     row.edit:SetAutoFocus(false)
     row.edit:SetFontObject(CRTFontEdit)
     local function commit(self)
         local text = trim(self:GetText())
         if row.ph and selected and text ~= "" then
-            if CRT.AlertPhases:Set(selected, row.ph, "emote", text) then
+            local kind, value = current(selected, row.ph)
+            if not (kind == "emote" and value == text) and CRT.AlertPhases:Set(selected, row.ph, "emote", text) then
                 pending[row.ph] = nil
+                return -- Set told the listeners, which refresh the tab
             end
         end
         refresh()
@@ -236,17 +244,16 @@ local function makeRow(f, i)
     end)
 
     row.marker = frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.marker:SetPoint("LEFT", 660, 0)
-    row.marker:SetWidth(60)
+    row.marker:SetPoint("LEFT", 510, 0)
+    row.marker:SetWidth(56)
     row.marker:SetJustifyH("LEFT")
 
-    row.useShipped = makeButton(frame, TEXT.useShipped, 90, 20)
+    row.useShipped = makeButton(frame, TEXT.useShipped, 80, 20)
     row.useShipped:SetPoint("RIGHT", 0, 0)
     row.useShipped:SetScript("OnClick", function()
         if row.ph and selected then
-            CRT.AlertPhases:UseShipped(selected, row.ph)
             pending[row.ph] = nil
-            refresh()
+            CRT.AlertPhases:UseShipped(selected, row.ph)
         end
     end)
     return row
