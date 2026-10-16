@@ -29,6 +29,10 @@ local TEXT = {
 local SOUND_ORDER = { "RAID_WARNING", "READY_CHECK", "ALARM_CLOCK_WARNING_3", "UI_BNET_TOAST", "IG_PLAYER_INVITE",
     "MAP_PING", "IG_QUEST_LIST_OPEN", "IG_MAINMENU_OPTION_CHECKBOX_ON" }
 
+local NOTICE = {
+    speech = "Raid Notes: your note lines are now read out even with the next-spell alert off. Untick 'Read them out' on Raid Notes > Alerts to stop it.",
+}
+
 local Speech = {
     queue = {},     -- items waiting, oldest first
     spoken = {},    -- keys Rules.SpeechDue has already handled
@@ -37,6 +41,23 @@ local Speech = {
     runId = nil,
 }
 CRT.AlertSpeech = Speech
+
+-- Note lines used to be read out only with the Next spell alert on (ruling B2 changed that). A save with
+-- the alert off and the speech on is told once, on login; the flag keeps it to once per profile.
+function Speech:SpeechNotice()
+    local db = CRT.db
+    local alert = db and db.notes and db.notes.alert
+    local alerts = db and db.alerts
+    if not (alert and alerts) or alerts.speechNotice then
+        return false
+    end
+    if alert.enabled == false and alert.tts ~= false then
+        alerts.speechNotice = true
+        CRT:Print(NOTICE.speech)
+        return true
+    end
+    return false
+end
 
 Speech.SOUNDS = {}  -- { { key, label, kit } }, in the order above
 for _, name in ipairs(SOUND_ORDER) do
@@ -189,10 +210,15 @@ end)
 -- Only the event itself matters: the speaker is free again. If this client does not know the event,
 -- the timeout above keeps the queue moving.
 -- This event can fire for any game speech, not only ours, so the timeout is the real guard.
-driver:SetScript("OnEvent", function()
+driver:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_LOGIN" then
+        Speech:SpeechNotice()
+        return
+    end
     Speech.playing = false
     if Alerts.running then
         Speech:Tick(GetTime())
     end
 end)
 pcall(driver.RegisterEvent, driver, "VOICE_CHAT_TTS_PLAYBACK_FINISHED")
+driver:RegisterEvent("PLAYER_LOGIN")

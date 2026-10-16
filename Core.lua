@@ -230,6 +230,7 @@ local defaults = {
         -- Where the player's own note lines without show: also display (Next spell alert, Bar and speech
         -- keep their own switches); off until chosen.
         noteLines = { text = false, icon = false, circle = false },
+        speechNotice = false, -- the one-time "your note lines are now read out" line has been shown
         reminders = {},
         phases = {},
         overrides = {},
