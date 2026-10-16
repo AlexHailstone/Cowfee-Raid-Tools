@@ -212,8 +212,8 @@ local function sample(now)
     }
 end
 
-local function settings(dialog, s)
-    dialog:Slider(TEXT.size, {
+local function settings(panel, s)
+    panel:Slider(TEXT.size, {
         min = MIN_ICON,
         max = MAX_ICON,
         get = function()
@@ -223,7 +223,7 @@ local function settings(dialog, s)
             s.size = value
         end,
     })
-    dialog:Dropdown(TEXT.font, {
+    panel:Dropdown(TEXT.font, {
         -- Read each time the menu opens, so fonts another addon shares later appear.
         options = function()
             local out = {}
@@ -242,7 +242,7 @@ local function settings(dialog, s)
             s.font = name
         end,
     })
-    dialog:Slider(TEXT.textSize, {
+    panel:Slider(TEXT.textSize, {
         min = MIN_FONT,
         max = MAX_FONT,
         enabledIf = function()
@@ -255,7 +255,7 @@ local function settings(dialog, s)
             s.fontSize = value
         end,
     })
-    dialog:Dropdown(TEXT.outline, {
+    panel:Dropdown(TEXT.outline, {
         options = OUTLINE_OPTIONS,
         get = function()
             return s.outline or ""
@@ -264,12 +264,12 @@ local function settings(dialog, s)
             s.outline = key
         end,
     })
-    dialog:Check(TEXT.showText, function()
+    panel:Check(TEXT.showText, function()
         return showText(s)
     end, function(on)
         s.showText = on
     end)
-    dialog:Check(TEXT.fade, function()
+    panel:Check(TEXT.fade, function()
         return fadeOn(s)
     end, function(on)
         s.fade = on

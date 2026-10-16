@@ -110,8 +110,8 @@ local function sample(now)
     }
 end
 
-local function settings(dialog, s)
-    dialog:Dropdown(TEXT.font, {
+local function settings(panel, s)
+    panel:Dropdown(TEXT.font, {
         -- Read each time the menu opens, so fonts another addon shares later appear.
         options = function()
             local out = {}
@@ -127,7 +127,7 @@ local function settings(dialog, s)
             s.font = name
         end,
     })
-    dialog:Slider(TEXT.size, {
+    panel:Slider(TEXT.size, {
         min = MIN_SIZE,
         max = MAX_SIZE,
         get = function()
@@ -137,7 +137,7 @@ local function settings(dialog, s)
             s.fontSize = value
         end,
     })
-    dialog:Dropdown(TEXT.outline, {
+    panel:Dropdown(TEXT.outline, {
         options = OUTLINE_OPTIONS,
         get = function()
             return s.outline or ""
@@ -146,7 +146,7 @@ local function settings(dialog, s)
             s.outline = key
         end,
     })
-    dialog:Dropdown(TEXT.align, {
+    panel:Dropdown(TEXT.align, {
         options = ALIGN_OPTIONS,
         get = function()
             return align(s)

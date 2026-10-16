@@ -2,13 +2,13 @@ local ADDON, CRT = ...
 
 -- The alert areas: movable places on screen where the alerts engine's lines show as texts, icons,
 -- circles or bars. Every area is made by Areas.New from a def, so they all move, preview, layer, pool,
--- grow, glow and open their settings the same way; each kind only says how one alert looks.
+-- grow, glow and show their settings the same way; each kind only says how one alert looks.
 --
 --   Areas.New(def) -> area, with def = {
 --     key              names the area: its frame is CowfeeRaidToolsAlert<Key>, its preview "alert<key>"
 --     output           the entry output it shows: "text", "icon", "circle" or "bar" (see Rules.Area)
 --     layer            its UI.LAYERS key
---     title            its name, on the drag box and the settings window
+--     title            its name, on the drag box
 --     settingsKey      its settings are CRT.db.alerts.areas[settingsKey]: shown, cap, grow, position, and
 --                      whatever its own rows add
 --     defaultPosition  { point, relativePoint, x, y } until it is moved
@@ -18,11 +18,12 @@ local ADDON, CRT = ...
 --                      settings; shownAt is the GetTime() the line's id first showed in this area (nil
 --                      without an id), kept by id so it survives the line moving to another widget.
 --     sample(now)      -> lines for Previews, each with `at` set
---     settings(dialog, s)  adds the area's own rows to the settings window with dialog:Dropdown(label,
---                      opts), dialog:Slider(label, opts), dialog:Check(label, get, set) and dialog:Color(label, get, set)
---                      (a swatch for the game's color picker; get() -> { r, g, b, a }, set(new table);
---                      opts as for UI.Dropdown and UI.Slider). It is called on every open; the rows are made on the
---                      first and reused after. A change refreshes the area at once.
+--     settings(panel, s)  adds the area's own rows to its settings on Raid Notes > Alerts with
+--                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set) and
+--                      panel:Color(label, get, set) (a swatch for the game's color picker; get() -> { r, g, b, a },
+--                      set(new table); opts as for UI.Dropdown and UI.Slider). It is called every time the area
+--                      shows there; the rows are made the first time and reused after. A change refreshes the
+--                      area at once.
 --   Optional, for an area whose settings or lines live elsewhere (the bars):
 --     store()          -> the settings table, instead of CRT.db.alerts.areas[settingsKey]
 --     lines(now, s, cap)  -> lines, more: the lines to show and how many were left out, instead of
@@ -43,8 +44,10 @@ local ADDON, CRT = ...
 --   area:ResetPosition()  back to defaultPosition
 --   area:Test(lines)      shows the given lines (with `at` set) until they have all passed
 --   area:Visible()        -> { widget } on screen, for the tests; area.more is the count left out
---   area:Open()           opens the settings window on this area (the ⚙ button)
+--   area:Open()           opens Raid Notes > Alerts on this area (the ⚙ button)
 --   area:Settings()       -> its settings table
+--   Areas.Panel(parent, onChange)  the settings panel the Alerts tab shows an area's rows in (below)
+--   Areas.Find(key)       the area with that def.key
 --   Areas.Glow(widget, on)  a pulsing border on a widget's own frame
 --   Areas.LineText(line), Areas.LineIcon(line), Areas.LineColor(line), Areas.SetFont(fontString, name,
 --     size, outline): what a line shows, with values the game hides left out, and the area's font.
@@ -58,7 +61,7 @@ CRT.AlertAreas = Areas
 local TEXT = {
     drag = "%s: drag to move",
     settings = "Settings",
-    show = "Show this area",
+    show = "Show these alerts",
     cap = "At once",
     grow = "Grow",
     down = "Down",
@@ -83,12 +86,10 @@ local GLOW_OUTSET = 3    -- how far it sits outside the widget
 local GLOW_COLOR = { 1, 0.82, 0 }
 local GLOW_PULSE = 0.4   -- seconds from bright to faint
 local GLOW_FAINT = 0.25
-local DIALOG_NAME = "CowfeeRaidToolsAlertArea"
-local DIALOG_WIDTH = 440
-local DIALOG_TOP = 32    -- below the title bar
-local DIALOG_LEFT = 16
 local ROW_HEIGHT = 32
-local COLOR_LABEL_WIDTH, COLOR_GAP, COLOR_SWATCH = 140, 5, 40 -- a color row, as wide as the others' label and control
+-- The settings panel's rows: label and control, unless a row asks for others, to fit half the tab.
+local PANEL_LABEL_WIDTH, PANEL_CONTROL_WIDTH = 120, 180
+local COLOR_GAP, COLOR_SWATCH = 5, 40 -- a color row's swatch, after a label as wide as the others'
 
 -- Each direction: the point a widget anchors by, the point of the one before it, and the gap's offset.
 local GROW = {
@@ -238,32 +239,13 @@ function Areas.Glow(widget, on)
     end
 end
 
--- The settings window ------------------------------------------------------------------------
--- One window for every area. The common rows are made once; an area's own rows are made the first
--- time it opens and kept on the area, hidden while another area is open.
+-- The settings panel -------------------------------------------------------------------------
+-- The Alerts tab of Raid Notes (Notes/AlertsTab.lua) shows one area's settings at a time in a panel.
+-- The common rows (Show these alerts, At once, Grow) are made once; an area's own rows are made the
+-- first time it shows and kept, hidden while another area shows.
 
-local dialog
-local current -- the area the window shows
-
-local function refreshRows()
-    if not (dialog and current) then
-        return
-    end
-    for _, row in ipairs(dialog.common) do
-        row.refresh()
-    end
-    for i = 1, current.cursor do
-        current.rows[i].row.refresh()
-    end
-end
-
--- After any change: the area redraws at once and the rows show the new values.
-local function changed()
-    if current then
-        current:Refresh()
-    end
-    refreshRows()
-end
+local Panel = {}
+Panel.__index = Panel
 
 local function makeCheck(parent, label, get, set)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
@@ -288,19 +270,19 @@ end
 -- A row with a label and a swatch that opens the game's color picker (with opacity). get() returns
 -- { r, g, b, a }; set(color) is given a new table. The picker writes through the set it opened with, so
 -- one left open never writes into another area's settings, and Cancel puts the old color back.
-local function makeColor(parent, label, slot)
+local function makeColor(parent, label, slot, changed)
     local row = CreateFrame("Frame", nil, parent)
-    row:SetSize(COLOR_LABEL_WIDTH + COLOR_GAP + COLOR_SWATCH, ROW_HEIGHT)
+    row:SetSize(PANEL_LABEL_WIDTH + COLOR_GAP + COLOR_SWATCH, ROW_HEIGHT)
     row.colorLabel = label
     local text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", row, "LEFT", 0, 0)
-    text:SetWidth(COLOR_LABEL_WIDTH)
+    text:SetWidth(PANEL_LABEL_WIDTH)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
     text:SetText(label)
     local swatch = CreateFrame("Button", nil, row)
     swatch:SetSize(COLOR_SWATCH, 20)
-    swatch:SetPoint("LEFT", row, "LEFT", COLOR_LABEL_WIDTH + COLOR_GAP, 0)
+    swatch:SetPoint("LEFT", row, "LEFT", PANEL_LABEL_WIDTH + COLOR_GAP, 0)
     swatch.edge = swatch:CreateTexture(nil, "BACKGROUND")
     swatch.edge:SetAllPoints()
     swatch.edge:SetColorTexture(0.5, 0.5, 0.5, 1)
@@ -316,7 +298,7 @@ local function makeColor(parent, label, slot)
         if not ColorPickerFrame then
             return
         end
-        local set = slot.opts.set -- this open's settings, kept until the picker closes
+        local set = slot.opts.set -- this showing's settings, kept until the picker closes
         local before = copyColor(slot.opts.get())
         local function apply()
             local r, g, b = ColorPickerFrame:GetColorRGB()
@@ -348,27 +330,51 @@ local function makeColor(parent, label, slot)
     return row
 end
 
--- The next of the open area's own rows: the one made on an earlier open, or a new one from make(slot).
--- slot.opts is replaced on every open, before any control is made (a control reads its value as it is
--- made), so the rows always read fresh settings.
-local function nextSlot(opts, make)
-    current.cursor = current.cursor + 1
-    local slot = current.rows[current.cursor]
+-- Reads every row of the area shown again.
+function Panel:Refresh()
+    if not (self.area and self.common) then
+        return
+    end
+    for _, row in ipairs(self.common) do
+        row.refresh()
+    end
+    local rows = self.rows[self.area]
+    for i = 1, self.cursor do
+        rows[i].row.refresh()
+    end
+end
+
+-- After any change: the area redraws at once, the rows show the new values, and the tab hears of it.
+function Panel:Changed()
+    if self.area then
+        self.area:Refresh()
+    end
+    self:Refresh()
+    if self.onChange then
+        self.onChange()
+    end
+end
+
+-- The next of the shown area's own rows: the one made the first time it showed, or a new one from
+-- make(slot). slot.opts is replaced on every showing, before any control is made (a control reads its
+-- value as it is made), so the rows always read fresh settings.
+function Panel:NextSlot(opts, make)
+    local rows = self.rows[self.area]
+    self.cursor = self.cursor + 1
+    local slot = rows[self.cursor]
     if slot then
         slot.opts = opts
     else
         slot = { opts = opts }
         slot.row = make(slot)
-        current.rows[current.cursor] = slot
+        rows[self.cursor] = slot
     end
     return slot
 end
 
-local methods = {}
-
-function methods:Dropdown(label, opts)
-    local slot = nextSlot(opts, function(slot)
-        return UI.Dropdown(dialog, label, {
+function Panel:Dropdown(label, opts)
+    local slot = self:NextSlot(opts, function(slot)
+        return UI.Dropdown(self.frame, label, {
             options = function()
                 local o = slot.opts.options
                 return type(o) == "function" and o() or o
@@ -378,10 +384,10 @@ function methods:Dropdown(label, opts)
             end,
             set = function(key)
                 slot.opts.set(key)
-                changed()
+                self:Changed()
             end,
-            width = opts.width,
-            labelWidth = opts.labelWidth,
+            width = opts.width or PANEL_CONTROL_WIDTH,
+            labelWidth = opts.labelWidth or PANEL_LABEL_WIDTH,
             enabledIf = function()
                 return not slot.opts.enabledIf or slot.opts.enabledIf()
             end,
@@ -393,22 +399,22 @@ function methods:Dropdown(label, opts)
     return slot.row
 end
 
-function methods:Slider(label, opts)
-    local slot = nextSlot(opts, function(slot)
-        return UI.Slider(dialog, label, {
+function Panel:Slider(label, opts)
+    local slot = self:NextSlot(opts, function(slot)
+        return UI.Slider(self.frame, label, {
             min = opts.min,
             max = opts.max,
             step = opts.step,
             format = opts.format,
             onRelease = opts.onRelease,
-            width = opts.width,
-            labelWidth = opts.labelWidth,
+            width = opts.width or PANEL_CONTROL_WIDTH,
+            labelWidth = opts.labelWidth or PANEL_LABEL_WIDTH,
             get = function()
                 return slot.opts.get()
             end,
             set = function(value)
                 slot.opts.set(value)
-                changed()
+                self:Changed()
             end,
             enabledIf = function()
                 return not slot.opts.enabledIf or slot.opts.enabledIf()
@@ -418,101 +424,139 @@ function methods:Slider(label, opts)
     return slot.row
 end
 
-function methods:Check(label, get, set)
-    local slot = nextSlot({ get = get, set = set }, function(slot)
-        return makeCheck(dialog, label, function()
+function Panel:Check(label, get, set)
+    local slot = self:NextSlot({ get = get, set = set }, function(slot)
+        return makeCheck(self.frame, label, function()
             return slot.opts.get()
         end, function(on)
             slot.opts.set(on)
-            changed()
+            self:Changed()
         end)
     end)
     return slot.row
 end
 
-function methods:Color(label, get, set)
-    local slot = nextSlot({ get = get, set = set }, function(slot)
-        return makeColor(dialog, label, slot)
+function Panel:Color(label, get, set)
+    local slot = self:NextSlot({ get = get, set = set }, function(slot)
+        return makeColor(self.frame, label, slot, function()
+            self:Changed()
+        end)
     end)
     return slot.row
 end
 
--- Needs `current` set: the common rows read its settings as they are made. `dialog` is only set once
--- the whole window is made, so a build that failed part way is made afresh on the next open; the
--- failed one stays hidden.
-local escapeAdded = false
+function Panel:Place(row, y)
+    row:ClearAllPoints()
+    if row.labelText then
+        -- A checkbox is smaller than its row, so it sits in the middle of it.
+        row:SetPoint("TOPLEFT", self.frame, "TOPLEFT", -4, y - (ROW_HEIGHT - 24) / 2)
+    else
+        row:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, y)
+    end
+    row:Show()
+end
 
-local function buildDialog()
-    if dialog then
-        return
-    end
-    local d = CreateFrame("Frame", DIALOG_NAME, UIParent, "BasicFrameTemplateWithInset")
-    UI:StyleWindow(d)
-    d:Hide()
-    d:SetSize(DIALOG_WIDTH, 200)
-    d:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    d:SetClampedToScreen(true)
-    d:SetMovable(true)
-    d:EnableMouse(true)
-    d:RegisterForDrag("LeftButton")
-    d:SetScript("OnDragStart", d.StartMoving)
-    d:SetScript("OnDragStop", d.StopMovingOrSizing)
-    UI:RegisterLayer("panel", d)
-    -- Escape finds the window by name, so the newest one.
-    if not escapeAdded then
-        tinsert(UISpecialFrames, DIALOG_NAME)
-        escapeAdded = true
-    end
-    for name, fn in pairs(methods) do
-        d[name] = fn
-    end
-
+-- The common rows read the shown area's settings as they are made, so they wait for the first area.
+local function buildCommon(panel)
+    local frame = panel.frame
     local function s()
-        return current:Settings()
+        return panel.area:Settings()
     end
-    local common = {
-        makeCheck(d, TEXT.show, function()
+    panel.common = {
+        makeCheck(frame, TEXT.show, function()
             return s().shown
         end, function(on)
             s().shown = on
-            changed()
+            panel:Changed()
         end),
-        UI.Slider(d, TEXT.cap, {
+        UI.Slider(frame, TEXT.cap, {
             min = 1,
             max = MAX_CAP,
+            labelWidth = PANEL_LABEL_WIDTH,
+            width = PANEL_CONTROL_WIDTH,
             get = function()
                 return capOf(s())
             end,
             set = function(value)
                 s().cap = value
-                changed()
+                panel:Changed()
             end,
         }),
-        UI.Dropdown(d, TEXT.grow, {
+        UI.Dropdown(frame, TEXT.grow, {
             options = GROW_OPTIONS,
+            labelWidth = PANEL_LABEL_WIDTH,
+            width = PANEL_CONTROL_WIDTH,
             get = function()
                 return GROW[s().grow] and s().grow or "down"
             end,
             set = function(key)
                 s().grow = key
-                changed()
+                panel:Changed()
             end,
         }),
     }
-    d.common = common
-    d:Hide()
-    dialog = d
+    for _, row in ipairs(panel.common) do
+        row:Hide()
+    end
 end
 
-local function place(row, y)
-    row:ClearAllPoints()
-    if row.labelText then
-        -- A checkbox is smaller than its row, so it sits in the middle of it.
-        row:SetPoint("TOPLEFT", dialog, "TOPLEFT", DIALOG_LEFT, y - (ROW_HEIGHT - 24) / 2)
-    else
-        row:SetPoint("TOPLEFT", dialog, "TOPLEFT", DIALOG_LEFT, y)
+-- Shows one area's rows, top to bottom, and hides every other area's. The panel's height follows.
+function Panel:Select(area)
+    self.area = area
+    if not self.common then
+        buildCommon(self)
     end
-    row:Show()
+    for other, rows in pairs(self.rows) do
+        if other ~= area then
+            for _, slot in ipairs(rows) do
+                slot.row:Hide()
+            end
+        end
+    end
+    self.rows[area] = self.rows[area] or {}
+    self.cursor = 0
+    if area.def.settings then
+        area.def.settings(self, area:Settings())
+    end
+    -- A row that an earlier showing made but this one did not ask for stays hidden.
+    local rows = self.rows[area]
+    for i = self.cursor + 1, #rows do
+        rows[i].row:Hide()
+    end
+    local y = 0
+    for _, row in ipairs(self.common) do
+        self:Place(row, y)
+        y = y - ROW_HEIGHT
+    end
+    for i = 1, self.cursor do
+        self:Place(rows[i].row, y)
+        y = y - ROW_HEIGHT
+    end
+    self.frame:SetHeight(-y)
+    self:Refresh()
+end
+
+-- Areas.Panel(parent, onChange) -> panel, with panel.frame a Frame of its own on parent:
+--   panel:Select(area)   shows that area's rows: Show these alerts, At once, Grow, then its own
+--   panel.area           the area it shows
+--   panel:Refresh()      reads every row again
+--   panel:Dropdown/Slider/Check/Color  what def.settings(panel, s) adds its rows with
+-- onChange() is called after any change made on it.
+function Areas.Panel(parent, onChange)
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(PANEL_LABEL_WIDTH + PANEL_CONTROL_WIDTH + 60, ROW_HEIGHT)
+    local panel = setmetatable({ frame = frame, rows = {}, cursor = 0, onChange = onChange }, Panel)
+    return panel
+end
+
+-- The area with this key ("icons", "texts", "bars" or "circles"), or nil.
+function Areas.Find(key)
+    for _, area in ipairs(Areas.list) do
+        if area.def.key == key then
+            return area
+        end
+    end
+    return nil
 end
 
 -- The area -----------------------------------------------------------------------------------
@@ -779,36 +823,18 @@ function Area:Visible()
     return out
 end
 
+-- The settings live on Raid Notes > Alerts: this opens that tab on this area.
 function Area:Open()
-    current = self
-    buildDialog()
-    for _, area in ipairs(Areas.list) do
-        for _, slot in ipairs(area.rows) do
-            slot.row:Hide()
-        end
+    if CRT.NoteAlertsTab then
+        CRT.NoteAlertsTab.Select(self.def.key)
     end
-    UI.SetFrameTitle(dialog, self.title)
-    self.cursor = 0
-    if self.def.settings then
-        self.def.settings(dialog, self:Settings())
+    if CRT.NotesPage then
+        CRT.NotesPage.Open("alerts")
     end
-    local y = -DIALOG_TOP
-    for _, row in ipairs(dialog.common) do
-        place(row, y)
-        y = y - ROW_HEIGHT
-    end
-    for i = 1, self.cursor do
-        place(self.rows[i].row, y)
-        y = y - ROW_HEIGHT
-    end
-    dialog:SetHeight(-y + DIALOG_LEFT)
-    refreshRows()
-    dialog:Show()
-    dialog:Raise()
 end
 
 function Areas.New(def)
-    local area = setmetatable({ def = def, title = def.title, pool = {}, count = 0, more = 0, rows = {}, cursor = 0,
+    local area = setmetatable({ def = def, title = def.title, pool = {}, count = 0, more = 0,
         preview = false, shownAt = {}, seen = {} }, Area)
     Areas.list[#Areas.list + 1] = area
     UI:RegisterPreview("alert" .. def.key, function(on)

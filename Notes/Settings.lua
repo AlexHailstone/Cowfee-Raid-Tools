@@ -1,9 +1,10 @@
 local ADDON, CRT = ...
 
 -- The Settings tab of the Raid Notes page (Notes/Page.lua builds it into its tab): one column for each
--- of the three note windows (timers, assignments, personal note), your alerts and text to speech,
--- and who to accept shared notes from. Unlocked windows can be dragged and resized by hand, and their
--- position and size are saved per player.
+-- of the three note windows (timers, assignments, personal note), your alert's timing and voice, and
+-- who to accept shared notes from. Whether the alert and the speech are on, and where your note lines
+-- show, is on the Alerts tab (Notes/AlertsTab.lua). Unlocked windows can be dragged and resized by
+-- hand, and their position and size are saved per player.
 
 local Notes = CRT.Notes
 local UI = CRT.UI
@@ -28,9 +29,9 @@ local TEXT = {
 
     -- Alerts.
     alerts = "Alerts",
-    alertShow = "Show your next spell or callout",
+    alertsHelp = "When your next spell or callout shows and how it is read out.\n\n"
+        .. "Turn the Next spell alert and the speech on or off on the Alerts tab, under Your note lines go to. While one is off, its rows here are greyed out.",
     alertSeconds = "Show it early by",
-    tts = "Text to Speech",
     ttsSeconds = "Count down seconds",
     ttsVolume = "Speech volume",
     alertIcon = "Spell icon",
@@ -40,13 +41,6 @@ local TEXT = {
     -- Sharing.
     sharing = "Sharing",
     trustedOnly = "Only accept notes from leader or assistants",
-
-    -- Alert areas.
-    areas = "Alert areas",
-    areasHelp = "Texts, icons, circles and bars each have their own settings: press Previews, then the cog on the area's box.\n\n"
-        .. "Show your note lines as bars: your note lines are read when the pull starts, so changing it takes effect on the next pull.",
-    barsNoteLines = "Show your note lines as bars",
-    previews = "Previews",
 }
 
 local COLUMN_W = 226
@@ -226,7 +220,7 @@ local function build(pf)
     end
 
     -- Alerts, on the left, and sharing, on the right. The seconds row greys out while alerts are off,
-    -- and the speech rows while text to speech is off.
+    -- and the speech rows while text to speech is off; both switches are on the Alerts tab.
     local function alertsOn()
         return Notes:Alert().enabled and true or false
     end
@@ -234,21 +228,20 @@ local function build(pf)
         return Notes:Alert().tts and true or false
     end
     local top = -300
-    heading(pf, 8, top, TEXT.alerts)
-    makeCheck(pf, 4, top - 20, TEXT.alertShow, nil, alert("enabled"))
-    makeNumber(pf, 4, top - 46, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = 120, width = 150, format = seconds, enabledIf = alertsOn }, alert("seconds"))
-    makeCheck(pf, 4, top - 80, TEXT.tts, nil, alert("tts"))
-    makeNumber(pf, 4, top - 106, TEXT.ttsSeconds, { low = 0, high = 30, labelWidth = 120, width = 150, format = seconds, enabledIf = speechOn }, alert("ttsSeconds"))
-    local volumeGet, volumeSet = alert("ttsVolume")
-    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = 120, width = 150, format = percent, get = volumeGet, set = volumeSet, enabledIf = speechOn })
-    volume:SetPoint("TOPLEFT", 8, top - 138)
-    controls[#controls + 1] = volume
+    local alertsTitle = heading(pf, 8, top, TEXT.alerts)
+    UI.Help(pf, TEXT.alerts, TEXT.alertsHelp):SetPoint("LEFT", alertsTitle, "RIGHT", 6, 0)
+    makeNumber(pf, 4, top - 22, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = 120, width = 150, format = seconds, enabledIf = alertsOn }, alert("seconds"))
     local iconGet, iconSet = alert("iconPosition")
     local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = 120, width = 150, get = iconGet, set = iconSet, enabledIf = alertsOn })
-    iconRow:SetPoint("TOPLEFT", 8, top - 170)
+    iconRow:SetPoint("TOPLEFT", 8, top - 54)
     controls[#controls + 1] = iconRow
+    makeNumber(pf, 4, top - 86, TEXT.ttsSeconds, { low = 0, high = 30, labelWidth = 120, width = 150, format = seconds, enabledIf = speechOn }, alert("ttsSeconds"))
+    local volumeGet, volumeSet = alert("ttsVolume")
+    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = 120, width = 150, format = percent, get = volumeGet, set = volumeSet, enabledIf = speechOn })
+    volume:SetPoint("TOPLEFT", 8, top - 118)
+    controls[#controls + 1] = volume
     local speak = makeButton(pf, TEXT.testSpeech, 140)
-    speak:SetPoint("TOPLEFT", 8, top - 210)
+    speak:SetPoint("TOPLEFT", 8, top - 158)
     speak:SetScript("OnClick", function()
         CRT.NoteAlert:Speak(TEXT.testPhrase)
     end)
@@ -258,28 +251,6 @@ local function build(pf)
         return Notes:TrustedOnly()
     end, function(value)
         Notes:Set(nil, "trustedOnly", value)
-    end)
-
-    -- Alert areas, under sharing. Each area has its own settings, shown with Previews.
-    local function bars()
-        return CRT.Alerts:Settings().bars
-    end
-    local areasTop = top - 60
-    local areasTitle = heading(pf, 360, areasTop, TEXT.areas)
-    UI.Help(pf, TEXT.areas, TEXT.areasHelp):SetPoint("LEFT", areasTitle, "RIGHT", 6, 0)
-    makeCheck(pf, 356, areasTop - 20, TEXT.barsNoteLines, function()
-        return bars().shown and true or false
-    end, function()
-        return bars().noteLines
-    end, function(value)
-        bars().noteLines = value
-        refresh()
-        CRT.AlertBars:Refresh()
-    end)
-    local previews = makeButton(pf, TEXT.previews, 140)
-    previews:SetPoint("TOPLEFT", 364, areasTop - 54)
-    previews:SetScript("OnClick", function()
-        UI:SetPreviews(true)
     end)
 
     pf:SetScript("OnShow", refresh)

@@ -45,6 +45,7 @@ Notes\Comm.lua
 Notes\Settings.lua
 Notes\Reminders.lua
 Notes\Phases.lua
+Notes\AlertsTab.lua
 Notes\Page.lua
 Late\Data.lua
 Late\Page.lua

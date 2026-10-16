@@ -1,11 +1,12 @@
 local ADDON, CRT = ...
 
--- The Raid Notes page, with four tabs:
+-- The Raid Notes page, with five tabs:
 --   Notes      the list of notes (one per boss), the text of the selected one, importing, sharing with
 --              the group, the roster link to Raid Groups, your personal note, and a test run
 --   Reminders  a boss's Journal abilities and your own reminders (Notes/Reminders.lua)
 --   Phases     what starts each phase of a boss (Notes/Phases.lua)
---   Settings   the three note windows, your alert and sharing (Notes/Settings.lua)
+--   Alerts     where your note lines show and how each kind of alert looks (Notes/AlertsTab.lua)
+--   Settings   the three note windows, your alert's timing and voice, and sharing (Notes/Settings.lua)
 -- The note windows and your alert are moved with "Previews".
 
 local Notes = CRT.Notes
@@ -195,7 +196,7 @@ local function buildNotes(pf)
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
-    UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert and sharing settings are on the Settings tab."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
+    UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert timing and sharing settings are on the Settings tab; where your note lines show is on the Alerts tab."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(250, ROW_H - 2)
@@ -373,6 +374,7 @@ local TABS = {
     { key = "notes", label = "Notes" },
     { key = "reminders", label = "Reminders" },
     { key = "phases", label = "Phases" },
+    { key = "alerts", label = "Alerts" },
     { key = "settings", label = "Settings" },
 }
 local tabButtons, tabFrames, built = {}, {}, {}
@@ -391,6 +393,8 @@ local function selectTab(key)
             CRT.NoteReminders.Build(tabFrames[key])
         elseif key == "phases" then
             CRT.NotePhases.Build(tabFrames[key])
+        elseif key == "alerts" then
+            CRT.NoteAlertsTab.Build(tabFrames[key])
         else
             CRT.NoteSettings.Build(tabFrames[key])
         end
@@ -409,8 +413,9 @@ local function build(pf)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(150, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 154, -36)
+        -- Five tabs across the 686 px page, Settings last.
+        b:SetSize(130, 26)
+        b:SetPoint("TOPLEFT", 8 + (i - 1) * 134, -36)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
@@ -444,7 +449,7 @@ end
 
 UI:RegisterPage("notes", "Raid Notes", build)
 
--- Opens the Raid Notes page on a tab: "notes", "reminders", "phases" or "settings".
+-- Opens the Raid Notes page on a tab: "notes", "reminders", "phases", "alerts" or "settings".
 CRT.NotesPage = {
     Open = function(tab)
         currentTab = tab

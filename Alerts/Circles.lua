@@ -214,8 +214,8 @@ local function sample(now)
     }
 end
 
-local function settings(dialog, s)
-    dialog:Slider(TEXT.size, {
+local function settings(panel, s)
+    panel:Slider(TEXT.size, {
         min = MIN_SIZE,
         max = MAX_SIZE,
         get = function()
@@ -225,7 +225,7 @@ local function settings(dialog, s)
             s.size = value
         end,
     })
-    dialog:Dropdown(TEXT.thickness, {
+    panel:Dropdown(TEXT.thickness, {
         options = THICKNESS_OPTIONS,
         get = function()
             return RING_TEXTURES[s.thickness] and s.thickness or DEFAULT_THICKNESS
@@ -234,12 +234,12 @@ local function settings(dialog, s)
             s.thickness = key
         end,
     })
-    dialog:Color(TEXT.ringColor, function()
+    panel:Color(TEXT.ringColor, function()
         return ringColor(s)
     end, function(c)
         s.ringColor = c
     end)
-    dialog:Dropdown(TEXT.font, {
+    panel:Dropdown(TEXT.font, {
         -- Read each time the menu opens, so fonts another addon shares later appear.
         options = function()
             local out = {}
@@ -255,7 +255,7 @@ local function settings(dialog, s)
             s.font = name
         end,
     })
-    dialog:Slider(TEXT.textSize, {
+    panel:Slider(TEXT.textSize, {
         min = MIN_FONT,
         max = MAX_FONT,
         get = function()
@@ -265,7 +265,7 @@ local function settings(dialog, s)
             s.fontSize = value
         end,
     })
-    dialog:Dropdown(TEXT.outline, {
+    panel:Dropdown(TEXT.outline, {
         options = OUTLINE_OPTIONS,
         get = function()
             return s.outline or ""

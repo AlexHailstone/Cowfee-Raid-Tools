@@ -237,11 +237,11 @@ local function sample(now)
     return out
 end
 
-local function dialogRows(dialog, s)
+local function settingsRows(panel, s)
     local function on()
         return s.shown and true or false
     end
-    dialog:Slider(TEXT.ahead, {
+    panel:Slider(TEXT.ahead, {
         min = 5,
         max = 60,
         get = function()
@@ -252,7 +252,7 @@ local function dialogRows(dialog, s)
         end,
         enabledIf = on,
     })
-    dialog:Slider(TEXT.width, {
+    panel:Slider(TEXT.width, {
         min = 120,
         max = 400,
         step = 10,
@@ -264,7 +264,7 @@ local function dialogRows(dialog, s)
         end,
         enabledIf = on,
     })
-    dialog:Slider(TEXT.height, {
+    panel:Slider(TEXT.height, {
         min = 12,
         max = 40,
         get = function()
@@ -275,7 +275,7 @@ local function dialogRows(dialog, s)
         end,
         enabledIf = on,
     })
-    dialog:Dropdown(TEXT.font, {
+    panel:Dropdown(TEXT.font, {
         -- Read each time the menu opens, so fonts another addon shares later appear.
         options = function()
             local out = {}
@@ -292,7 +292,7 @@ local function dialogRows(dialog, s)
         end,
         enabledIf = on,
     })
-    dialog:Slider(TEXT.textSize, {
+    panel:Slider(TEXT.textSize, {
         min = MIN_FONT,
         max = MAX_FONT,
         get = function()
@@ -304,7 +304,7 @@ local function dialogRows(dialog, s)
         enabledIf = on,
     })
     local function colorRow(label, key, default)
-        dialog:Color(label, function()
+        panel:Color(label, function()
             return colorOf(s[key], default)
         end, function(c)
             s[key] = c
@@ -328,7 +328,7 @@ Bars = Areas.New({
     lines = lines,
     after = after,
     sample = sample,
-    settings = dialogRows,
+    settings = settingsRows,
 })
 CRT.AlertBars = Bars
 
