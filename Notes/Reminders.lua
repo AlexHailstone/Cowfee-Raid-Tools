@@ -104,7 +104,7 @@ end
 -- The tab -----------------------------------------------------------------------------------------
 
 local selected, viewDiff
-local tab, rows, items, offset, slider, bossDrop, diffDrop, fromDrop, ownButton
+local tab, rows, items, offset, slider, bossDrop, diffDrop, fromDrop, ownButton, markerCheck
 local listening = false
 
 local function pickBoss(list)
@@ -232,6 +232,9 @@ local function refresh()
     end
     for _, d in ipairs({ bossDrop, diffDrop, fromDrop }) do
         d.refresh()
+    end
+    if markerCheck then
+        markerCheck.refresh()
     end
 end
 
@@ -465,6 +468,32 @@ local function build(f)
         end
     end)
     f.ownButton = ownButton
+
+    -- The boss's marker display (Markers/Display.lua), when it has one: each player's on/off.
+    markerCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    markerCheck:SetSize(24, 24)
+    markerCheck:SetPoint("LEFT", ownButton, "RIGHT", 16, 0)
+    local markerText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    markerText:SetPoint("LEFT", markerCheck, "RIGHT", 2, 0)
+    local markerHelp = UI.Help(f, "Marker display", "This boss has a marker display: a small window that shows the raid markers raiders send with their macros, such as /raid {rt3}, in the order they are sent, with who sent each one. Untick it to turn it off for you on this boss.\n\nAny message in group chat fills a slot, because the game hides chat text from addons inside raids. Move the window with Previews.")
+    markerHelp:SetPoint("LEFT", markerText, "RIGHT", 6, 0)
+    markerCheck:SetScript("OnClick", function(self)
+        local enc = pickBoss(bossList())
+        if enc then
+            CRT.MarkerDisplay:SetEnabled(enc, self:GetChecked() and true or false)
+        end
+    end)
+    markerCheck.refresh = function()
+        local enc = pickBoss(bossList())
+        local def = enc and CRT.MarkerDisplay and CRT.MarkerDisplay:For(enc)
+        markerCheck:SetShown(def ~= nil)
+        markerText:SetShown(def ~= nil)
+        markerHelp:SetShown(def ~= nil)
+        if def then
+            markerText:SetText("Show the marker display: " .. (def.name or "Marker display"))
+            markerCheck:SetChecked(CRT.MarkerDisplay:Enabled(enc))
+        end
+    end
 
     f:SetScript("OnShow", refresh)
     if not listening then

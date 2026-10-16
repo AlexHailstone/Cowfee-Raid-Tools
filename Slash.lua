@@ -130,6 +130,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     --@do-not-package@
     elseif msg == "dev debuffs" then
         CRT.DebuffPanel:ShowInfo()
+    elseif msg == "dev markers" then
+        if CRT.MarkerEditor then
+            CRT.MarkerEditor:Toggle()
+        end
     elseif msg == "dev reset" then
         if CRT.Dev then
             CRT.Dev:ResetAllPositions()
