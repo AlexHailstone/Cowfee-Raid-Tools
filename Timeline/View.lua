@@ -61,7 +61,7 @@ local TEXT = {
     needPull = "Reminders need the boss pulled once, or its reference to have an Encounter line.",
     moveTo = "Move to %s",
     addTime = "Alt \194\183 add a time %s",
-    moveRefused = "That alert was not changed: its note line is different from the one the Timeline drew. Nothing was written.",
+    moveRefused = "That alert changed since you grabbed it; nothing was moved.",
 }
 
 local function settings()
@@ -688,9 +688,9 @@ function Methods:Marks(lanes, length)
         for _, n in ipairs(Notes:List()) do
             if n.record.encounterID == encounterID then
                 local note = Notes:Parsed(n.id)
+                local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
                 for _, timer in ipairs(note and note.timers or {}) do
-                    -- the raw line as drawn, so a move can tell the line has changed since
-                    local _, raw = Notes:TimerAt(n.id, timer.line)
+                    local raw = rawLines[timer.line]
                     add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
                         difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
                         timer.spellId, timer.text)
@@ -819,7 +819,12 @@ end
 -- A left button pressed on a flag: remember where, so the release can tell a click from a drag.
 function Methods:StartMove(f)
     if f.mark then
-        self.move = { f = f, x0 = cursorScreenX(self), scroll0 = self.hscroll:GetHorizontalScroll() }
+        -- a copy of the mark: a redraw during the drag can hand this flag to another alert
+        local m = {}
+        for k, v in pairs(f.mark) do
+            m[k] = v
+        end
+        self.move = { f = f, m = m, x0 = cursorScreenX(self), scroll0 = self.hscroll:GetHorizontalScroll() }
     end
 end
 
@@ -828,7 +833,7 @@ end
 function Methods:MoveTarget(mv)
     local length = math.max(1, self.extra.length or 0)
     local dx = (cursorScreenX(self) + self.hscroll:GetHorizontalScroll()) - (mv.x0 + mv.scroll0)
-    local t = mv.f.mark.t + dx * length / math.max(1, self.trackW)
+    local t = mv.m.t + dx * length / math.max(1, self.trackW)
     return tenth(math.max(0, math.min(length, t)))
 end
 
@@ -843,7 +848,7 @@ end
 -- read live here, as the release reads it.
 function Methods:UpdateMove()
     local mv = self.move
-    if not (mv and mv.f.mark) then
+    if not mv then
         self:CancelMove()
         return
     end
@@ -855,7 +860,7 @@ function Methods:UpdateMove()
         return
     end
     mv.moved = true
-    local m = mv.f.mark
+    local m = mv.m
     local t = self:MoveTarget(mv)
     local g = self:Ghost()
     local x = View.TimeToX(t, math.max(1, self.extra.length or 0), self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2
@@ -865,21 +870,29 @@ function Methods:UpdateMove()
     g:ClearAllPoints()
     g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H)
     g:SetFrameLevel((mv.f:GetFrameLevel() or 0) + 1)
-    g.label:ClearAllPoints()
-    if m.row > 1 then
-        g.label:SetPoint("BOTTOM", g.head, "TOP", 0, 2)
-    elseif x > self.trackW - 150 then
-        g.label:SetPoint("RIGHT", g.head, "LEFT", -4, 0)
-    else
-        g.label:SetPoint("LEFT", g.head, "RIGHT", 4, 0)
-    end
     g.label:SetText(string.format(IsAltKeyDown() and TEXT.addTime or TEXT.moveTo, clock(t)))
+    -- the label stays inside the visible part of the track: above the flag (beside it on row 1,
+    -- where nothing is above), slid sideways as far as it needs
+    local w = g.label:GetStringWidth() or 0
+    local left = self.hscroll:GetHorizontalScroll()
+    local right = left + self:VisibleWidth()
+    local lx, ly = x + FLAG_BTN_W / 2 - w / 2, -(m.row - 1) * ROW_H + 4
+    local anchor = "BOTTOMLEFT"
+    if m.row == 1 then
+        lx, ly, anchor = x + FLAG_BTN_W, -FLAG_HEAD, "BOTTOMLEFT"
+        if lx + w > right - 3 then
+            lx = x - w - 4
+        end
+    end
+    lx = math.max(left + 3, math.min(lx, right - w - 3))
+    g.label:ClearAllPoints()
+    g.label:SetPoint(anchor, self.track, "TOPLEFT", lx, ly)
     g:Show()
 end
 
 -- Moves a note line to phase ph, t seconds in, or (add) writes the same line again there, in the same
 -- note. Fields the parser doesn't know stay on the line. False when the line is no longer the one drawn.
-local function writeNote(m, ph, t, add, bossName)
+local function writeNote(m, ph, t, add)
     local Notes, Parser = CRT.Notes, CRT.NoteParser
     local timer, raw = Notes:TimerAt(m.noteID, m.line)
     if not (timer and m.expected ~= nil and raw == m.expected) then
@@ -892,23 +905,33 @@ local function writeNote(m, ph, t, add, bossName)
     moved.ph, moved.time = ph, t
     local line = Parser.FormatLine(moved) .. Parser.UnknownFields(m.expected)
     if add then
-        return Notes:AddLine(m.encounterID, m.difficulty, bossName, line) ~= nil
+        return Notes:AddLineTo(m.noteID, line) ~= nil
     end
     return Notes:ReplaceLine(m.noteID, m.line, line, m.expected)
 end
 
+-- Whether the cursor is over the track's window.
+local function overTrack(self)
+    local scale = self.hscroll:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    x, y = x / scale, y / scale
+    local left, top = self.hscroll:GetLeft() or 0, self.hscroll:GetTop() or 0
+    return x >= left and x <= left + self.hscroll:GetWidth() and y <= top and y >= top - self.hscroll:GetHeight()
+end
+
 -- The left button let go of a flag. Under MOVE_DIST pixels it was a click. Otherwise Alt at this moment
--- decides: held adds a time, else the alert moves. A refused write says so and leaves the flag be.
+-- decides: held adds a time, else the alert moves. A release off the track cancels the drag. A refused
+-- write (the alert is no longer what was grabbed) says so and leaves the flag be.
 function Methods:FinishMove()
     local mv = self.move
     self:CancelMove()
-    if not (mv and mv.f.mark) or math.abs(cursorScreenX(self) - mv.x0) < MOVE_DIST then
+    if not mv or math.abs(cursorScreenX(self) - mv.x0) < MOVE_DIST or not overTrack(self) then
         return
     end
-    local m = mv.f.mark
+    local m = mv.m
     local t = self:MoveTarget(mv)
     local add = IsAltKeyDown() and true or false
-    if t == m.t and not add then
+    if t == m.t then
         return
     end
     local Reminders = CRT.AlertReminders
@@ -916,13 +939,20 @@ function Methods:FinishMove()
     seconds = tenth(seconds)
     local ok
     if m.kind == "mine" then
+        -- still the time that was grabbed?
+        local r = Reminders:Get(m.encounterID, m.id)
+        local cur = r and Reminders:Times(m.encounterID, r)[m.index]
+        if not (cur and cur.ph == m.ph and cur.t == m.time) then
+            CRT:Print(TEXT.moveRefused)
+            return
+        end
         if add then
             ok = Reminders:AddTime(m.encounterID, m.id, ph, seconds)
         else
             ok = Reminders:SetTime(m.encounterID, m.id, m.index, ph, seconds)
         end
     elseif m.kind == "note" then
-        ok = writeNote(m, ph, seconds, add, self.bossName)
+        ok = writeNote(m, ph, seconds, add)
     end
     if not ok then
         CRT:Print(TEXT.moveRefused)

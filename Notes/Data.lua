@@ -335,8 +335,16 @@ function Notes:AddLine(encounterID, difficultyName, bossName, line)
         local newId = self:Import(header .. "\n" .. line)
         return newId, newId and 2 or nil
     end
-    local raw = self:Get(id).raw or ""
-    local pieces = splitLines(raw)
+    return id, self:AddLineTo(id, line)
+end
+
+-- Adds a line to the end of that very note. Returns the line's number, nil when the note or line isn't fit.
+function Notes:AddLineTo(id, line)
+    local record = self:Get(id)
+    if not (record and singleLine(line)) then
+        return nil
+    end
+    local pieces = splitLines(record.raw or "")
     local last = pieces[#pieces]
     if last.text ~= "" then
         -- no newline after the last line yet: add one, in the note's own style
@@ -346,7 +354,19 @@ function Notes:AddLine(encounterID, difficultyName, bossName, line)
         pieces[#pieces] = { text = line, eol = "" }
     end
     self:UpdateRaw(id, joinLines(pieces))
-    return id, #pieces
+    return #pieces
+end
+
+-- The raw lines of a note, from one split (line n is what a timer with line = n was parsed from).
+function Notes:RawLines(id)
+    local record = self:Get(id)
+    local out = {}
+    if record and record.raw then
+        for i, piece in ipairs(splitLines(record.raw)) do
+            out[i] = piece.text
+        end
+    end
+    return out
 end
 
 -- Replaces one line. `expected` is the raw line the editor loaded; if the line has changed since,
