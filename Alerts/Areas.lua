@@ -78,6 +78,7 @@ local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y 
 local DEFAULT_FONT = "Fonts\\FRIZQT__.TTF"
 local OUTLINES = { [""] = true, OUTLINE = true, THICKOUTLINE = true }
 local HANDLE_HEIGHT = 20
+local WINDOW_MARGIN = 20      -- the main window moved aside sits this far from the screen edge
 local HANDLE_MIN_WIDTH = 220
 local GEAR_TEXTURE = "Interface\\WorldMap\\Gear_64Grey" -- the settings button
 local GEAR_SIZE = 16
@@ -601,6 +602,18 @@ function Area:ResetPosition()
     end
 end
 
+-- The drag box is wide enough for the whole title left of the settings button and Reset, never narrower
+-- than before. Measured again whenever Previews turn on, so a font change applies.
+function Area:MeasureHandle()
+    local title = self.handleTitle
+    if not (title and self.handle) then
+        return
+    end
+    local titleWidth = title.GetUnboundedStringWidth and title:GetUnboundedStringWidth() or title:GetStringWidth()
+    self.handleMin = math.max(HANDLE_MIN_WIDTH, math.ceil(HANDLE_TITLE_LEFT + titleWidth + HANDLE_TITLE_GAP + HANDLE_GEAR_RIGHT + GEAR_SIZE))
+    self.handle:SetWidth(self.handleMin)
+end
+
 function Area:Build()
     if self.frame then
         return
@@ -629,10 +642,8 @@ function Area:Build()
     CRT.UI.ResetButton(handle, function()
         self:ResetPosition()
     end):SetPoint("RIGHT", -2, 0)
-    -- Wide enough for the whole title left of the settings button and Reset, never narrower than before.
-    local titleWidth = title.GetUnboundedStringWidth and title:GetUnboundedStringWidth() or title:GetStringWidth()
-    self.handleMin = math.max(HANDLE_MIN_WIDTH, math.ceil(HANDLE_TITLE_LEFT + titleWidth + HANDLE_TITLE_GAP + HANDLE_GEAR_RIGHT + GEAR_SIZE))
-    handle:SetWidth(self.handleMin)
+    self.handleTitle = title
+    self:MeasureHandle()
 
     local gear = CreateFrame("Button", nil, handle)
     handle.gear = gear
@@ -845,7 +856,41 @@ function Area:Open()
     if CRT.NotesPage then
         CRT.NotesPage.Open("alerts")
     end
+    if UI.previewing then
+        self:MoveWindowAside()
+    end
 end
+
+-- While Previews are on, the main window would cover the area being tuned: for this session it moves to
+-- the screen side away from the area. Its saved place is untouched (a drag still saves as usual) and it
+-- goes back there when Previews turn off. A window the player has dragged since stays where they put it.
+function Area:MoveWindowAside()
+    local f = UI.frame
+    if not f or UI.windowParked == "dragged" then
+        return
+    end
+    local p = self:Settings().position or self.def.defaultPosition or DEFAULT_POSITION
+    local left = (p.x or 0) >= 0
+    local _, cy = f:GetCenter()
+    local _, uy = UIParent:GetCenter()
+    local scale = (f.GetEffectiveScale and f:GetEffectiveScale() or 1)
+    local uscale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1)
+    local dy = ((cy or 0) * scale - (uy or 0) * uscale) / scale
+    local point = left and "LEFT" or "RIGHT"
+    f:ClearAllPoints()
+    f:SetPoint(point, UIParent, point, left and WINDOW_MARGIN or -WINDOW_MARGIN, dy)
+    UI.windowParked = true
+end
+
+-- Previews off: the main window goes back to its saved place, unless the player moved it meanwhile.
+UI:RegisterPreview("alertwindow", function(on)
+    if not on and UI.windowParked then
+        if UI.windowParked == true then
+            UI:ApplyWindowPosition()
+        end
+        UI.windowParked = nil
+    end
+end)
 
 function Areas.New(def)
     local area = setmetatable({ def = def, title = def.title, pool = {}, count = 0, more = 0,
@@ -853,6 +898,9 @@ function Areas.New(def)
     Areas.list[#Areas.list + 1] = area
     UI:RegisterPreview("alert" .. def.key, function(on)
         area:Build()
+        if on then
+            area:MeasureHandle()
+        end
         area.preview = on and true or false
         area.idle = false
         area:Refresh()

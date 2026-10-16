@@ -760,6 +760,10 @@ function UI:Create()
         local point, _, _, x, y = self:GetPoint()
         local w = CRT.db.window
         w.point, w.x, w.y = point, x, y
+        -- A drag while the alerts have parked the window (Alerts/Areas.lua) is the player's own choice.
+        if UI.windowParked then
+            UI.windowParked = "dragged"
+        end
     end)
     UI.SetFrameTitle(f, "Cowfee Raid Tools")
     -- The addon's version, from the .toc, in the top left of the title bar.
@@ -859,10 +863,8 @@ function UI:Create()
         UI:SetMinimized(not UI.minimized)
     end)
 
-    local w = CRT.db.window
     f:SetScale(UI:Scale() / 100)
-    f:ClearAllPoints()
-    f:SetPoint(w.point, UIParent, w.point, w.x, w.y)
+    UI:ApplyWindowPosition(f)
 
     -- Ctrl + mouse wheel over the panel changes its size in steps of 5 percent.
     f:EnableMouseWheel(true)
@@ -989,6 +991,16 @@ function UI:SetMinimized(on)
         f.Inset:SetShown(not on)
     end
     self:StyleMinimizeButton()
+end
+
+-- Puts the window (the main one, unless a frame is given) at its saved place (CRT.db.window).
+function UI:ApplyWindowPosition(f)
+    f = f or self.frame
+    local w = CRT.db.window
+    if f then
+        f:ClearAllPoints()
+        f:SetPoint(w.point, UIParent, w.point, w.x, w.y)
+    end
 end
 
 function UI:Show(key)

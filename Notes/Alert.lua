@@ -13,6 +13,7 @@ local ICON_GAP = 8 -- between the icon and the text
 local LINE_GAP = 2 -- between the name and the countdown
 
 local frame, handle, icon, block, label, countdown
+local handleText -- the drag box's title
 local handleMin -- the drag box's least width: its whole title and Reset
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 220 }
 local previewOn = false
@@ -28,6 +29,17 @@ function Alert:Speak(text)
 end
 
 -- The alert -------------------------------------------------------------------------------
+
+-- Wide enough for the whole title left of Reset (44 wide), and at least as wide as the alert. Measured
+-- again whenever Previews turn on, so a font change applies.
+local function measureHandle()
+    if not (handle and handleText) then
+        return
+    end
+    local titleWidth = handleText.GetUnboundedStringWidth and handleText:GetUnboundedStringWidth() or handleText:GetStringWidth()
+    handleMin = math.ceil(6 + titleWidth + 4 + 44 + 2)
+    handle:SetWidth(math.max(handleMin, frame and frame:GetWidth() or 0))
+end
 
 -- Lays the alert out: the name and the countdown centered under each other, and the icon, two text
 -- lines tall, on the side chosen on the Raid Notes Settings tab. The alert is kept centered on its
@@ -196,10 +208,8 @@ local function build()
     CRT.UI.ResetButton(handle, function()
         Alert:ResetPosition()
     end):SetPoint("RIGHT", -2, 0)
-    -- Wide enough for the whole title left of Reset (44 wide), and at least as wide as the alert.
-    local titleWidth = text.GetUnboundedStringWidth and text:GetUnboundedStringWidth() or text:GetStringWidth()
-    handleMin = math.ceil(6 + titleWidth + 4 + 44 + 2)
-    handle:SetWidth(math.max(handleMin, frame:GetWidth() or 0))
+    handleText = text
+    measureHandle()
     handle:SetScript("OnDragStart", function()
         frame:StartMoving()
     end)
@@ -236,6 +246,9 @@ end)
 
 CRT.UI:RegisterPreview("alert", function(on)
     build()
+    if on then
+        measureHandle()
+    end
     previewOn = on and true or false
     Alert:Refresh()
     if not previewOn and not Engine.running then
