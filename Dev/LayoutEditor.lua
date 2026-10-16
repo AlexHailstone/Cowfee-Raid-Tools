@@ -553,6 +553,7 @@ function Dev:ResetAllPositions()
     CRT.ConsumablesDisplay:ResetPosition()
     CRT.DebuffPanel:ResetPosition()
     CRT.NoteAlert:ResetPosition()
+    CRT.AlertBars:ResetPosition()
     for _, key in ipairs({ "window", "assignments", "personal" }) do
         CRT.NoteWindow:ResetPosition(key)
     end

@@ -82,6 +82,7 @@ UI.LAYERS = {
     { key = "panel", label = "Main window", default = "HIGH" },
     { key = "notes", label = "Note windows", default = "MEDIUM" },
     { key = "alert", label = "Your next spell", default = "HIGH" },
+    { key = "alertbars", label = "Alert bars", default = "HIGH" },
     { key = "readycheck", label = "Ready check window", default = "HIGH" },
     { key = "bar", label = "Your consumables bar", default = "HIGH" },
     { key = "debuffs", label = "Debuff panel", default = "HIGH" },
