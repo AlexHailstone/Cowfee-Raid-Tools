@@ -219,6 +219,9 @@ local defaults = {
     -- Marker displays (Markers/Display.lua): disabled[encounterID] is true for a boss whose display
     -- you turned off on the Reminders tab; position is added when the window is moved.
     markers = { disabled = {} },
+    -- Pace (Pace/): own[encounterID] is your own plan, used in place of the shipped one;
+    -- disabled[encounterID] turns a boss's pace window off; shown turns the window off everywhere.
+    pace = { disabled = {}, own = {}, shown = true },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
         areas = {

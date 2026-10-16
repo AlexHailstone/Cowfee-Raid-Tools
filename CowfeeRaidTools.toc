@@ -70,6 +70,10 @@ Alerts\Circles.lua
 Alerts\Editor.lua
 Markers\Database.lua
 Markers\Display.lua
+Pace\Database.lua
+Pace\Data.lua
+Pace\Display.lua
+Pace\Page.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
 QoL\Page.lua
