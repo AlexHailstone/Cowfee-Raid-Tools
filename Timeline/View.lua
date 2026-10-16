@@ -49,6 +49,7 @@ local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close ma
 local TEXT = {
     notes = "Notes",
     everyone = "Everyone",
+    noOne = "No one (timers window only)",
     onlyMe = "Only me",
     raidNote = "Raid note",
     raidNoteOf = "Raid note (%s)",
@@ -224,9 +225,9 @@ local function flagEnter(f)
     if not m.mine then
         local words = {}
         for i, tag in ipairs(m.tags or {}) do
-            words[i] = className(tag)
+            words[i] = tag:lower() == "everyone" and TEXT.everyone or className(tag)
         end
-        who = #words > 0 and table.concat(words, " ") or TEXT.everyone
+        who = #words > 0 and table.concat(words, " ") or TEXT.noOne
     end
     GameTooltip:AddLine(who, 1, 1, 1)
     GameTooltip:AddLine(CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } }), 0.85, 0.85, 0.85)

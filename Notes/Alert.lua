@@ -13,6 +13,8 @@ local ICON_GAP = 8 -- between the icon and the text
 local LINE_GAP = 2 -- between the name and the countdown
 
 local frame, handle, icon, block, label, countdown
+local handleMin -- the drag box's least width: its whole title and Reset
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 220 }
 local previewOn = false
 local elapsed = 0
 
@@ -60,6 +62,9 @@ local function layout()
         icon:SetPoint("LEFT")
         block:SetPoint("LEFT", icon, "RIGHT", ICON_GAP, 0)
         frame:SetSize(height + ICON_GAP + width, height)
+    end
+    if handle and handleMin then
+        handle:SetWidth(math.max(handleMin, frame:GetWidth() or 0))
     end
 end
 
@@ -138,7 +143,7 @@ function Alert:Refresh()
 end
 
 local function applyPosition()
-    local p = settings().position or { point = "CENTER", relativePoint = "CENTER", x = 0, y = 220 }
+    local p = settings().position or DEFAULT_POSITION
     frame:ClearAllPoints()
     frame:SetPoint(p.point, UIParent, p.relativePoint or p.point, p.x, p.y)
 end
@@ -179,19 +184,22 @@ local function build()
 
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
-    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
+    handle:SetPoint("BOTTOM", frame, "TOP", 0, 2)
     handle:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     handle:SetBackdropColor(0.3, 0.25, 0.05, 0.9)
     handle:SetBackdropBorderColor(1, 0.82, 0, 1)
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
     local text = handle:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("CENTER")
+    text:SetPoint("LEFT", 6, 0)
     text:SetText("Your next spell: drag to move")
     CRT.UI.ResetButton(handle, function()
         Alert:ResetPosition()
     end):SetPoint("RIGHT", -2, 0)
+    -- Wide enough for the whole title left of Reset (44 wide), and at least as wide as the alert.
+    local titleWidth = text.GetUnboundedStringWidth and text:GetUnboundedStringWidth() or text:GetStringWidth()
+    handleMin = math.ceil(6 + titleWidth + 4 + 44 + 2)
+    handle:SetWidth(math.max(handleMin, frame:GetWidth() or 0))
     handle:SetScript("OnDragStart", function()
         frame:StartMoving()
     end)

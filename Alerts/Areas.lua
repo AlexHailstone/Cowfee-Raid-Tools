@@ -20,7 +20,7 @@ local ADDON, CRT = ...
 --     sample(now)      -> lines for Previews, each with `at` set
 --     settings(panel, s)  adds the area's own rows to its settings on Raid Notes > Alerts with
 --                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set) and
---                      panel:Color(label, get, set) (a swatch for the game's color picker; get() -> { r, g, b, a },
+--                      panel:Color(label, get, set, enabledIf) (a swatch for the game's color picker; get() -> { r, g, b, a },
 --                      set(new table); opts as for UI.Dropdown and UI.Slider). It is called every time the area
 --                      shows there; the rows are made the first time and reused after. A change refreshes the
 --                      area at once.
@@ -81,6 +81,9 @@ local HANDLE_HEIGHT = 20
 local HANDLE_MIN_WIDTH = 220
 local GEAR_TEXTURE = "Interface\\WorldMap\\Gear_64Grey" -- the settings button
 local GEAR_SIZE = 16
+local HANDLE_TITLE_LEFT = 6   -- the title's left edge on the drag box
+local HANDLE_GEAR_RIGHT = 50  -- the settings button's right edge, from the drag box's right
+local HANDLE_TITLE_GAP = 4    -- between the title and the settings button
 local GLOW_SIZE = 2      -- the border's thickness
 local GLOW_OUTSET = 3    -- how far it sits outside the widget
 local GLOW_COLOR = { 1, 0.82, 0 }
@@ -294,6 +297,12 @@ local function makeColor(parent, label, slot, changed)
     row.refresh = function()
         local c = slot.opts.get()
         swatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
+        if slot.opts.enabledIf then
+            local on = slot.opts.enabledIf() and true or false
+            swatch:SetEnabled(on)
+            swatch:SetAlpha(on and 1 or 0.4)
+            text:SetAlpha(on and 1 or 0.5)
+        end
     end
     swatch:SetScript("OnClick", function()
         if not ColorPickerFrame then
@@ -437,8 +446,8 @@ function Panel:Check(label, get, set)
     return slot.row
 end
 
-function Panel:Color(label, get, set)
-    local slot = self:NextSlot({ get = get, set = set }, function(slot)
+function Panel:Color(label, get, set, enabledIf)
+    local slot = self:NextSlot({ get = get, set = set, enabledIf = enabledIf }, function(slot)
         return makeColor(self.frame, label, slot, function()
             self:Changed()
         end)
@@ -620,11 +629,15 @@ function Area:Build()
     CRT.UI.ResetButton(handle, function()
         self:ResetPosition()
     end):SetPoint("RIGHT", -2, 0)
+    -- Wide enough for the whole title left of the settings button and Reset, never narrower than before.
+    local titleWidth = title.GetUnboundedStringWidth and title:GetUnboundedStringWidth() or title:GetStringWidth()
+    self.handleMin = math.max(HANDLE_MIN_WIDTH, math.ceil(HANDLE_TITLE_LEFT + titleWidth + HANDLE_TITLE_GAP + HANDLE_GEAR_RIGHT + GEAR_SIZE))
+    handle:SetWidth(self.handleMin)
 
     local gear = CreateFrame("Button", nil, handle)
     handle.gear = gear
     gear:SetSize(GEAR_SIZE, GEAR_SIZE)
-    gear:SetPoint("RIGHT", -50, 0)
+    gear:SetPoint("RIGHT", -HANDLE_GEAR_RIGHT, 0)
     gear:SetFrameLevel((handle:GetFrameLevel() or 1) + 5)
     gear:SetNormalTexture(GEAR_TEXTURE)
     gear:SetHighlightTexture(GEAR_TEXTURE)
@@ -723,7 +736,7 @@ function Area:Draw(lines, now, s, more)
             width = HANDLE_MIN_WIDTH
         end
         frame:SetSize(width, height)
-        self.handle:SetWidth(math.max(HANDLE_MIN_WIDTH, width))
+        self.handle:SetWidth(math.max(self.handleMin or HANDLE_MIN_WIDTH, width))
     end
     -- The drag box sits on the side the widgets don't grow into.
     local below = grow == "up"

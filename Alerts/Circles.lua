@@ -238,6 +238,8 @@ local function settings(panel, s)
         return ringColor(s)
     end, function(c)
         s.ringColor = c
+    end, function()
+        return s.shown and true or false
     end)
     panel:Dropdown(TEXT.font, {
         -- Read each time the menu opens, so fonts another addon shares later appear.

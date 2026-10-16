@@ -27,7 +27,7 @@ local TEXT = {
 local PAD = 8          -- around the letters, so the glow sits just outside them
 local NOW_BELOW = 0.1  -- under this many seconds left reads NOW: tenths are cut, so it would read "0.0"
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 12, 72, 36
-local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 300 }
+local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 400, y = 300 }
 local WHITE = { 1, 1, 1 }
 local ALIGNS = { LEFT = true, CENTER = true, RIGHT = true }
 

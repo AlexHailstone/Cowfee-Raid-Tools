@@ -85,6 +85,9 @@ end
 -- A saved { r, g, b, a } or the default; old saves and edited files may lack it.
 local function colorOf(c, default)
     if type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number" then
+        if c[4] ~= nil and type(c[4]) ~= "number" then
+            return { c[1], c[2], c[3], default[4] } -- a bad alpha takes the default's
+        end
         return c
     end
     return default
@@ -308,7 +311,7 @@ local function settingsRows(panel, s)
             return colorOf(s[key], default)
         end, function(c)
             s[key] = c
-        end)
+        end, on)
     end
     colorRow(TEXT.barColor, "barColor", DEFAULT_BAR_COLOR)
     colorRow(TEXT.bgColor, "bgColor", DEFAULT_BG_COLOR)

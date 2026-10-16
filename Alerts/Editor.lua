@@ -109,6 +109,7 @@ local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
 local ROW1_EXTRA = 14 -- room under the first row for the Saves to line; every row below moves down by it
+local EXPORT_HEIGHT, EXPORT_LINE_HEIGHT = 84, 14 -- the copy box, and what each extra line adds
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
 
 local frame, exportFrame
@@ -121,6 +122,7 @@ local ctx
 local draft
 local notice -- the message from the last Save, Test or Delete, shown until the draft changes
 local testItems
+local inCorner -- Previews put the editor in the corner, so closing it puts it back
 local previewDraft -- the empty draft Previews opened, so Previews only ever closes that one
 
 local function trim(s)
@@ -289,20 +291,29 @@ local function keptFields()
     return ctx and ctx.expected and CRT.NoteParser.UnknownFields(ctx.expected) or ""
 end
 
--- The draft as note line timers: one per time of a reminder moving here (keepsTimes), else one.
-local function noteTimers()
-    local base = noteTimer()
+-- The times of a reminder moving here (keepsTimes), or nil.
+local function keptTimeList()
     if keepsTimes() then
         local list = Reminders:Times(ctx.encounterID, timesProbe())
         if #list > 0 then
-            local out = {}
-            for i, e in ipairs(list) do
-                local t = copy(base)
-                t.ph, t.time = e.ph, e.t
-                out[i] = t
-            end
-            return out
+            return list
         end
+    end
+    return nil
+end
+
+-- The draft as note line timers: one per time of a reminder moving here (keepsTimes), else one.
+local function noteTimers()
+    local base = noteTimer()
+    local list = keptTimeList()
+    if list then
+        local out = {}
+        for i, e in ipairs(list) do
+            local t = copy(base)
+            t.ph, t.time = e.ph, e.t
+            out[i] = t
+        end
+        return out
     end
     return { base }
 end
@@ -650,9 +661,23 @@ end
 
 -- Saving and testing ------------------------------------------------------------------------------
 
+local function applyPosition()
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+end
+
+-- Back to the centre if Previews had put the editor in the corner.
+local function leaveCorner()
+    if inCorner then
+        inCorner = false
+        applyPosition()
+    end
+end
+
 function Editor:Close()
     if frame then
         frame:Hide()
+        leaveCorner()
     end
     if exportFrame then
         exportFrame:Hide()
@@ -875,11 +900,6 @@ local function setter(fn)
     end
 end
 
-local function applyPosition()
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-end
-
 function Editor:ResetPosition()
     if frame then
         applyPosition()
@@ -894,7 +914,7 @@ local function buildExport()
     local x = CreateFrame("Frame", EXPORT_NAME, UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(x)
     exportFrame = x
-    x:SetSize(WIDTH - 40, 84)
+    x:SetSize(WIDTH - 40, EXPORT_HEIGHT)
     x:SetPoint("CENTER", frame, "CENTER", 0, 0)
     x:SetClampedToScreen(true)
     x:EnableMouse(true)
@@ -908,6 +928,7 @@ local function buildExport()
             x.edit:HighlightText()
         end
     end)
+    x.edit:SetMultiLine(true) -- one line per time
     x.edit:SetScript("OnEscapePressed", function()
         x:Hide()
     end)
@@ -918,19 +939,28 @@ local function buildExport()
     x:Hide()
 end
 
--- Shows the draft as a note line in the copy box. Saves nothing. Returns the line.
+-- Shows the draft as note lines in the copy box, one per time as Save writes them. Saves nothing.
+-- Returns the text.
 function Editor:Export()
     if not (frame and draft) then
         return nil
     end
     -- a note line needs a time that reads, as Save does
-    local err = timeError(true) or (parseTime(draft.timeText) == nil and TEXT.noTime or nil)
+    local err = timeError(true) or (not keptTimeList() and parseTime(draft.timeText) == nil and TEXT.noTime or nil)
     if err then
         fail(err)
         return nil
     end
     buildExport()
-    local line = CRT.NoteParser.FormatLine(noteTimer()) .. keptFields()
+    local extra, lines = keptFields(), {}
+    for i, t in ipairs(noteTimers()) do
+        lines[i] = CRT.NoteParser.FormatLine(t) .. extra
+    end
+    local line = table.concat(lines, "\n")
+    -- the box grows a row per extra line
+    local more = (#lines - 1) * EXPORT_LINE_HEIGHT
+    exportFrame:SetHeight(EXPORT_HEIGHT + more)
+    exportFrame.edit:SetHeight(20 + more)
     exportFrame.text = line
     exportFrame.edit:SetText(line)
     exportFrame:Show()
@@ -993,11 +1023,11 @@ local function build()
                 previewDraft = draft
                 f:ClearAllPoints()
                 f:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -PREVIEW_INSET, PREVIEW_INSET)
+                inCorner = true
             end
         else
             if open and draft == previewDraft then
                 Editor:Close()
-                applyPosition()
             end
             previewDraft = nil
         end
@@ -1009,6 +1039,8 @@ local function build()
         Editor:ResetPosition()
     end):SetPoint("TOPRIGHT", -28, -4)
     f:SetScript("OnHide", function()
+        -- closed any way (Escape, Save, Close, Previews off): the next Open starts at the centre
+        leaveCorner()
         if exportFrame then
             exportFrame:Hide()
         end
