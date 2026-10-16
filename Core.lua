@@ -169,7 +169,9 @@ local defaults = {
     -- Tattlebot. After each boss pull it reads the game's damage meter for the spells in
     -- Tattlebot/Database.lua. current is tonight, { id, startedAt, lastAt, pulls }, and each pull has
     -- players[key] = { class, spells = { [spellID] = damage } }. history holds the finished nights.
-    -- output is "self", "raid" or "officer". maxPlayers caps the players in a chat post.
+    -- output is "self", "raid" or "officer". maxPlayers is no longer used: chat posts list every
+    -- player, on more lines when needed. Each pull keeps every spell's damage (pull.all), and the
+    -- reports pick out the tracked ones.
     tattle = {
         enabled = true,
         raidsOnly = true,

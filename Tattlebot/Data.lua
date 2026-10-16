@@ -258,8 +258,9 @@ function Tattle.Unavailable()
 end
 
 -- Reads the meter's current session. Returns a pull { players = { [key] = { class, spells } },
--- sources, unnamed, duration }, or nil and "missing", "nodata" or "secret". opts.all keeps every
--- spell that did damage (for the scan), opts.avoidable adds the meter's own avoidable damage.
+-- sources, unnamed, duration, avoidable }, or nil and "missing", "nodata" or "secret". opts.all keeps
+-- every spell that did damage, otherwise only the tracked ones. opts.avoidable adds the meter's own
+-- avoidable damage and lists those spells in pull.avoidable, { [spellID] = true }.
 local function readSession(opts)
     if Tattle.Unavailable() then
         return nil, "missing"
@@ -272,7 +273,7 @@ local function readSession(opts)
         return nil, "nodata"
     end
     local guids = groupGuids()
-    local pull = { players = {}, sources = 0, unnamed = 0 }
+    local pull = { players = {}, sources = 0, unnamed = 0, avoidable = {} }
     local secret = false
     for _, src in ipairs(session.combatSources) do
         -- Players have a class. Pets and creatures have an empty one.
@@ -290,6 +291,7 @@ local function readSession(opts)
                     secret = secret or s2
                     for id, amount in pairs(extra) do
                         spells[id] = math.max(spells[id] or 0, amount)
+                        pull.avoidable[id] = true
                     end
                 end
                 if next(spells) then
@@ -378,17 +380,37 @@ end
 
 -- Summaries ------------------------------------------------------------------------------------------
 
--- One player's spells in one pull, added up per mechanic: { [key] = { key, name, damage } }.
-function Tattle.ByMechanic(spells)
+-- Whether a spell's damage in a pull counts in the reports. Pulls marked pull.all keep the damage of
+-- every spell, and this picks out the tracked ones, plus the meter's avoidable spells when that
+-- setting is on. So a mechanic added later counts on every pull it showed up in. Older pulls kept
+-- only the spells counted when they were read, plus avoidable ones (unmarked) when the setting was on.
+function Tattle.Counts(id, pull)
+    if Tattle.List()[id] then
+        return true
+    end
+    if not tdb().avoidable then
+        return false
+    end
+    if pull and pull.all then
+        return pull.avoidable and pull.avoidable[id] or false
+    end
+    return true
+end
+
+-- One player's spells in one pull, added up per counted mechanic: { [key] = { key, name, damage } }.
+function Tattle.ByMechanic(spells, pull)
     local out = {}
     for id, amount in pairs(spells) do
-        local mech = Tattle.Mechanic(id)
-        local m = out[mech.key]
-        if not m then
-            m = { key = mech.key, name = mech.name, damage = 0 }
-            out[mech.key] = m
+        -- A spell that isn't tracked stays in the pull but is left out of the report.
+        if Tattle.Counts(id, pull) then
+            local mech = Tattle.Mechanic(id)
+            local m = out[mech.key]
+            if not m then
+                m = { key = mech.key, name = mech.name, damage = 0 }
+                out[mech.key] = m
+            end
+            m.damage = m.damage + amount
         end
-        m.damage = m.damage + amount
     end
     return out
 end
@@ -489,11 +511,10 @@ function Tattle.MechanicOptions(nights)
     for _, night in ipairs(nights or {}) do
         for _, pull in ipairs(night.pulls) do
             for _, p in pairs(pull.players) do
-                for id in pairs(p.spells) do
-                    local mech = Tattle.Mechanic(id)
-                    if not seen[mech.key] then
-                        seen[mech.key] = true
-                        other[#other + 1] = mech
+                for key, m in pairs(Tattle.ByMechanic(p.spells, pull)) do
+                    if not seen[key] then
+                        seen[key] = true
+                        other[#other + 1] = Tattle.MechanicByKey(key)
                     end
                 end
             end
@@ -544,7 +565,7 @@ function Tattle.Summary(nights, mechKey)
                 pulls = pulls + 1
             end
             for key, p in pairs(counts and pull.players or {}) do
-                local mechanics = Tattle.ByMechanic(p.spells)
+                local mechanics = Tattle.ByMechanic(p.spells, pull)
                 if mech then
                     mechanics = { [mechKey] = mechanics[mechKey] }
                 end
@@ -600,11 +621,11 @@ function Tattle.SortedMechanics(mechanics)
     return list
 end
 
--- A player's total in one pull.
-function Tattle.PullDamage(p)
+-- A player's counted total in one pull.
+function Tattle.PullDamage(p, pull)
     local total = 0
-    for _, amount in pairs(p.spells) do
-        total = total + amount
+    for _, m in pairs(Tattle.ByMechanic(p.spells, pull)) do
+        total = total + m.damage
     end
     return total
 end
@@ -702,43 +723,49 @@ function Tattle.MechanicBlocks(nights, mechKey)
     return blocks
 end
 
--- One chat line per mechanic: "Name total: Player damage (pulls hit), ...", at most maxPlayers
--- players a line.
-local function mechanicChat(lines, nights, maxPlayers, withPulls)
+-- Chat lines are cut here, under the game's 255 characters with room for the "[CRT] " prefix, so
+-- the report's own splitting never has to cut one.
+local CHAT_LINE = 230
+
+-- One chat line per mechanic: "Name total: Player damage (pulls hit), ...", every player it hit.
+-- A mechanic that doesn't fit carries on in more lines, each starting "Name (cont.):".
+local function mechanicChat(lines, nights, withPulls)
     local blocks = Tattle.MechanicBlocks(nights)
     for _, block in ipairs(blocks) do
-        local parts = {}
-        for i = 1, math.min(#block.rows, maxPlayers or #block.rows) do
-            local row = block.rows[i]
+        local line = format("%s %s:", block.name, Tattle.Short(block.total))
+        local first = true
+        for _, row in ipairs(block.rows) do
             local part = CRT.Groups.ReportName(row.key) .. " " .. Tattle.Short(row.damage)
             if withPulls then
                 part = part .. " (" .. row.hits .. ")"
             end
-            parts[#parts + 1] = part
+            if not first and #line + 2 + #part > CHAT_LINE then
+                lines[#lines + 1] = line .. ","
+                line = format("%s (cont.): %s", block.name, part)
+            else
+                line = line .. (first and " " or ", ") .. part
+            end
+            first = false
         end
-        local more = #block.rows - #parts
-        if more > 0 then
-            parts[#parts + 1] = "+" .. more .. " more"
-        end
-        lines[#lines + 1] = format("%s %s: %s", block.name, Tattle.Short(block.total), table.concat(parts, ", "))
+        lines[#lines + 1] = line
     end
     return #blocks
 end
 
 -- Plain chat lines for one pull: a heading, then one line per mechanic.
-function Tattle.PullChat(pull, index, maxPlayers)
+function Tattle.PullChat(pull, index)
     local lines = { "Tattlebot, " .. Tattle.PullTitle(pull, index) .. ":" }
-    if mechanicChat(lines, { { pulls = { pull } } }, maxPlayers, false) == 0 then
+    if mechanicChat(lines, { { pulls = { pull } } }, false) == 0 then
         lines[1] = lines[1] .. " nobody took damage from a tracked mechanic."
     end
     return lines
 end
 
 -- Plain chat lines for a night: one line per mechanic, each player with the pulls it hit them in.
-function Tattle.NightChat(night, maxPlayers)
+function Tattle.NightChat(night)
     local pulls = #night.pulls
-    local lines = { format("Tattlebot, the night of %s, %d %s (pulls hit in brackets):", date("%a %d %b", night.startedAt), pulls, pulls == 1 and "pull" or "pulls") }
-    if mechanicChat(lines, { night }, maxPlayers, true) == 0 then
+    local lines = { format("Tattlebot, the night of %s, %d %s (damage over all pulls, pulls hit in brackets):", date("%a %d %b", night.startedAt), pulls, pulls == 1 and "pull" or "pulls") }
+    if mechanicChat(lines, { night }, true) == 0 then
         lines[1] = format("Tattlebot, the night of %s, %d %s: nobody took damage from a tracked mechanic.", date("%a %d %b", night.startedAt), pulls, pulls == 1 and "pull" or "pulls")
     end
     return lines
@@ -755,7 +782,7 @@ function Tattle:PostLastPull()
         CRT:Print("No pull has been recorded tonight.")
         return
     end
-    self:Post(Tattle.PullChat(night.pulls[#night.pulls], #night.pulls, tdb().maxPlayers))
+    self:Post(Tattle.PullChat(night.pulls[#night.pulls], #night.pulls))
 end
 
 function Tattle:PostNight(night)
@@ -764,7 +791,7 @@ function Tattle:PostNight(night)
         CRT:Print("No pull has been recorded tonight.")
         return
     end
-    self:Post(Tattle.NightChat(night, tdb().maxPlayers))
+    self:Post(Tattle.NightChat(night))
 end
 
 -- The scan ---------------------------------------------------------------------------------------------
@@ -821,13 +848,32 @@ end
 -- up at once. Returns the pull and how many players it holds damage for.
 function Tattle:AddScannedPull(scan, ids)
     local boss = scan.boss
-    local pull = { players = {}, sources = 0, unnamed = scan.unnamed or 0, duration = scan.duration, scanned = true }
+    local pull = { players = {}, sources = 0, unnamed = scan.unnamed or 0, duration = scan.duration, scanned = true, all = true, avoidable = {} }
+    for _, sp in ipairs(scan.spells or {}) do
+        if sp.avoidable then
+            pull.avoidable[sp.id] = true
+        end
+    end
     self:AddPull(pull, {
         encounterID = boss and boss.encounterID,
         name = boss and boss.name or "Not a boss",
     })
     scannedFight = { pull = pull, combat = combatCount }
-    local count = self:Backfill(pull, scan.players or {}, ids)
+    -- Every player's every spell, like a pull read after a boss.
+    local all = {}
+    for _, sp in ipairs(scan.spells or {}) do
+        all[#all + 1] = sp.id
+    end
+    self:Backfill(pull, scan.players or {}, all)
+    local count = 0
+    for _, p in pairs(scan.players or {}) do
+        for _, id in ipairs(ids) do
+            if p.spells[id] then
+                count = count + 1
+                break
+            end
+        end
+    end
     for _ in pairs(scan.players or {}) do
         pull.sources = pull.sources + 1
     end
@@ -947,14 +993,15 @@ local function autoPost(pull, index)
     -- Only the raid leader posts to chat, so a raid full of this addon posts once. Everyone else sees
     -- it in their own chat.
     local leader = UnitIsGroupLeader and UnitIsGroupLeader("player")
-    Tattle:Post(Tattle.PullChat(pull, index, s.maxPlayers), leader and s.output or "self")
+    Tattle:Post(Tattle.PullChat(pull, index), leader and s.output or "self")
 end
 
 local function attempt(info, tries)
     if pending ~= info then
         return
     end
-    local pull, why = Tattle:Read({ avoidable = tdb().avoidable })
+    -- Every spell, and which ones are avoidable, so mechanics added later count on this pull too.
+    local pull, why = Tattle:Read({ all = true, avoidable = true })
     if not pull and why == "secret" and tries < RETRIES then
         C_Timer.After(RETRY_DELAY, function()
             attempt(info, tries + 1)
@@ -977,6 +1024,7 @@ local function attempt(info, tries)
         warnedUnnamed = true
         CRT:Print(format("Tattlebot could not name %s after %s, so their damage is missing.", players(pull.unnamed), info.name or "the boss"))
     end
+    pull.all = true
     Tattle:AddPull(pull, info)
     if info.boss then
         lastRecorded = { pull = pull, boss = info.boss }

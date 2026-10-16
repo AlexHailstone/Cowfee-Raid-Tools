@@ -116,7 +116,10 @@ local function pullLines(pull, index, lines)
     lines[#lines + 1] = "  |cffffd100" .. bits[1] .. "|r"
     local players = {}
     for key, p in pairs(pull.players) do
-        players[#players + 1] = { key = key, class = p.class, damage = Tattle.PullDamage(p) }
+        local damage = Tattle.PullDamage(p, pull)
+        if damage > 0 then
+            players[#players + 1] = { key = key, class = p.class, damage = damage }
+        end
     end
     table.sort(players, function(a, b)
         if a.damage ~= b.damage then
@@ -245,7 +248,7 @@ end
 -- Mechanic tables ----------------------------------------------------------------------------
 -- A text box shows a view: a line of text, a table with a Mechanic, Player, Pulls hit and Damage
 -- column (the mechanic's name only on its first row, a gap between mechanics), and more text below.
--- Pulls hit is the number of pulls on the mechanic's boss it hit that player in: the game's meter
+-- Damage is added up over every pull, and Pulls hit is how many pulls it hit that player in: the game's meter
 -- has no count of single hits.
 
 local TABLE_ROW_H = 18
@@ -311,7 +314,7 @@ local function showView(view, intro, blocks, below)
                 local row = tableRow(view, n)
                 cell(row.mech, xMech, y, wMech, "LEFT", r == 1 and ("|cffffd100" .. block.name .. "|r") or "")
                 cell(row.player, xPlayer, y, wPlayer, "LEFT", name(data.key, data.class))
-                cell(row.pulls, xPulls, y, wNum, "RIGHT", data.hits .. " of " .. block.pulls)
+                cell(row.pulls, xPulls, y, wNum, "RIGHT", tostring(data.hits))
                 cell(row.damage, xDamage, y, wNum, "RIGHT", "|cffff8060" .. Tattle.Short(data.damage) .. "|r")
                 y = y - TABLE_ROW_H
             end
@@ -371,7 +374,7 @@ local function summaryExport(title, nights)
             lines[#lines + 1] = ""
         end
         for r, row in ipairs(block.rows) do
-            lines[#lines + 1] = pad(r == 1 and block.name or "", wMech) .. pad(Groups.ReportName(row.key), wPlayer) .. pad(row.hits .. " of " .. block.pulls, 11) .. lpad(Tattle.Short(row.damage), 8)
+            lines[#lines + 1] = pad(r == 1 and block.name or "", wMech) .. pad(Groups.ReportName(row.key), wPlayer) .. pad(tostring(row.hits), 11) .. lpad(Tattle.Short(row.damage), 8)
         end
     end
     lines[#lines + 1] = "```"
@@ -981,25 +984,9 @@ local function buildSettings(f)
     postTo:SetPoint("TOPLEFT", 8, -112)
     controls[#controls + 1] = postTo
 
-    local maxPlayers = UI.Slider(f, "Players in a post", {
-        min = 3,
-        max = 40,
-        labelWidth = 120,
-        width = 170,
-        get = function()
-            return Tattle:Settings().maxPlayers
-        end,
-        set = function(v)
-            Tattle:Set("maxPlayers", v)
-        end,
-    })
-    maxPlayers:SetPoint("TOPLEFT", 8, -144)
-    controls[#controls + 1] = maxPlayers
-    UI.Help(f, "Players in a post", "Chat posts list the players who took the most damage first, up to this many, so a post does not flood the chat. The Discord export always lists everyone."):SetPoint("LEFT", maxPlayers, "RIGHT", 6, 0)
-
     -- The season new nights are filed under. Typing a new name starts a new season.
     local seasonLabel = label(f, "Season", "CRTFontSmall")
-    seasonLabel:SetPoint("TOPLEFT", 8, -188)
+    seasonLabel:SetPoint("TOPLEFT", 8, -150)
     seasonLabel:SetWidth(120)
     local season = editBox(f, 200, 40, false)
     season:SetPoint("LEFT", seasonLabel, "RIGHT", 10, 0)
