@@ -17,6 +17,7 @@ local TEXT = {
     thin = "Outline",
     thick = "Thick",
     showText = "Show the text",
+    fade = "Fade to grey as time runs out",
     sampleNow = "Spread",
     sampleSoon = "Stack on the boss",
     sampleLater = "Soak",
@@ -59,6 +60,10 @@ local function showText(s)
     return s.showText ~= false
 end
 
+local function fadeOn(s)
+    return s.fade ~= false
+end
+
 -- Whole seconds, rounded up, and NOW once under a tenth is left.
 local function seconds(remaining)
     if remaining < NOW_BELOW then
@@ -77,11 +82,15 @@ end
 
 local function make(parent)
     local w = CreateFrame("Frame", nil, parent)
-    w.icon = w:CreateTexture(nil, "ARTWORK")
-    w.icon:SetPoint("LEFT", w, "LEFT", 0, 0)
+    -- The icon square: the picture and the swipe live in a frame exactly its size, so the swipe sweeps from
+    -- the icon's centre and never reaches the text.
+    w.iconFrame = CreateFrame("Frame", nil, w)
+    w.iconFrame:SetPoint("LEFT", w, "LEFT", 0, 0)
+    w.icon = w.iconFrame:CreateTexture(nil, "ARTWORK")
+    w.icon:SetAllPoints(w.iconFrame)
     w.icon:SetTexCoord(TRIM[1], TRIM[2], TRIM[3], TRIM[4])
-    w.cooldown = CreateFrame("Cooldown", nil, w, "CooldownFrameTemplate")
-    w.cooldown:SetPoint("LEFT", w, "LEFT", 0, 0)
+    w.cooldown = CreateFrame("Cooldown", nil, w.iconFrame, "CooldownFrameTemplate")
+    w.cooldown:SetAllPoints(w.iconFrame)
     if w.cooldown.SetHideCountdownNumbers then
         w.cooldown:SetHideCountdownNumbers(true) -- the seconds are drawn here
     end
@@ -92,9 +101,9 @@ local function make(parent)
         w.cooldown:SetDrawBling(false) -- no finish flash over NOW and the glow
     end
     w.cooldown.noCooldownCount = true -- other addons paint no numbers over ours
-    -- The seconds sit on a frame above the swipe.
+    -- The seconds sit on a frame above the swipe, centred on the icon.
     w.over = CreateFrame("Frame", nil, w)
-    w.over:SetPoint("LEFT", w, "LEFT", 0, 0)
+    w.over:SetPoint("CENTER", w.iconFrame, "CENTER", 0, 0)
     w.over:SetFrameLevel((w.cooldown:GetFrameLevel() or 1) + 2)
     w.seconds = w.over:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     w.seconds:SetPoint("CENTER", w.over, "CENTER", 0, 0)
@@ -105,6 +114,25 @@ local function make(parent)
     w.text:SetShadowOffset(1, -1)
     w.text:SetJustifyH("LEFT")
     return w
+end
+
+-- 0 in colour to 1 grey as the time left runs out over `total`; grey at and after zero.
+local function setGrey(texture, grey)
+    if texture.SetDesaturation then
+        texture:SetDesaturation(grey)
+    elseif texture.SetDesaturated then
+        texture:SetDesaturated(grey >= 0.5)
+    end
+end
+
+local function greyness(total, left)
+    if left <= 0 then
+        return 1
+    end
+    if total <= 0 then
+        return 0
+    end
+    return math.max(0, math.min(1, (total - left) / total))
 end
 
 -- The swipe starts full: it runs over the time left when the line first showed, at most `warn`. It is
@@ -128,6 +156,7 @@ local function draw(w, line, now, s, shownAt)
     local at = line.at
     local texture = Areas.LineIcon(line)
     w.icon:SetSize(size, size)
+    w.iconFrame:SetSize(size, size)
     w.cooldown:SetSize(size, size)
     w.over:SetSize(size, size)
     if texture then
@@ -139,7 +168,9 @@ local function draw(w, line, now, s, shownAt)
             total = math.min(line.warn, total)
         end
         setSwipe(w, line, total)
+        setGrey(w.icon, fadeOn(s) and greyness(total, at - now) or 0)
     else
+        setGrey(w.icon, 0)
         w.icon:Hide()
         w.cooldown:Hide()
         w.swipeKey = nil
@@ -152,7 +183,7 @@ local function draw(w, line, now, s, shownAt)
         if w.textAt ~= size then
             w.textAt = size
             w.text:ClearAllPoints()
-            w.text:SetPoint("LEFT", w, "LEFT", size + TEXT_GAP, 0)
+            w.text:SetPoint("LEFT", w, "LEFT", size + TEXT_GAP, 0) -- right of the icon square, on the widget
         end
         w.text:SetText(Areas.LineText(line))
         local c = Areas.LineColor(line) or WHITE
@@ -239,6 +270,11 @@ local function settings(dialog, s)
         return showText(s)
     end, function(on)
         s.showText = on
+    end)
+    dialog:Check(TEXT.fade, function()
+        return fadeOn(s)
+    end, function(on)
+        s.fade = on
     end)
 end
 

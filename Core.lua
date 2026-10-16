@@ -219,7 +219,7 @@ local defaults = {
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
         areas = {
-            icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true },
+            icons = { shown = true, cap = 5, size = 44, font = "Friz Quadrata", fontSize = 20, outline = "OUTLINE", grow = "down", showText = true, fade = true },
             texts = { shown = true, cap = 3, font = "Friz Quadrata", fontSize = 36, outline = "THICKOUTLINE", grow = "down", align = "CENTER" },
             circles = { shown = true, cap = 3, size = 64, thickness = "medium", ringColor = { 1, 1, 1, 0.9 }, font = "Friz Quadrata", fontSize = 16, grow = "right" },
         },
