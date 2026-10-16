@@ -192,6 +192,29 @@ local function iconEnter(b)
     GameTooltip:Show()
 end
 
+-- The game's class names by tag word: the name with its spaces taken out ("deathknight", as the
+-- editor writes it) and the class file name, lower-cased. Made once the game lists the classes.
+local classNames
+local function className(word)
+    local names = classNames
+    if not names then
+        names = {}
+        for i = 1, GetNumClasses and GetNumClasses() or 0 do
+            local name, file = GetClassInfo(i)
+            if CRT.Timeline.readable(name) and type(name) == "string" and name ~= "" then
+                names[(name:gsub("%s+", "")):lower()] = name
+                if CRT.Timeline.readable(file) and type(file) == "string" then
+                    names[file:lower()] = name
+                end
+            end
+        end
+        if next(names) then
+            classNames = names
+        end
+    end
+    return names[word:lower()] or word
+end
+
 -- A marker: the alert's text, who it is for, its phase and time, and where it is saved.
 local function flagEnter(f)
     local m = f.mark
@@ -199,7 +222,11 @@ local function flagEnter(f)
     GameTooltip:SetText(m.text, 1, 0.82, 0)
     local who = TEXT.onlyMe
     if not m.mine then
-        who = (m.tags and #m.tags > 0) and table.concat(m.tags, " ") or TEXT.everyone
+        local words = {}
+        for i, tag in ipairs(m.tags or {}) do
+            words[i] = className(tag)
+        end
+        who = #words > 0 and table.concat(words, " ") or TEXT.everyone
     end
     GameTooltip:AddLine(who, 1, 1, 1)
     GameTooltip:AddLine(CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } }), 0.85, 0.85, 0.85)
@@ -361,9 +388,13 @@ function View.Create(parent)
         view:StopDrag()
     end)
     -- the markers follow the notes and the reminders; only a shown view redraws
+    -- a failing redraw must never break the note or reminder save that fired it
     local function changed()
         if f:IsVisible() then
-            view:Refresh()
+            local ok, err = pcall(view.Refresh, view)
+            if not ok and geterrorhandler then
+                geterrorhandler()(err)
+            end
         end
     end
     if CRT.Notes and CRT.Notes.OnChange then
@@ -922,8 +953,11 @@ function Methods:Refresh()
     self.marks = self:Marks(lanes, length)
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1
     local height = math.max(1, #lanes * ROW_H)
-    self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), height)
-    self.track:SetSize(self.trackW, height)
+    -- the track reaches at least the bottom of the window, so the empty space under the lanes takes
+    -- a double-click too; when the lanes fit there is still nothing to scroll up and down
+    local area = math.max(height, self.vscroll:GetHeight() or 0)
+    self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), area)
+    self.track:SetSize(self.trackW, area)
     self.axis:SetSize(self.trackW, AXIS_H)
     if self.hscroll.UpdateScrollChildRect then
         self.hscroll:UpdateScrollChildRect() -- so a zoom scroll right after is not cut to the old range

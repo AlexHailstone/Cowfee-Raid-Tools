@@ -64,20 +64,21 @@ function Reminders.PhaseAt(ref, t)
 end
 
 -- The reverse of PhaseAt: the time from the pull of seconds into phase ph, through the reference's
--- first phase line of that number. Phase 1 with no line of its own starts at the pull. Nil for a phase
--- the reference doesn't have, and for any phase above 1 with no reference (a recorded pull, whose
--- phase times aren't known).
+-- first phase line of that number. Phase 1 always counts from the pull, as PhaseAt does before any
+-- numbered line (a later line whose label carries a 1, "Intermission 1", doesn't move it). Nil for a
+-- phase the reference doesn't have, and for any phase above 1 with no reference (a recorded pull,
+-- whose phase times aren't known).
 function Reminders.AbsoluteTime(ref, ph, seconds)
     if type(ph) ~= "number" or type(seconds) ~= "number" then
         return nil
+    end
+    if ph == 1 then
+        return seconds
     end
     for _, p in ipairs(ref and ref.phases or {}) do
         if type(p.t) == "number" and Reminders.PhaseNumber(p.label) == ph then
             return p.t + seconds
         end
-    end
-    if ph == 1 then
-        return seconds
     end
     return nil
 end
@@ -96,12 +97,29 @@ function Reminders.FromReference(ref, row)
 end
 
 -- "P1 0:02, 1:17; P2 +0:18" into { { ph, t } }. Groups split by ";", each an optional P<number> and
--- then times split by ",". Returns nil and a message naming the bad part.
+-- then times split by ",". A time may carry tenths ("3:13.5", "193.5"), as a click on the Timeline
+-- gives. Returns nil and a message naming the bad part.
+local function parseTime(s)
+    local t = CRT.TimelineReference.ParseTime(s)
+    if t then
+        return t
+    end
+    s = trim(s)
+    local m, sec = s:match("^(%d+):(%d%d%.%d+)$")
+    if m and tonumber(sec) < 60 then
+        return tonumber(m) * 60 + tonumber(sec)
+    end
+    if s:match("^%d+%.%d+$") then
+        return tonumber(s)
+    end
+    return nil
+end
+
 function Reminders.ParseTimes(text)
     if type(text) ~= "string" then
         return nil, "no times"
     end
-    local parse = CRT.TimelineReference.ParseTime
+    local parse = parseTime
     local out = {}
     for group in (text .. ";"):gmatch("([^;]*);") do
         group = trim(group)
@@ -138,9 +156,14 @@ function Reminders.ParseTimes(text)
     return out
 end
 
+-- m:ss, or m:ss.s when the time has tenths.
 local function clock(t)
-    t = math.floor(t + 0.5)
-    return string.format("%d:%02d", math.floor(t / 60), t % 60)
+    t = math.floor(t * 10 + 0.5) / 10
+    if t == math.floor(t) then
+        return string.format("%d:%02d", math.floor(t / 60), t % 60)
+    end
+    local m = math.floor(t / 60)
+    return string.format("%d:%04.1f", m, t - m * 60)
 end
 
 -- The reverse of ParseTimes: phases in order, as "P1 0:02, 1:17; P2 +0:18".

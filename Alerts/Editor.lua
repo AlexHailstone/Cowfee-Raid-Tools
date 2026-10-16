@@ -1089,7 +1089,7 @@ local function show()
     if not draft.timeTouched then
         local ph, t = firstTime((Reminders:Times(ctx.encounterID, timesProbe())))
         if ph then
-            draft.ph, draft.timeText = ph, clock(t)
+            draft.ph, draft.timeText = ph, clock(t, true)
         end
     end
     frame.textEdit:SetText(draft.text or "")
@@ -1128,7 +1128,7 @@ function Editor:Open(encounterID, id, prefill)
         end
         if type(prefill.time) == "number" then
             draft.ph = type(prefill.ph) == "number" and prefill.ph or 1
-            draft.timeText = clock(prefill.time)
+            draft.timeText = clock(prefill.time, true) -- a click on the Timeline gives tenths
             draft.timeTouched = true
         elseif type(prefill.times) == "string" and trim(prefill.times) ~= "" then
             draft.keptTimes = prefill.times
