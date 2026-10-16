@@ -406,6 +406,18 @@ function Reminders:SetTime(encounterID, id, index, ph, t)
     end)
 end
 
+-- Takes one time out of a reminder that has several, saving the rest as typed times like SetTime. False
+-- for a reminder with a single time (delete the reminder instead) or an index it doesn't have.
+function Reminders:RemoveTime(encounterID, id, index)
+    return writeTimes(encounterID, id, function(list)
+        if #list < 2 or not list[index] then
+            return false
+        end
+        table.remove(list, index)
+        return true
+    end)
+end
+
 function Reminders:AddTime(encounterID, id, ph, t)
     if type(ph) ~= "number" or type(t) ~= "number" then
         return false

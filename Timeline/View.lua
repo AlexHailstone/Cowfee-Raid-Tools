@@ -99,6 +99,10 @@ local TEXT = {
     noSaved = "No saved alerts yet",
     unnamed = "Saved alert",
     noMenu = "This game version has no right-click menus for this.",
+    deleteRefused = "That alert changed since you opened its menu; nothing was deleted.",
+    deleteNote = "Delete this raid note line?\n\n%s",
+    deleteTime = "Delete this time of \"%s\"? Its other times stay.",
+    deleteReminder = "Delete your reminder \"%s\"?",
 }
 
 local function settings()
@@ -743,7 +747,8 @@ function Methods:Marks(lanes, length)
         return out
     end
     local ref = self.pull.reference
-    local function add(m, spellID, text)
+    local function add(m, spellID, text, iconID)
+        m.spellID, m.iconID = spellID, iconID
         m.t = Reminders.AbsoluteTime(ref, m.ph, m.time)
         if not (m.t and m.t >= 0 and m.t <= length) then
             return
@@ -763,7 +768,7 @@ function Methods:Marks(lanes, length)
                     local raw = rawLines[timer.line]
                     add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
                         difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
-                        timer.spellId, timer.text)
+                        timer.spellId, timer.text, timer.iconID)
                 end
             end
         end
@@ -771,7 +776,7 @@ function Methods:Marks(lanes, length)
     for _, e in ipairs(Reminders:List(encounterID)) do
         for index, at in ipairs((Reminders:Times(encounterID, e.r))) do
             add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
-                kind = "mine" }, e.r.spellID, e.r.text)
+                kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)
         end
     end
     local notesRow
@@ -801,6 +806,16 @@ function Methods:Flag(n)
         f.head = f:CreateTexture(nil, "ARTWORK")
         f.head:SetPoint("TOPLEFT", f, "TOPLEFT", inset, -3)
         f.head:SetSize(FLAG_W, FLAG_HEAD)
+        -- An alert with a spell (or an icon) shows that icon in place of the flag, in an edge of the
+        -- flag's color (raid note or your reminder). The pole stays below it, marking the time.
+        f.edge = f:CreateTexture(nil, "ARTWORK", nil, 1)
+        f.edge:SetAllPoints(f)
+        f.icon = f:CreateTexture(nil, "ARTWORK", nil, 2)
+        f.icon:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+        f.icon:SetSize(FLAG_BTN_W - 2, FLAG_BTN_W - 2)
+        f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        f.edge:Hide()
+        f.icon:Hide()
         f:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         f:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.15)
         f:SetScript("OnEnter", flagEnter)
@@ -818,7 +833,7 @@ function Methods:Flag(n)
             if button == "LeftButton" then
                 self:FinishMove()
             else
-                self:RightUp(button)
+                self:RightUp(button, f)
                 self:StopDrag()
             end
         end)
@@ -836,7 +851,10 @@ function Methods:FlagDoubleClick(f)
         self:ScrollTo(self.dragFrom)
         self:StopDrag()
     end
-    local m = f.mark
+    self:EditMark(f.mark)
+end
+
+function Methods:EditMark(m)
     if not m then
         return
     end
@@ -1187,6 +1205,57 @@ local function askDelete(id)
         showAlert = true,
         callback = function()
             CRT.AlertSaved:Delete(id)
+        end,
+    }), "GENERIC_CONFIRMATION"))
+end
+
+-- Delete on a marker's menu, after a confirm. A reminder with several times loses only this time; one
+-- with a single time is deleted whole; a raid note line is removed if it is still the line drawn. A
+-- change since the menu opened is refused, with a chat line.
+local function deleteMark(self, m)
+    local ok
+    if m.noteID then
+        ok = CRT.Notes:RemoveLine(m.noteID, m.line, m.expected)
+    else
+        local Reminders = CRT.AlertReminders
+        local r = Reminders:Get(m.encounterID, m.id)
+        local times = r and Reminders:Times(m.encounterID, r)
+        local cur = times and times[m.index]
+        if cur and cur.ph == m.ph and cur.t == m.time then
+            if #times > 1 then
+                ok = Reminders:RemoveTime(m.encounterID, m.id, m.index)
+            else
+                Reminders:Delete(m.encounterID, m.id)
+                ok = true
+            end
+        end
+    end
+    if not ok then
+        CRT:Print(TEXT.deleteRefused)
+        self:Refresh()
+    end
+end
+
+local function askDeleteMark(self, m)
+    if not StaticPopup_ShowCustomGenericConfirmation then
+        return
+    end
+    local question
+    if m.noteID then
+        question = string.format(TEXT.deleteNote, tostring(m.text or ""))
+    else
+        local r = CRT.AlertReminders:Get(m.encounterID, m.id)
+        local times = r and CRT.AlertReminders:Times(m.encounterID, r)
+        question = string.format(times and #times > 1 and TEXT.deleteTime or TEXT.deleteReminder, tostring(m.text or ""))
+    end
+    local UI = CRT.UI
+    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
+        text = question,
+        acceptText = TEXT.delete,
+        cancelText = TEXT.cancel,
+        showAlert = true,
+        callback = function()
+            deleteMark(self, m)
         end,
     }), "GENERIC_CONFIRMATION"))
 end
@@ -1595,7 +1664,7 @@ end
 
 -- The right button let go: moved under MENU_DIST pixels and within MENU_TIME seconds, the press was a
 -- click and opens the menu where it went down, putting back what it scrolled.
-function Methods:RightUp(button)
+function Methods:RightUp(button, flag)
     if button ~= "RightButton" then
         return
     end
@@ -1610,7 +1679,27 @@ function Methods:RightUp(button)
         return
     end
     self:ScrollTo(r.scroll)
-    self:TrackMenu(r.tx, r.ty)
+    if flag and flag.mark then
+        self:FlagMenu(flag.mark, flag)
+    else
+        self:TrackMenu(r.tx, r.ty)
+    end
+end
+
+-- A marker's menu: its text and time as the title, Edit (the double-click) and Delete. Alt+drag is the
+-- way to add a time, so there is no Copy.
+function Methods:FlagMenu(m, owner)
+    local title = tostring(m.text or "")
+    title = title .. " \194\183 " .. CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } })
+    contextMenu(owner, function(root)
+        root:CreateTitle(title)
+        root:CreateButton(TEXT.edit, function()
+            self:EditMark(m)
+        end)
+        root:CreateButton(TEXT.delete, function()
+            askDeleteMark(self, m)
+        end)
+    end)
 end
 
 -- The track's menu at x, y on the track: its time and row as the title, New alert here (the double-click;
@@ -1656,6 +1745,12 @@ function Methods:DrawMarks(length)
         local key = m.mine and "cream" or "caramel"
         f.pole:SetColorTexture(mocha(key))
         f.head:SetColorTexture(mocha(key))
+        local icon = chipIcon(m)
+        f.icon:SetTexture(icon)
+        f.edge:SetColorTexture(mocha(key))
+        f.icon:SetShown(icon ~= nil)
+        f.edge:SetShown(icon ~= nil)
+        f.head:SetShown(icon == nil)
     end
     hideFrom(self.flags, #self.marks + 1)
 end
