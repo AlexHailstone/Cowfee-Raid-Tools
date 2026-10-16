@@ -43,7 +43,7 @@ Cowfee Raid Tools is a World of Warcraft addon for raid leaders, officers and ra
 | **Raid Groups** | Save raid layouts of 8 groups, edit them any time, and move the live raid into one with a click. Import a layout string or a pasted column of names |
 | **Ready Check** | Your own consumables bar on every ready check. A raid report of everyone's food, flask, augment rune, Vantus rune and the raid buffs your group can give, shown to you or posted to chat. A ready check window for leaders with every player's answer, consumables, buffs and durability |
 | **Debuffs** | A movable panel for the boss mechanic debuffs on you in combat |
-| **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter |
+| **Raid Notes** | Notes per boss with timers that count down from the pull, shared by the raid leader. Windows for the timers, the assignments and your own personal note, a personal alert for your next spell with text to speech, and a "show only me" filter. Your own reminders for boss abilities, with times taken from the boss's reference timeline, that alert, show as bars and speak. Phases that start on a boss emote, a boss becoming untargetable or targetable, or a new boss unit, and alert bars that list what is coming up |
 | **Quality of Life** | Small conveniences: an experimental LOW HEALTH banner at or under a health percent you set with a slider. A low-health sound is a work in progress and switched off for now |
 | **General Settings** | Settings for the whole addon: a Modern look (coffee colors, flat controls, grouped menu) or the Classic look, the window scale (50% to 200%, also Ctrl + mouse wheel over the panel), the game's window style or minimal black in Classic, background opacity, the font, outline and text size of all the addon's text (the note windows included, after a confirmation, with fonts other addons share through LibSharedMedia when one is installed), which layer each window is drawn in, the sound channel the addon's sounds play through, whether reports and Discord exports leave out realm names, the minimap button, and profiles (each character picks one; create, copy, reset, delete, export and import) |
 | **Late Tracker** | Raid days and a start time. Anyone expected who is not in the group gets a running clock until they join, and every night is kept in a history with totals |
@@ -107,7 +107,7 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 
 ## Raid Notes
 
-`/crt notes` opens the page, with a **Notes** tab and a **Settings** tab.
+`/crt notes` opens the page, with four tabs: **Notes**, **Reminders**, **Phases** and **Settings**.
 
 **The note format.** Lines of `key:value;` pairs. A timer line looks like `time:34;ph:1;tag:Name;spellid:64843;` or `time:48;ph:1;tag:G1;text:Group 1 go in;dur:8;`. A tag can be a player name, a role (`tank`, `healer`, `dps`, `melee`, `ranged`), a raid group (`G1`, `Group 1`), or `everyone`. A line starting `EncounterID:` names the boss, and an `invitelist:` line becomes a Raid Groups layout. Every other line is assignment text.
 
@@ -115,7 +115,9 @@ Durability and weapon oils in the window only show for players running Cowfee Ra
 - **Three windows:** the timers, counting down from the pull; the assignments, with your lines marked and names class colored; and your own personal note. Each can be locked so clicks pass through, or unlocked to drag and resize.
 - **Show only me** keeps only the timers for your name, role, raid group or everyone.
 - **Your alert** shows your next spell or callout before it is due, with the name and countdown centered under each other and the spell icon, two lines tall, to the left, right, above or below. It can read it out with text to speech.
-- **Phases.** The first phase starts on the pull. The game gives addons no phase-change signal, so later phases start when someone presses **Next phase** or types `/crt note next`.
+- **Phases.** The first phase starts on the pull. Later phases start when someone presses **Next phase** or types `/crt note next`, or on a trigger you set on the **Phases** tab: a boss emote containing some text, a boss becoming untargetable or targetable, or a new boss unit appearing. Whichever comes first starts the phase, and a repeat is ignored. If a later phase starts while an earlier one never did, the earlier one is skipped and its alerts do not fire. The game can hide these values in a boss fight, and a value it hides never matches, so Next phase is always the fallback. No trigger ships with the addon yet.
+- **Reminders.** `/crt reminders` opens the **Reminders** tab. Pick a boss and difficulty and tick an ability from the boss's Encounter Journal to get a reminder with the times of the boss's reference timeline. **Edit** opens the editor: the text, the times (typed as `P1 0:02, 1:17; P2 +0:18`, or empty to follow the reference), whether it shows as your next spell alert, a bar and speech, how early it warns, what speech says (the text, the text then 3 2 1, or only 3 2 1), a priority and a difficulty. **Test** runs the reminder as it stands without saving it. **Your own reminder** adds one that is not tied to an ability. You can also double-click a cast on the Timeline to make a reminder from it. A reminder with no reference and no typed times is listed as "No times" and never fires. Reminders are kept per boss encounter, so a boss appears once it has been pulled or its reference names its encounter.
+- **Alert bars.** A movable window lists what is coming up, soonest first, with the icon, text, seconds left and a bar that empties. It shows from a number of seconds ahead (20 by default), up to a number of bars at once (5 by default), and your own note lines can be shown as bars or not. Size and the other settings are on the **Settings** tab. A note line and a reminder at the same moment both show, and speech plays one line at a time: if it falls behind, your reminders are kept, then your note lines.
 
 ## Late Tracker
 
@@ -154,7 +156,8 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 | `/crt rc` | Shows your ready check bar for 20 seconds, for testing |
 | `/crt debuffs` | Debuffs |
 | `/crt notes` | Raid Notes. `/crt notes settings` opens its Settings tab |
-| `/crt note test`, `/crt note next`, `/crt note stop` | Start the note in use now, start the next phase, stop |
+| `/crt reminders` | Raid Notes, on the Reminders tab |
+| `/crt note test`, `/crt note next`, `/crt note stop` | Start the note in use now, start the next phase, stop the whole run (note and reminders) |
 | `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |
 | `/crt late export` | The late totals as text to paste into Discord |
 | `/crt tattle`, `/crt tattle post`, `/crt tattle night`, `/crt tattle end` | Tattlebot, post the last pull, post tonight's totals, end the night |
@@ -203,7 +206,8 @@ Close the game and delete `CowfeeRaidTools.lua` from your SavedVariables folder.
 
 - During combat and boss fights the game hides many values from addons. The raid report and ready check window list players they cannot read as "couldn't check", and it is not yet confirmed whether other players' buffs can be read inside a raid instance.
 - The built-in consumables list is still being filled in. Until it is, flasks and runes on other players are recognized by their English buff names, so the raid report needs an English game client for those. Food is recognized by its buff, in any language.
-- Raid note phases after the first need **Next phase**, and notes must be shared before the pull.
+- Raid note phases after the first need **Next phase** unless you set a trigger on the Phases tab. The game can hide boss emotes and boss unit changes in a fight, and nothing has been confirmed on a real boss yet, so triggers may not fire. Notes must be shared before the pull.
+- Reminders alert you as the Next spell alert, bar and speech only. The icon, circle and screen flash options are listed in the editor but do not work yet. The alerts have been run outside the game only.
 - Potions and healthstones used in a fight, and other players' armor kits, cannot be checked. Other players' weapon oils and durability only show for raiders who run the addon.
 - Apply cannot move a player who is in combat.
 - Tattlebot reports damage taken, not the number of hits: the game's damage meter does not count hits, and the combat log is closed to addons during boss fights. It reads the meter after each boss pull, so it needs the game's damage meter to be available.
@@ -232,7 +236,9 @@ CowfeeRaidTools/
   Consumables/           your ready check bar and the consumables list
   ReadyCheck/            the Ready Check page, raid report and ready check window
   Debuffs/               the debuff panel
-  Notes/                 raid notes: parser, timers, windows, alert, sharing, page
+  Notes/                 raid notes: parser, timers, windows, alert, sharing, page and its four tabs
+  Alerts/                the alerts engine: conflict rules, blocks and phase clock, speech queue, reminders,
+                         phase events, alert bars, the reminder editor
   Late/                  the Late Tracker
   Tattlebot/             Tattlebot: the mechanics list, the damage meter reading, page
   Timeline/              Timeline: the recorded pulls, the Journal ability rows, the reference timelines
