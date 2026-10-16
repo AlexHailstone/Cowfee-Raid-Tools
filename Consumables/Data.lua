@@ -19,13 +19,15 @@ Consumables.QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
 -- Default icon order, left to right.
 -- kind "buff": a buff with a timer, falling back to a bag count when it is missing.
 -- kind "count": only a bag count. kind "weapon": a temporary weapon enchant.
--- clickable: clicking the icon on the row uses the first listed item that is in your bags.
+-- clickable: clicking the icon on the row uses the first listed item that is in your bags. Every
+-- category is, except potions: the potion icon only shows how many you have, so none is used before
+-- the pull by mistake.
 Consumables.CATEGORIES = {
     { key = "food", label = "Food", kind = "buff", clickable = true },
     { key = "flask", label = "Flask", kind = "buff", clickable = true },
     { key = "potion", label = "Potion", kind = "count" },
     { key = "weapon", label = "Weapon oil/stone", kind = "weapon", clickable = true },
-    { key = "rune", label = "Augment rune", kind = "buff" },
+    { key = "rune", label = "Augment rune", kind = "buff", clickable = true },
 }
 
 local byKey = {}

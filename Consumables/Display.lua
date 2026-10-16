@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- The row of consumable icons shown above the ready check. A missing or expiring consumable
--- gets marching ants around its icon. Food, flask and weapon icons are clickable and use the
--- first listed item in your bags. The icons are drawn by Consumables/Bar.lua, shared with the
+-- gets marching ants around its icon. Food, flask, weapon and rune icons are clickable and use the
+-- first listed item in your bags. The potion icon only shows a count and is never used from the row. The icons are drawn by Consumables/Bar.lua, shared with the
 -- bar on the Consumables tab.
 --
 -- Every icon is a secure button, so the icon order can change without making new frames. That
@@ -40,6 +40,8 @@ local function showTooltip(self)
         GameTooltip:SetText(def and def.label or "", 1, 1, 1)
         if def and def.clickable then
             GameTooltip:AddLine("None of the listed items are in your bags.", 0.9, 0.4, 0.4)
+        elseif def and def.key == "potion" then
+            GameTooltip:AddLine("Shows how many you have. Not used from here.", 0.7, 0.7, 0.7)
         end
     end
     Bar.AddStatusLines(self.status)
