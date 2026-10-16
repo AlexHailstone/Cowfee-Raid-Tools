@@ -25,7 +25,8 @@ local TEXT = {
     export = "Export",
     reset = "Reset to shipped",
     noBoss = "No bosses yet: pull one, stand in its raid, or add its reference on the Timeline.",
-    noRows = "No rows yet. Add one above, or Import a list.",
+    noRows = "Add your next checkpoint above, or Import a list.",
+    start = "start, automatic",
     shipped = "Shipped with the addon",
     yours = "Your own plan",
 }
@@ -41,12 +42,12 @@ for _, u in ipairs(Pace.UNITS) do
 end
 
 local ROW_H = 22
-local MAX_ROWS = 15
+local MAX_ROWS = 14
 
 local page, selected, rows, offset = nil, nil, {}, 0
 local controls = {}
 local newRow = { ph = 1, unit = "boss1" }
-local statusText, emptyText, secondsEdit, hpEdit, textDialog, slider
+local statusText, emptyText, secondsEdit, hpEdit, textDialog, slider, startRow
 local refresh
 
 local function bosses()
@@ -175,7 +176,7 @@ end
 local function makeRow(f, i)
     local r = CreateFrame("Frame", nil, f)
     r:SetSize(560, ROW_H)
-    r:SetPoint("TOPLEFT", 8, -196 - (i - 1) * ROW_H)
+    r:SetPoint("TOPLEFT", 8, -218 - (i - 1) * ROW_H)
     local bg = r:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(1, 1, 1, i % 2 == 0 and 0.04 or 0.08)
@@ -232,6 +233,11 @@ refresh = function()
         statusText:SetText(Pace:IsOwn(id) and TEXT.yours or (Pace:IsShipped(id) and TEXT.shipped or ""))
     end
     emptyText:SetShown(id ~= nil and #list == 0)
+    startRow:SetShown(id ~= nil)
+    startRow.ph:SetText(time and "-" or "Phase 1")
+    startRow.t:SetText("0:00  (0s)")
+    startRow.unit:SetText("every boss")
+    startRow.hp:SetText("100%")
 end
 
 local function build(pf)
@@ -337,15 +343,26 @@ local function build(pf)
     statusText = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     statusText:SetPoint("TOPLEFT", 8, -150)
     emptyText = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    emptyText:SetPoint("TOPLEFT", 16, -200)
+    emptyText:SetPoint("TOPLEFT", 16, -222)
     emptyText:SetText(TEXT.noRows)
+    -- Every boss starts at 100% at the pull, so that point is always there; checkpoints follow it.
+    startRow = makeRow(pf, 1)
+    startRow:ClearAllPoints()
+    startRow:SetPoint("TOPLEFT", 8, -196)
+    startRow.delete:Hide()
+    startRow.note = startRow:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    startRow.note:SetPoint("RIGHT", -10, 0)
+    startRow.note:SetText(TEXT.start)
+    for _, fs in ipairs({ startRow.ph, startRow.t, startRow.unit, startRow.hp }) do
+        fs:SetTextColor(0.6, 0.6, 0.6)
+    end
     for i = 1, MAX_ROWS do
         rows[i] = makeRow(pf, i)
     end
     slider = CreateFrame("Slider", nil, pf)
     slider:SetOrientation("VERTICAL")
     slider:SetSize(10, MAX_ROWS * ROW_H)
-    slider:SetPoint("TOPLEFT", 574, -196)
+    slider:SetPoint("TOPLEFT", 574, -218)
     slider:SetMinMaxValues(0, 0)
     slider:SetValueStep(1)
     slider:SetObeyStepOnDrag(true)
