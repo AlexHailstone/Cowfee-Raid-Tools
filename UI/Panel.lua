@@ -708,6 +708,59 @@ function UI.SetFrameTitle(frame, text)
     end
 end
 
+-- Game popups over our windows ---------------------------------------------------------------------
+
+-- Lifts a game dialog (its strata is below the alert editor's) over our windows, putting its strata
+-- back when it hides. The hook is added once per frame; each lift saves the strata to restore.
+function UI.LiftOver(dialog)
+    if not (dialog and dialog.SetFrameStrata) then
+        return
+    end
+    if not dialog.crtLifted then
+        dialog.crtLifted = dialog:GetFrameStrata()
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        if not dialog.crtHooked then
+            dialog.crtHooked = true
+            dialog:HookScript("OnHide", function(d)
+                if d.crtLifted then
+                    d:SetFrameStrata(d.crtLifted)
+                    d.crtLifted = nil
+                end
+            end)
+        end
+    end
+    dialog:Raise()
+end
+
+-- The popup the game just showed: the frame the show call returned, else the one StaticPopup_Visible
+-- names for `name` (the popup's key; "GENERIC_CONFIRMATION" for StaticPopup_ShowCustomGenericConfirmation),
+-- else the first visible StaticPopup. Nil when none is shown.
+function UI.ShownPopup(ret, name)
+    if type(ret) == "table" then
+        return ret
+    end
+    local frameName = name and StaticPopup_Visible and StaticPopup_Visible(name)
+    local named = frameName and _G[frameName]
+    if type(named) == "table" then
+        return named
+    end
+    for i = 1, 4 do
+        local p = _G["StaticPopup" .. i]
+        if p and p:IsShown() then
+            return p
+        end
+    end
+    return nil
+end
+
+-- A popup's edit box, by whichever name this client gives it.
+function UI.PopupEditBox(dialog)
+    if not dialog then
+        return nil
+    end
+    return dialog.GetEditBox and dialog:GetEditBox() or dialog.EditBox or dialog.editBox
+end
+
 local function createMenuButton(parent, page, index)
     local b = CreateFrame("Button", nil, parent)
     b:SetHeight(30) -- placed by UI:LayoutMenu

@@ -1090,54 +1090,12 @@ function Editor:Export()
     return line
 end
 
--- Lifts a game dialog (strata below ours) over the editor, putting its strata back when it hides.
--- The hook is added once per frame; each lift saves the strata to restore.
-local function liftOver(dialog)
-    if not (dialog and dialog.SetFrameStrata) then
-        return
-    end
-    if not dialog.crtLifted then
-        dialog.crtLifted = dialog:GetFrameStrata()
-        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-        if not dialog.crtHooked then
-            dialog.crtHooked = true
-            dialog:HookScript("OnHide", function(self)
-                if self.crtLifted then
-                    self:SetFrameStrata(self.crtLifted)
-                    self.crtLifted = nil
-                end
-            end)
-        end
-    end
-    dialog:Raise()
-end
-
--- The confirmation the game just showed: the popup the call returns, else the first visible one.
-local function shownPopup(shown)
-    if type(shown) ~= "table" then
-        shown = nil
-        for i = 1, 4 do
-            local p = _G["StaticPopup" .. i]
-            if p and p:IsShown() then
-                shown = p
-                break
-            end
-        end
-    end
-    return shown
-end
-
 local function confirm(info)
-    liftOver(shownPopup(StaticPopup_ShowCustomGenericConfirmation(info)))
+    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation(info), "GENERIC_CONFIRMATION"))
 end
 
 -- The name popup of Save as saved alert: an edit box with the default name in it. data = { fields, default }.
-local function popupEdit(dialog)
-    return dialog.GetEditBox and dialog:GetEditBox() or dialog.EditBox or dialog.editBox
-end
-
-local function acceptName(dialog, data)
-    local edit = popupEdit(dialog)
+local function acceptName(edit, data)
     local fields = data and data.fields
     if not (edit and fields and CRT.AlertSaved) then
         return
@@ -1174,22 +1132,23 @@ local function ensureNamePopup()
         hideOnEscape = true,
         preferredIndex = 3,
         OnShow = function(self, data)
-            local edit = popupEdit(self)
+            local edit = UI.PopupEditBox(self)
             if edit then
                 edit:SetText(data and data.default or "")
                 edit:HighlightText()
             end
         end,
         OnAccept = function(self, data)
-            acceptName(self, data)
+            acceptName(UI.PopupEditBox(self), data)
         end,
-        EditBoxOnEnterPressed = function(self)
-            local dialog = self:GetParent()
-            acceptName(dialog, dialog.data)
-            dialog:Hide()
+        -- the game passes the dialog's data; the box's parent is only a fallback (layouts change)
+        EditBoxOnEnterPressed = function(edit, data)
+            local parent = edit:GetParent()
+            acceptName(edit, data or (parent and parent.data))
+            StaticPopup_Hide(POPUP_NAME)
         end,
-        EditBoxOnEscapePressed = function(self)
-            self:GetParent():Hide()
+        EditBoxOnEscapePressed = function()
+            StaticPopup_Hide(POPUP_NAME)
         end,
     }
     return true
@@ -1212,10 +1171,10 @@ local function askSavedName()
     local open = openName and _G[openName]
     if open and open.IsShown and open:IsShown() then
         open.data = data
-        liftOver(open)
+        UI.LiftOver(open)
         return
     end
-    liftOver(shownPopup(StaticPopup_Show(POPUP_NAME, nil, nil, data)))
+    UI.LiftOver(UI.ShownPopup(StaticPopup_Show(POPUP_NAME, nil, nil, data), POPUP_NAME))
 end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
@@ -1244,7 +1203,7 @@ local function pickColor()
         end,
     })
     -- the picker is DIALOG strata, below the editor: lift it over until it hides
-    liftOver(ColorPickerFrame)
+    UI.LiftOver(ColorPickerFrame)
 end
 
 local function build()

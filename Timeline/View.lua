@@ -1110,50 +1110,9 @@ local function contextMenu(owner, build)
     end
 end
 
--- Lifts a game dialog (strata below the alert editor's) over it, putting its strata back when it hides,
--- the way the editor lifts its own popups (the same fields, so the two never hook a dialog twice).
-local function liftOver(dialog)
-    if not (dialog and dialog.SetFrameStrata) then
-        return
-    end
-    if not dialog.crtLifted then
-        dialog.crtLifted = dialog:GetFrameStrata()
-        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-        if not dialog.crtHooked then
-            dialog.crtHooked = true
-            dialog:HookScript("OnHide", function(d)
-                if d.crtLifted then
-                    d:SetFrameStrata(d.crtLifted)
-                    d.crtLifted = nil
-                end
-            end)
-        end
-    end
-    dialog:Raise()
-end
-
--- The popup the game just showed: the one the call returns, else the first visible one.
-local function shownPopup(shown)
-    if type(shown) ~= "table" then
-        shown = nil
-        for i = 1, 4 do
-            local p = _G["StaticPopup" .. i]
-            if p and p:IsShown() then
-                shown = p
-                break
-            end
-        end
-    end
-    return shown
-end
-
-local function popupEdit(dialog)
-    return dialog.GetEditBox and dialog:GetEditBox() or dialog.EditBox or dialog.editBox
-end
-
--- The Rename popup: an edit box with the saved alert's name. data = { id, name }.
-local function acceptRename(dialog, data)
-    local edit = popupEdit(dialog)
+-- The Rename popup: an edit box with the saved alert's name. data = { id, name }. The popup helpers
+-- (lifting it over the alert editor, finding it, its edit box) are CRT.UI's.
+local function acceptRename(edit, data)
     if edit and data and CRT.AlertSaved then
         CRT.AlertSaved:Rename(data.id, edit:GetText())
     end
@@ -1175,22 +1134,23 @@ local function ensureRenamePopup()
             hideOnEscape = true,
             preferredIndex = 3,
             OnShow = function(dialog, data)
-                local edit = popupEdit(dialog)
+                local edit = CRT.UI.PopupEditBox(dialog)
                 if edit then
                     edit:SetText(data and data.name or "")
                     edit:HighlightText()
                 end
             end,
             OnAccept = function(dialog, data)
-                acceptRename(dialog, data)
+                acceptRename(CRT.UI.PopupEditBox(dialog), data)
             end,
-            EditBoxOnEnterPressed = function(edit)
-                local dialog = edit:GetParent()
-                acceptRename(dialog, dialog.data)
-                dialog:Hide()
+            -- the game passes the dialog's data; the box's parent is only a fallback (layouts change)
+            EditBoxOnEnterPressed = function(edit, data)
+                local parent = edit:GetParent()
+                acceptRename(edit, data or (parent and parent.data))
+                StaticPopup_Hide(RENAME_POPUP)
             end,
-            EditBoxOnEscapePressed = function(edit)
-                edit:GetParent():Hide()
+            EditBoxOnEscapePressed = function()
+                StaticPopup_Hide(RENAME_POPUP)
             end,
         }
     end
@@ -1200,7 +1160,8 @@ end
 local function askRename(id)
     local s = CRT.AlertSaved and CRT.AlertSaved:Get(id)
     if s and ensureRenamePopup() then
-        liftOver(shownPopup(StaticPopup_Show(RENAME_POPUP, nil, nil, { id = id, name = s.name })))
+        local UI = CRT.UI
+        UI.LiftOver(UI.ShownPopup(StaticPopup_Show(RENAME_POPUP, nil, nil, { id = id, name = s.name }), RENAME_POPUP))
     end
 end
 
@@ -1209,7 +1170,8 @@ local function askDelete(id)
     if not (s and StaticPopup_ShowCustomGenericConfirmation) then
         return
     end
-    liftOver(shownPopup(StaticPopup_ShowCustomGenericConfirmation({
+    local UI = CRT.UI
+    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
         text = string.format(TEXT.deleteConfirm, tostring(s.name or "")),
         acceptText = TEXT.delete,
         cancelText = TEXT.cancel,
@@ -1217,7 +1179,7 @@ local function askDelete(id)
         callback = function()
             CRT.AlertSaved:Delete(id)
         end,
-    })))
+    }), "GENERIC_CONFIRMATION"))
 end
 
 -- A chip's icon: its icon ID, else its spell's icon; nil when there is none or it can't be read.
