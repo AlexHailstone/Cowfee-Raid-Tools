@@ -109,7 +109,10 @@ local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
 local ROW1_EXTRA = 14 -- room under the first row for the Saves to line; every row below moves down by it
-local EXPORT_HEIGHT, EXPORT_LINE_HEIGHT = 84, 14 -- the copy box, and what each extra line adds
+local EXPORT_CHROME = 56 -- the copy window above and below its text box
+local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
+local EXPORT_WIDTH = WIDTH - 88 -- the text box
+local EXPORT_TEXT_WIDTH = EXPORT_WIDTH - 2 * EXPORT_PAD
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
 
 local frame, exportFrame
@@ -914,7 +917,7 @@ local function buildExport()
     local x = CreateFrame("Frame", EXPORT_NAME, UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(x)
     exportFrame = x
-    x:SetSize(WIDTH - 40, EXPORT_HEIGHT)
+    x:SetSize(WIDTH - 40, EXPORT_CHROME + EXPORT_MIN_TEXT + 2 * EXPORT_PAD)
     x:SetPoint("CENTER", frame, "CENTER", 0, 0)
     x:SetClampedToScreen(true)
     x:EnableMouse(true)
@@ -922,13 +925,43 @@ local function buildExport()
     UI.SetFrameTitle(x, TEXT.exportTitle)
     tinsert(UISpecialFrames, EXPORT_NAME)
     x.text = ""
-    x.edit = makeEdit(x, LEFT + 4, -40, WIDTH - 88, function(_, userInput)
+    -- A plain multi-line box on its own backdrop (the line template's art is one row tall), inside a
+    -- scroll frame for text taller than the window has room for. Its height follows the measured text.
+    local box = CreateFrame("Frame", nil, x, "BackdropTemplate")
+    x.box = box
+    box:SetPoint("TOPLEFT", LEFT + 4, -40)
+    box:SetWidth(EXPORT_WIDTH)
+    box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    local roast, caramel = CRT.MOCHA.roast, CRT.MOCHA.caramel
+    box:SetBackdropColor(roast[1], roast[2], roast[3], 0.95)
+    box:SetBackdropBorderColor(caramel[1], caramel[2], caramel[3], 1)
+    local scroll = CreateFrame("ScrollFrame", nil, box)
+    x.scroll = scroll
+    scroll:SetPoint("TOPLEFT", EXPORT_PAD, -EXPORT_PAD)
+    scroll:SetWidth(EXPORT_TEXT_WIDTH)
+    local edit = CreateFrame("EditBox", nil, scroll)
+    x.edit = edit
+    edit:SetMultiLine(true)
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(CRTFontEdit)
+    edit:SetWidth(EXPORT_TEXT_WIDTH)
+    scroll:SetScrollChild(edit)
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+        local top = math.max(0, edit:GetHeight() - self:GetHeight())
+        self:SetVerticalScroll(math.max(0, math.min(top, (self:GetVerticalScroll() or 0) - delta * 14)))
+    end)
+    -- the same font and width, hidden, to measure what the text needs
+    x.measure = x:CreateFontString(nil, "OVERLAY")
+    x.measure:SetFontObject(CRTFontEdit)
+    x.measure:SetWidth(EXPORT_TEXT_WIDTH)
+    x.measure:Hide()
+    edit:SetScript("OnTextChanged", function(self, userInput)
         if userInput then
-            x.edit:SetText(x.text)
-            x.edit:HighlightText()
+            self:SetText(x.text)
+            self:HighlightText()
         end
     end)
-    x.edit:SetMultiLine(true) -- one line per time
     x.edit:SetScript("OnEscapePressed", function()
         x:Hide()
     end)
@@ -957,10 +990,15 @@ function Editor:Export()
         lines[i] = CRT.NoteParser.FormatLine(t) .. extra
     end
     local line = table.concat(lines, "\n")
-    -- the box grows a row per extra line
-    local more = (#lines - 1) * EXPORT_LINE_HEIGHT
-    exportFrame:SetHeight(EXPORT_HEIGHT + more)
-    exportFrame.edit:SetHeight(20 + more)
+    -- the box is as tall as the text wraps to, up to what the window has room for, then it scrolls
+    exportFrame.measure:SetText(line)
+    local textHeight = math.max(EXPORT_MIN_TEXT, math.ceil(exportFrame.measure:GetStringHeight() or 0))
+    local shown = math.min(textHeight, EXPORT_MAX_TEXT)
+    exportFrame.edit:SetHeight(textHeight)
+    exportFrame.scroll:SetHeight(shown)
+    exportFrame.scroll:SetVerticalScroll(0)
+    exportFrame.box:SetHeight(shown + EXPORT_PAD * 2)
+    exportFrame:SetHeight(EXPORT_CHROME + shown + EXPORT_PAD * 2)
     exportFrame.text = line
     exportFrame.edit:SetText(line)
     exportFrame:Show()
@@ -1010,7 +1048,10 @@ local function build()
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        inCorner = false -- dragged: it keeps the spot it was put in
+    end)
     UI:RegisterLayer("panel", f)
     -- Previews never touch an alert being edited: on opens an empty editor only when none is open,
     -- and off closes only the one Previews opened.
