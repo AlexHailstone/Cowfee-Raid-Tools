@@ -88,4 +88,5 @@ Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
 Dev\MarkerEditor.lua
 Dev\SeasonTools.lua
+Dev\DevPage.lua
 #@end-do-not-package@

@@ -159,11 +159,15 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         else
             CRT:Print("The timeline probe is not loaded.")
         end
-    elseif msg == "dev" then
+    elseif msg == "dev edit" then
         if CRT.Dev then
             CRT.Dev:Toggle()
+        end
+    elseif msg == "dev" then
+        if CRT.UI.pages.dev then
+            CRT.UI:Show("dev")
         else
-            CRT:Print("The dev layout editor is not loaded.")
+            CRT:Print("The Development page is not loaded.")
         end
     --@end-do-not-package@
     elseif msg == "qol" then
