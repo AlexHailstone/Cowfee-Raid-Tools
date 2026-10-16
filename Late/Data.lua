@@ -206,9 +206,56 @@ function Late:RemovePlayer(key)
     local night = ldb().current
     local i = night and findPlayer(night, key)
     if i then
+        -- Remembered, so a later update from the layout doesn't put them back.
+        night.removed = night.removed or {}
+        night.removed[night.players[i].key:lower()] = true
         table.remove(night.players, i)
         self:Fire()
     end
+end
+
+-- Brings tonight's list in line with the expected roster layout as it is saved now, keeping the
+-- clock and everyone's join times. A name new to the layout is added: on time if they are in your
+-- group now (a last-minute roster change), else not here with the clock from the start. A name gone
+-- from the layout is taken off, unless it was added by hand. Names removed by hand stay off.
+-- Returns how many were added and removed, or nil and a reason.
+function Late:SyncLayout()
+    local night = ldb().current
+    if not night then
+        return nil, "No raid night is running."
+    end
+    local keys, nameOrError = expectedKeys()
+    if not keys then
+        return nil, nameOrError
+    end
+    local wanted = {}
+    for _, key in ipairs(keys) do
+        wanted[key:lower()] = key
+    end
+    local lookup = CRT.Groups.MakeLookup(CRT.Groups:ReadRoster())
+    local added, removed = 0, 0
+    for lower, key in pairs(wanted) do
+        if not findPlayer(night, key) and not (night.removed and night.removed[lower]) then
+            local p = { key = key }
+            if lookup(key) then
+                p.joinedAt = night.startedAt
+            end
+            night.players[#night.players + 1] = p
+            added = added + 1
+        end
+    end
+    for i = #night.players, 1, -1 do
+        local p = night.players[i]
+        if not p.added and not wanted[p.key:lower()] then
+            table.remove(night.players, i)
+            removed = removed + 1
+        end
+    end
+    night.layout = nameOrError
+    if added + removed > 0 then
+        self:Fire()
+    end
+    return added, removed
 end
 
 -- Counts someone as here on time, for a player who was here under another name or excused.
@@ -354,6 +401,19 @@ local function onRosterUpdate()
         end
     end)
 end
+
+-- When the expected roster layout is saved with changes during a raid night, tonight's list
+-- follows it straight away (Raid Groups saves edits to the layout when Keep changes is ticked).
+CRT.Groups:OnChange(function()
+    local night = ldb().current
+    if not night or not ldb().layoutId or ldb().layoutId ~= CRT.db.groups.selected then
+        return
+    end
+    local added, removed = Late:SyncLayout()
+    if added and added + removed > 0 then
+        CRT:Print(format("Tonight's late list follows %s: %d added, %d taken off. The clock keeps running.", night.layout or "the roster", added, removed))
+    end
+end)
 
 local driver = CreateFrame("Frame")
 driver:RegisterEvent("PLAYER_LOGIN")

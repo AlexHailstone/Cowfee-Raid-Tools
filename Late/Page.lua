@@ -681,6 +681,19 @@ local function getEditor()
     end
     UI.Help(d, "Edit tonight's roster", "Changes the list for tonight only. The expected roster layout on Raid Groups stays as it is, so change it there for future nights.\n\nAdd from group: someone in your group who should count tonight, such as a player on a renamed character. They count as joined now; press On time if they were here from the start.\n\nOn time: counts the player as here from the start, for someone who was here under another name or is excused.\n\nRemove: takes the player off tonight's list, so they don't count as late or missing."):SetPoint("TOPRIGHT", d, "TOPRIGHT", -30, -36)
 
+    local sync = makeButton(d, "Update from layout", 150, 22)
+    editorFont(sync)
+    sync:SetPoint("TOPRIGHT", d, "TOPRIGHT", -16, -100)
+    sync:SetScript("OnClick", function()
+        local added, removed = Late:SyncLayout()
+        if added then
+            CRT:Print(format("Tonight's list updated from the expected roster: %d added, %d taken off. The clock keeps running.", added, removed))
+        else
+            CRT:Print(removed)
+        end
+    end)
+    tooltip(sync, "Update from layout", "Makes tonight's list match the expected roster layout as it is saved now, without restarting the clock. New names in the layout who are in your group count as on time; names gone from the layout are taken off, unless you added them here. This also happens on its own when you save the layout on Raid Groups.")
+
     local typed = label(d, "Or type a name")
     typed:SetPoint("TOPLEFT", 16, -72)
     d.edit = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
