@@ -53,7 +53,9 @@ function Alerts:Fire()
     end
 end
 
--- def = { label, group = bool, Entries = function(run) -> { item } }. Registering a key again replaces it.
+-- def = { label, group = bool, Entries = function(run) -> { item }, keepBlock = bool }. Registering a key
+-- again replaces it. With keepBlock, an item that names its own `block` keeps it (the editor's Test runs
+-- a note line as a "note" item, so the note's speech and sound switches still apply).
 function Alerts:RegisterBlock(key, def)
     if not self.blocks[key] then
         self.blockOrder[#self.blockOrder + 1] = key
@@ -80,7 +82,7 @@ function Alerts:Collect(run, opts)
                     if keep then
                         local copy = {}
                         for k, v in pairs(it) do copy[k] = v end
-                        copy.block = key
+                        copy.block = (def.keepBlock and type(it.block) == "string") and it.block or key
                         copy.ph = type(copy.ph) == "number" and copy.ph or 1
                         copy.time = type(copy.time) == "number" and copy.time or 0
                         out[#out + 1] = copy
