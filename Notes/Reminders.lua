@@ -74,63 +74,64 @@ local TEXT = {
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid
 -- Notes tabs; Notes/Page.lua loads after this file, so the heights are worked out when the tab is built).
-local PAD = 8
-local TOP_Y = -6 -- the boss, difficulty and reference dropdowns, beside the title
-local BOSS_X, BOSS_LABEL, BOSS_W = 130, 34, 190
-local DIFF_X, DIFF_LABEL, DIFF_W = 371, 58, 110
-local FROM_X, FROM_LABEL = 556, 66
-local HELP_ROOM = 30 -- a (?) and its gap
-local DROP_GAP = 5 -- UI/Controls.lua: between a row's label and its control
-local FROM_W = UI.PAGE_W - FROM_X - FROM_LABEL - DROP_GAP - HELP_ROOM - PAD
-local LIST_TOP = -44
-local LIST_W = 250
-local ROW_H = 24
-local OWN_H = 24
-local OWN_GAP = 6
-local LIST_H, MAX_ROWS, PANEL_H -- from the tab's height, in build
-local ROW_W = LIST_W - 4
-local NAME_X = 50
-local DOT_SIZE = 6
-local NAME_W = ROW_W - NAME_X - DOT_SIZE - 12
-local THUMB_W = 3
-local PANEL_GAP = 12
-local PANEL_X = PAD + LIST_W + PANEL_GAP
-local PANEL_W = UI.PAGE_W - PAD - PANEL_X
-local INSET = 12
-local HEADER_ICON = 28
-local SAVE_LABEL, SAVE_W = 50, 104
-local CHECK_SIZE = 24
-local CHECK_LABEL_W = 96
-local CHECK_W = CHECK_SIZE + 2 + CHECK_LABEL_W -- a checkbox and its label
-local SAVE_X = PANEL_W - INSET - HELP_ROOM - (SAVE_LABEL + DROP_GAP + SAVE_W)
-local ALERT_X = SAVE_X - CHECK_W - 8
-local TITLE_W = ALERT_X - (INSET + HEADER_ICON + 8) - 10
-local SLIDER_VALUE = 44 -- UI/Controls.lua: a slider's value beside its bar
-local SHOW_LABEL, LINGER_LABEL, SLIDER_W = 70, 50, 150
-local SHOW_MIN, SHOW_MAX, SHOW_DEFAULT = 1, 60, 5 -- Show from, seconds
-local LINGER_MIN, LINGER_MAX = 0, 10 -- Linger, seconds
-local SLIDER_GAP = 20 -- between Show from and Linger
+local L = {} -- every layout number below, in one table: Lua 5.1 allows a function at most 60 outer locals
+L.PAD = 8
+L.TOP_Y = -6 -- the boss, difficulty and reference dropdowns, beside the title
+L.BOSS_X, L.BOSS_LABEL, L.BOSS_W = 130, 34, 190
+L.DIFF_X, L.DIFF_LABEL, L.DIFF_W = 371, 58, 110
+L.FROM_X, L.FROM_LABEL = 556, 66
+L.HELP_ROOM = 30 -- a (?) and its gap
+L.DROP_GAP = 5 -- UI/Controls.lua: between a row's label and its control
+L.FROM_W = UI.PAGE_W - L.FROM_X - L.FROM_LABEL - L.DROP_GAP - L.HELP_ROOM - L.PAD
+L.LIST_TOP = -44
+L.LIST_W = 250
+L.ROW_H = 24
+L.OWN_H = 24
+L.OWN_GAP = 6
+-- L.LIST_H, L.MAX_ROWS, L.PANEL_H: from the tab's height, set in build
+L.ROW_W = L.LIST_W - 4
+L.NAME_X = 50
+L.DOT_SIZE = 6
+L.NAME_W = L.ROW_W - L.NAME_X - L.DOT_SIZE - 12
+L.THUMB_W = 3
+L.PANEL_GAP = 12
+L.PANEL_X = L.PAD + L.LIST_W + L.PANEL_GAP
+L.PANEL_W = UI.PAGE_W - L.PAD - L.PANEL_X
+L.INSET = 12
+L.HEADER_ICON = 28
+L.SAVE_LABEL, L.SAVE_W = 50, 104
+L.CHECK_SIZE = 24
+L.CHECK_LABEL_W = 96
+L.CHECK_W = L.CHECK_SIZE + 2 + L.CHECK_LABEL_W -- a checkbox and its label
+L.SAVE_X = L.PANEL_W - L.INSET - L.HELP_ROOM - (L.SAVE_LABEL + L.DROP_GAP + L.SAVE_W)
+L.ALERT_X = L.SAVE_X - L.CHECK_W - 8
+L.TITLE_W = L.ALERT_X - (L.INSET + L.HEADER_ICON + 8) - 10
+L.SLIDER_VALUE = 44 -- UI/Controls.lua: a slider's value beside its bar
+L.SHOW_LABEL, L.LINGER_LABEL, L.SLIDER_W = 70, 50, 150
+L.SHOW_MIN, L.SHOW_MAX, L.SHOW_DEFAULT = 1, 60, 5 -- Show from, seconds
+L.LINGER_MIN, L.LINGER_MAX = 0, 10 -- Linger, seconds
+L.SLIDER_GAP = 20 -- between Show from and Linger
 -- The panel's rows, from its top: the header, Triggers and its rows
-local ICON_Y, NAME_Y, ALERT_Y, SAVE_Y, SAVE_HELP_Y = -10, -16, -12, -8, -16
-local TRIGGERS_Y, SLIDERS_Y, TIMES_Y, TIMES_BOX_Y, TIMELINE_Y = -50, -66, -104, -100, -124
-local TIMELINE_W, TEMPLATE_W, TEST_W, DEFAULT_W = 170, 140, 80, 80
-local BUTTON_GAP = 8
-local BUTTONS_W = TEMPLATE_W + BUTTON_GAP + TEST_W + BUTTON_GAP -- Test and Save as template, bottom right
-local BOTTOM_Y = 10 -- the bottom row's buttons above the panel's bottom edge
-local MENU_MAX_H = 400 -- the Sound menu scrolls past this
-local COL_Y = -162
-local COL_GAP = 22
-local COL_W = math.floor((PANEL_W - 2 * INSET - COL_GAP) / 2)
-local COL2_X = INSET + COL_W + COL_GAP
-local CHECK_STEP = 130 -- between the checkboxes of a row
-local CHECK_STEP_NARROW = 100 -- the third checkbox of a row, after a short label
-local LABEL_W = 50
-local ICON_DROP_W = 90
-local ID_X = COL2_X + LABEL_W + DROP_GAP + ICON_DROP_W + 8
-local ID_W = COL2_X + COL_W - ID_X - HELP_ROOM
-local SOUND_W = 160
-local BUTTON_H = 22
-local TYPING_PAUSE = 0.5 -- seconds after the last key before a typed box saves
+L.ICON_Y, L.NAME_Y, L.ALERT_Y, L.SAVE_Y, L.SAVE_HELP_Y = -10, -16, -12, -8, -16
+L.TRIGGERS_Y, L.SLIDERS_Y, L.TIMES_Y, L.TIMES_BOX_Y, L.TIMELINE_Y = -50, -66, -104, -100, -124
+L.TIMELINE_W, L.TEMPLATE_W, L.TEST_W, L.DEFAULT_W = 170, 140, 80, 80
+L.BUTTON_GAP = 8
+L.BUTTONS_W = L.TEMPLATE_W + L.BUTTON_GAP + L.TEST_W + L.BUTTON_GAP -- Test and Save as template, bottom right
+L.BOTTOM_Y = 10 -- the bottom row's buttons above the panel's bottom edge
+L.MENU_MAX_H = 400 -- the Sound menu scrolls past this
+L.COL_Y = -162
+L.COL_GAP = 22
+L.COL_W = math.floor((L.PANEL_W - 2 * L.INSET - L.COL_GAP) / 2)
+L.COL2_X = L.INSET + L.COL_W + L.COL_GAP
+L.CHECK_STEP = 130 -- between the checkboxes of a row
+L.CHECK_STEP_NARROW = 100 -- the third checkbox of a row, after a short label
+L.LABEL_W = 50
+L.ICON_DROP_W = 90
+L.ID_X = L.COL2_X + L.LABEL_W + L.DROP_GAP + L.ICON_DROP_W + 8
+L.ID_W = L.COL2_X + L.COL_W - L.ID_X - L.HELP_ROOM
+L.SOUND_W = 160
+L.BUTTON_H = 22
+L.TYPING_PAUSE = 0.5 -- seconds after the last key before a typed box saves
 local ANY = "any"
 
 local WHITE = { 1, 1, 1 }
@@ -580,13 +581,13 @@ end
 
 -- The visible rows from the list as it is: text, icons and colours only, no lookups. A scroll is only this.
 local function paint(index)
-    local maxOffset = math.max(0, #items - MAX_ROWS)
+    local maxOffset = math.max(0, #items - L.MAX_ROWS)
     offset = offset or 0
     if reveal and index then
         if index <= offset then
             offset = index - 1
-        elseif index > offset + MAX_ROWS then
-            offset = index - MAX_ROWS
+        elseif index > offset + L.MAX_ROWS then
+            offset = index - L.MAX_ROWS
         end
     end
     reveal = false
@@ -623,10 +624,10 @@ local function paint(index)
     end
     -- the scroll position, as a thin bar at the list's right edge
     if maxOffset > 0 then
-        local h = math.max(12, math.floor(LIST_H * MAX_ROWS / #items))
+        local h = math.max(12, math.floor(L.LIST_H * L.MAX_ROWS / #items))
         thumb:SetHeight(h)
         thumb:ClearAllPoints()
-        thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -math.floor((LIST_H - h) * offset / maxOffset))
+        thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -math.floor((L.LIST_H - h) * offset / maxOffset))
         thumb:Show()
     else
         thumb:Hide()
@@ -682,7 +683,7 @@ local function typing()
     typed = true
     typedGen = typedGen + 1
     local gen = typedGen
-    C_Timer.After(TYPING_PAUSE, function()
+    C_Timer.After(L.TYPING_PAUSE, function()
         if gen == typedGen then
             saveTyped()
         end
@@ -858,18 +859,18 @@ local function makeButton(parent, label, width, height)
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or BUTTON_H)
+    b:SetSize(width, height or L.BUTTON_H)
     b:SetText(label)
     return b
 end
 
 local function makeCheck(parent, label, x, y, onClick)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    check:SetSize(CHECK_SIZE, CHECK_SIZE)
+    check:SetSize(L.CHECK_SIZE, L.CHECK_SIZE)
     check:SetPoint("TOPLEFT", x, y)
     local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", check, "RIGHT", 2, 0)
-    text:SetWidth(CHECK_LABEL_W)
+    text:SetWidth(L.CHECK_LABEL_W)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
     text:SetText(label)
@@ -893,7 +894,7 @@ end
 local function label(parent, text, x, y)
     local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     fs:SetPoint("TOPLEFT", x, y)
-    fs:SetWidth(LABEL_W)
+    fs:SetWidth(L.LABEL_W)
     fs:SetJustifyH("LEFT")
     fs:SetText(text)
     return fs
@@ -927,8 +928,8 @@ end
 
 local function makeRow(parent, i)
     local frame = CreateFrame("Button", nil, parent)
-    frame:SetSize(ROW_W, ROW_H - 2)
-    frame:SetPoint("TOPLEFT", 2, -2 - (i - 1) * ROW_H)
+    frame:SetSize(L.ROW_W, L.ROW_H - 2)
+    frame:SetPoint("TOPLEFT", 2, -2 - (i - 1) * L.ROW_H)
     local row = { frame = frame }
     row.sel = frame:CreateTexture(nil, "BACKGROUND")
     row.sel:SetAllPoints()
@@ -947,12 +948,12 @@ local function makeRow(parent, i)
     row.icon:SetPoint("LEFT", 28, 0)
     row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     row.name = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    row.name:SetPoint("LEFT", NAME_X, 0)
-    row.name:SetWidth(NAME_W)
+    row.name:SetPoint("LEFT", L.NAME_X, 0)
+    row.name:SetWidth(L.NAME_W)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     row.dot = frame:CreateTexture(nil, "OVERLAY")
-    row.dot:SetSize(DOT_SIZE, DOT_SIZE)
+    row.dot:SetSize(L.DOT_SIZE, L.DOT_SIZE)
     row.dot:SetPoint("RIGHT", -8, 0)
     local caramel = CRT.MOCHA.caramel
     row.dot:SetColorTexture(caramel[1], caramel[2], caramel[3], 1)
@@ -978,8 +979,8 @@ end
 local function buildPanel(f)
     local Draft = CRT.AlertDraft
     local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    frame:SetSize(PANEL_W, PANEL_H)
-    frame:SetPoint("TOPLEFT", PANEL_X, LIST_TOP)
+    frame:SetSize(L.PANEL_W, L.PANEL_H)
+    frame:SetPoint("TOPLEFT", L.PANEL_X, L.LIST_TOP)
     backdrop(frame, 0.6)
     panel.frame = frame
     local p = CreateFrame("Frame", nil, frame)
@@ -994,58 +995,58 @@ local function buildPanel(f)
 
     -- Header: the icon and name, Alert me, Save as
     panel.icon = p:CreateTexture(nil, "ARTWORK")
-    panel.icon:SetSize(HEADER_ICON, HEADER_ICON)
-    panel.icon:SetPoint("TOPLEFT", INSET, ICON_Y)
+    panel.icon:SetSize(L.HEADER_ICON, L.HEADER_ICON)
+    panel.icon:SetPoint("TOPLEFT", L.INSET, L.ICON_Y)
     panel.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     panel.name = p:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
-    panel.name:SetPoint("TOPLEFT", INSET + HEADER_ICON + 8, NAME_Y)
-    panel.name:SetWidth(TITLE_W)
+    panel.name:SetPoint("TOPLEFT", L.INSET + L.HEADER_ICON + 8, L.NAME_Y)
+    panel.name:SetWidth(L.TITLE_W)
     panel.name:SetJustifyH("LEFT")
     panel.name:SetWordWrap(false)
-    panel.alertMe = makeCheck(p, TEXT.alertMe, ALERT_X, ALERT_Y, function(on)
+    panel.alertMe = makeCheck(p, TEXT.alertMe, L.ALERT_X, L.ALERT_Y, function(on)
         setEnabled(cur.item, on)
     end)
     -- Raid note is greyed out here: a mechanic has several times, a note line one
     panel.saveAs = row(UI.Dropdown(p, TEXT.saveAs, {
-        labelWidth = SAVE_LABEL, width = SAVE_W,
+        labelWidth = L.SAVE_LABEL, width = L.SAVE_W,
         options = function()
             return { { key = "note", label = TEXT.asNote, disabled = true }, { key = "mine", label = TEXT.asMine } }
         end,
         get = function() return "mine" end,
         set = function() drawPanel() end,
     }))
-    panel.saveAs:SetPoint("TOPLEFT", SAVE_X, SAVE_Y)
+    panel.saveAs:SetPoint("TOPLEFT", L.SAVE_X, L.SAVE_Y)
     panel.saveAsHelp = UI.Help(p, TEXT.asNote, TEXT.raidNoteHelp)
-    panel.saveAsHelp:SetPoint("TOPLEFT", SAVE_X + SAVE_LABEL + DROP_GAP + SAVE_W + 2, SAVE_HELP_Y)
+    panel.saveAsHelp:SetPoint("TOPLEFT", L.SAVE_X + L.SAVE_LABEL + L.DROP_GAP + L.SAVE_W + 2, L.SAVE_HELP_Y)
 
     -- Triggers: Show from, Linger, the times (read only) and Show on the Timeline
-    heading(p, TEXT.triggers, INSET, TRIGGERS_Y, TEXT.triggersHelp)
+    heading(p, TEXT.triggers, L.INSET, L.TRIGGERS_Y, TEXT.triggersHelp)
     local function seconds(v)
         return string.format(TEXT.seconds, v)
     end
     panel.showFrom = row(UI.Slider(p, TEXT.showFrom, {
-        min = SHOW_MIN, max = SHOW_MAX, step = 1, labelWidth = SHOW_LABEL, width = SLIDER_W, format = seconds,
+        min = L.SHOW_MIN, max = L.SHOW_MAX, step = 1, labelWidth = L.SHOW_LABEL, width = L.SLIDER_W, format = seconds,
         onRelease = true, -- saved when the bar is let go, not on every step of a drag
-        get = function() return cur.draft and cur.draft.warn or SHOW_DEFAULT end,
+        get = function() return cur.draft and cur.draft.warn or L.SHOW_DEFAULT end,
         set = change(function(v) cur.draft.warn = v end),
     }))
-    panel.showFrom:SetPoint("TOPLEFT", INSET, SLIDERS_Y)
+    panel.showFrom:SetPoint("TOPLEFT", L.INSET, L.SLIDERS_Y)
     panel.linger = row(UI.Slider(p, TEXT.linger, {
-        min = LINGER_MIN, max = LINGER_MAX, step = 1, labelWidth = LINGER_LABEL, width = SLIDER_W, format = seconds,
+        min = L.LINGER_MIN, max = L.LINGER_MAX, step = 1, labelWidth = L.LINGER_LABEL, width = L.SLIDER_W, format = seconds,
         onRelease = true,
-        get = function() return cur.draft and cur.draft.linger or LINGER_MIN end,
+        get = function() return cur.draft and cur.draft.linger or L.LINGER_MIN end,
         set = change(function(v) cur.draft.linger = v end),
     }))
-    panel.linger:SetPoint("TOPLEFT", INSET + SHOW_LABEL + DROP_GAP + SLIDER_W + SLIDER_VALUE + SLIDER_GAP, SLIDERS_Y)
+    panel.linger:SetPoint("TOPLEFT", L.INSET + L.SHOW_LABEL + L.DROP_GAP + L.SLIDER_W + L.SLIDER_VALUE + L.SLIDER_GAP, L.SLIDERS_Y)
     panel.times = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    panel.times:SetPoint("TOPLEFT", INSET, TIMES_Y)
-    panel.times:SetWidth(PANEL_W - 2 * INSET)
+    panel.times:SetPoint("TOPLEFT", L.INSET, L.TIMES_Y)
+    panel.times:SetWidth(L.PANEL_W - 2 * L.INSET)
     panel.times:SetJustifyH("LEFT")
     panel.times:SetWordWrap(false)
     panel.times:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
     -- in its place, for an alert the reference has no times for: its own typed times
-    panel.timesLabel = label(p, TEXT.times, INSET, TIMES_Y)
-    panel.timesEdit = makeEdit(p, INSET + LABEL_W + 4, TIMES_BOX_Y, PANEL_W - 2 * INSET - LABEL_W - 4 - HELP_ROOM, function(text)
+    panel.timesLabel = label(p, TEXT.times, L.INSET, L.TIMES_Y)
+    panel.timesEdit = makeEdit(p, L.INSET + L.LABEL_W + 4, L.TIMES_BOX_Y, L.PANEL_W - 2 * L.INSET - L.LABEL_W - 4 - L.HELP_ROOM, function(text)
         if not cur.draft then
             return
         end
@@ -1057,39 +1058,39 @@ local function buildPanel(f)
     end)
     panel.timesHelp = UI.Help(p, TEXT.times, TEXT.timesHelp)
     panel.timesHelp:SetPoint("LEFT", panel.timesEdit, "RIGHT", 2, 0)
-    panel.timelineBtn = makeButton(p, TEXT.showOnTimeline, TIMELINE_W)
-    panel.timelineBtn:SetPoint("TOPLEFT", INSET, TIMELINE_Y)
+    panel.timelineBtn = makeButton(p, TEXT.showOnTimeline, L.TIMELINE_W)
+    panel.timelineBtn:SetPoint("TOPLEFT", L.INSET, L.TIMELINE_Y)
     panel.timelineBtn:SetScript("OnClick", showOnTimeline)
 
     -- Left column: Show as, Also
-    heading(p, TEXT.showAs, INSET, COL_Y, TEXT.showAsHelp)
+    heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
     panel.checks = {}
     for _, spec in ipairs({ { "alert", TEXT.nextSpell, 0, 1 }, { "text", TEXT.showText, 1, 1 }, { "icon", TEXT.showIcon, 2, 1 },
         { "bar", TEXT.bar, 0, 2 }, { "circle", TEXT.circle, 1, 2 } }) do
         local key = spec[1]
-        local x = INSET - 4 + spec[3] * (spec[3] == 2 and CHECK_STEP_NARROW or CHECK_STEP)
-        panel.checks[key] = makeCheck(p, spec[2], x, COL_Y - 20 - (spec[4] - 1) * 26, change(function(on)
+        local x = L.INSET - 4 + spec[3] * (spec[3] == 2 and L.CHECK_STEP_NARROW or L.CHECK_STEP)
+        panel.checks[key] = makeCheck(p, spec[2], x, L.COL_Y - 20 - (spec[4] - 1) * 26, change(function(on)
             cur.draft.show[key] = on
         end))
     end
-    heading(p, TEXT.also, INSET, COL_Y - 78)
+    heading(p, TEXT.also, L.INSET, L.COL_Y - 78)
     panel.also = {
-        speak = makeCheck(p, TEXT.speak, INSET - 4, COL_Y - 98, change(function(on) cur.draft.speak = on end)),
-        count = makeCheck(p, TEXT.count, INSET - 4 + CHECK_STEP, COL_Y - 98, change(function(on) cur.draft.count = on end)),
-        glow = makeCheck(p, TEXT.glow, INSET - 4, COL_Y - 124, change(function(on) cur.draft.glow = on end)),
+        speak = makeCheck(p, TEXT.speak, L.INSET - 4, L.COL_Y - 98, change(function(on) cur.draft.speak = on end)),
+        count = makeCheck(p, TEXT.count, L.INSET - 4 + L.CHECK_STEP, L.COL_Y - 98, change(function(on) cur.draft.count = on end)),
+        glow = makeCheck(p, TEXT.glow, L.INSET - 4, L.COL_Y - 124, change(function(on) cur.draft.glow = on end)),
     }
 
     -- Right column: Look and sound
-    heading(p, TEXT.look, COL2_X, COL_Y)
-    label(p, TEXT.text, COL2_X, COL_Y - 26)
-    panel.textEdit = makeEdit(p, COL2_X + LABEL_W + 4, COL_Y - 22, COL_W - LABEL_W - 8, function(text)
+    heading(p, TEXT.look, L.COL2_X, L.COL_Y)
+    label(p, TEXT.text, L.COL2_X, L.COL_Y - 26)
+    panel.textEdit = makeEdit(p, L.COL2_X + L.LABEL_W + 4, L.COL_Y - 22, L.COL_W - L.LABEL_W - 8, function(text)
         if cur.draft and text ~= cur.draft.text then
             cur.draft.text = text
             typing()
         end
     end)
     panel.iconType = row(UI.Dropdown(p, TEXT.icon, {
-        labelWidth = LABEL_W, width = ICON_DROP_W,
+        labelWidth = L.LABEL_W, width = L.ICON_DROP_W,
         options = { { key = "spell", label = TEXT.iconSpell }, { key = "id", label = TEXT.iconID } },
         get = function() return cur.draft and cur.draft.iconType or "spell" end,
         set = change(function(v)
@@ -1099,8 +1100,8 @@ local function buildPanel(f)
             filling = false
         end),
     }))
-    panel.iconType:SetPoint("TOPLEFT", COL2_X, COL_Y - 46)
-    panel.idEdit = makeEdit(p, ID_X, COL_Y - 52, ID_W, function(text)
+    panel.iconType:SetPoint("TOPLEFT", L.COL2_X, L.COL_Y - 46)
+    panel.idEdit = makeEdit(p, L.ID_X, L.COL_Y - 52, L.ID_W, function(text)
         if not cur.draft or panel.lookupCtl:Text(text) then
             return -- letters look a name up and change nothing
         end
@@ -1147,10 +1148,10 @@ local function buildPanel(f)
         end,
     })
     panel.lookup = panel.lookupCtl.list
-    label(p, TEXT.color, COL2_X, COL_Y - 86)
+    label(p, TEXT.color, L.COL2_X, L.COL_Y - 86)
     panel.colorSwatch = CreateFrame("Button", nil, p)
     panel.colorSwatch:SetSize(20, 20)
-    panel.colorSwatch:SetPoint("TOPLEFT", COL2_X + LABEL_W + 4, COL_Y - 82)
+    panel.colorSwatch:SetPoint("TOPLEFT", L.COL2_X + L.LABEL_W + 4, L.COL_Y - 82)
     local edge = panel.colorSwatch:CreateTexture(nil, "BACKGROUND")
     edge:SetAllPoints()
     edge:SetColorTexture(0.5, 0.5, 0.5, 1)
@@ -1158,28 +1159,28 @@ local function buildPanel(f)
     panel.colorSwatch.tex:SetPoint("TOPLEFT", 1, -1)
     panel.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
     panel.colorSwatch:SetScript("OnClick", pickColor)
-    panel.colorDefault = makeButton(p, TEXT.colorDefault, DEFAULT_W)
-    panel.colorDefault:SetPoint("TOPLEFT", COL2_X + LABEL_W + 32, COL_Y - 81)
+    panel.colorDefault = makeButton(p, TEXT.colorDefault, L.DEFAULT_W)
+    panel.colorDefault:SetPoint("TOPLEFT", L.COL2_X + L.LABEL_W + 32, L.COL_Y - 81)
     panel.colorDefault:SetScript("OnClick", change(function()
         cur.draft.color = nil
     end))
     panel.sound = row(UI.Dropdown(p, TEXT.sound, {
-        labelWidth = LABEL_W, width = SOUND_W, maxHeight = MENU_MAX_H,
+        labelWidth = L.LABEL_W, width = L.SOUND_W, maxHeight = L.MENU_MAX_H,
         options = function() return Draft.SoundOptions(TEXT.soundNone) end,
         get = function() return cur.draft and cur.draft.sound or Draft.NO_SOUND end,
         set = change(function(v) cur.draft.sound = v ~= Draft.NO_SOUND and v or nil end),
     }))
-    panel.sound:SetPoint("TOPLEFT", COL2_X, COL_Y - 106)
+    panel.sound:SetPoint("TOPLEFT", L.COL2_X, L.COL_Y - 106)
 
     -- A save's problem, in red
     panel.message = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    panel.message:SetPoint("TOPLEFT", INSET, COL_Y - 150)
-    panel.message:SetWidth(PANEL_W - 2 * INSET)
+    panel.message:SetPoint("TOPLEFT", L.INSET, L.COL_Y - 150)
+    panel.message:SetWidth(L.PANEL_W - 2 * L.INSET)
     panel.message:SetJustifyH("LEFT")
 
     -- Bottom right: Test, Save as template
-    panel.templateBtn = makeButton(p, TEXT.template, TEMPLATE_W)
-    panel.templateBtn:SetPoint("BOTTOMRIGHT", -INSET, BOTTOM_Y)
+    panel.templateBtn = makeButton(p, TEXT.template, L.TEMPLATE_W)
+    panel.templateBtn:SetPoint("BOTTOMRIGHT", -L.INSET, L.BOTTOM_Y)
     panel.templateBtn:SetScript("OnClick", function()
         if not cur.draft then
             return
@@ -1193,8 +1194,8 @@ local function buildPanel(f)
             drawPanel()
         end
     end)
-    panel.testBtn = makeButton(p, TEXT.test, TEST_W)
-    panel.testBtn:SetPoint("BOTTOMRIGHT", -INSET - TEMPLATE_W - BUTTON_GAP, BOTTOM_Y)
+    panel.testBtn = makeButton(p, TEXT.test, L.TEST_W)
+    panel.testBtn:SetPoint("BOTTOMRIGHT", -L.INSET - L.TEMPLATE_W - L.BUTTON_GAP, L.BOTTOM_Y)
     panel.testBtn:SetScript("OnClick", function()
         if not cur.draft then
             return
@@ -1211,21 +1212,21 @@ end
 local function build(f)
     tab = f
     local tabH = CRT.NotesPage.TAB_H
-    LIST_H = tabH + LIST_TOP - PAD - OWN_H - OWN_GAP
-    MAX_ROWS = math.floor((LIST_H - 4) / ROW_H)
-    PANEL_H = tabH + LIST_TOP - PAD
+    L.LIST_H = tabH + L.LIST_TOP - L.PAD - L.OWN_H - L.OWN_GAP
+    L.MAX_ROWS = math.floor((L.LIST_H - 4) / L.ROW_H)
+    L.PANEL_H = tabH + L.LIST_TOP - L.PAD
     selected, viewDiff, offset = nil, nil, 0
     cur, notice, picked, pendingOwn = {}, nil, {}, {}
     allChanged()
 
     local title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    title:SetPoint("TOPLEFT", PAD, -14)
+    title:SetPoint("TOPLEFT", L.PAD, -14)
     title:SetText(TEXT.title)
     UI.Help(f, TEXT.title, TEXT.help):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     bossDrop = UI.Dropdown(f, TEXT.boss, {
-        labelWidth = BOSS_LABEL,
-        width = BOSS_W,
+        labelWidth = L.BOSS_LABEL,
+        width = L.BOSS_W,
         options = function()
             local out = {}
             for _, b in ipairs(bosses()) do
@@ -1243,11 +1244,11 @@ local function build(f)
             refresh()
         end,
     })
-    bossDrop:SetPoint("TOPLEFT", BOSS_X, TOP_Y)
+    bossDrop:SetPoint("TOPLEFT", L.BOSS_X, L.TOP_Y)
 
     diffDrop = UI.Dropdown(f, TEXT.difficulty, {
-        labelWidth = DIFF_LABEL,
-        width = DIFF_W,
+        labelWidth = L.DIFF_LABEL,
+        width = L.DIFF_W,
         options = function()
             local out = { { key = ANY, label = TEXT.any } }
             local seen = {}
@@ -1268,11 +1269,11 @@ local function build(f)
             refresh()
         end,
     })
-    diffDrop:SetPoint("TOPLEFT", DIFF_X, TOP_Y)
+    diffDrop:SetPoint("TOPLEFT", L.DIFF_X, L.TOP_Y)
 
     fromDrop = UI.Dropdown(f, TEXT.timesFrom, {
-        labelWidth = FROM_LABEL,
-        width = FROM_W,
+        labelWidth = L.FROM_LABEL,
+        width = L.FROM_W,
         options = function()
             local out = {}
             for _, entry in ipairs(bossRefs()) do
@@ -1294,22 +1295,22 @@ local function build(f)
             refresh()
         end,
     })
-    fromDrop:SetPoint("TOPLEFT", FROM_X, TOP_Y)
+    fromDrop:SetPoint("TOPLEFT", L.FROM_X, L.TOP_Y)
     UI.Help(f, TEXT.timesFromHelpTitle, TEXT.timesFromHelp):SetPoint("LEFT", fromDrop, "RIGHT", 6, 0)
 
     -- Left: the list, scrolled with the mouse wheel
     list = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    list:SetSize(LIST_W, LIST_H)
-    list:SetPoint("TOPLEFT", PAD, LIST_TOP)
+    list:SetSize(L.LIST_W, L.LIST_H)
+    list:SetPoint("TOPLEFT", L.PAD, L.LIST_TOP)
     backdrop(list, 0.8)
     f.list = list
     rows = {}
-    for i = 1, MAX_ROWS do
+    for i = 1, L.MAX_ROWS do
         rows[i] = makeRow(list, i)
     end
     f.rows = rows
     thumb = list:CreateTexture(nil, "OVERLAY")
-    thumb:SetWidth(THUMB_W)
+    thumb:SetWidth(L.THUMB_W)
     local caramel = CRT.MOCHA.caramel
     thumb:SetColorTexture(caramel[1], caramel[2], caramel[3], 0.7)
     thumb:Hide()
@@ -1319,8 +1320,8 @@ local function build(f)
     end)
     f.scroll = scrollBy
 
-    ownButton = makeButton(f, TEXT.ownReminder, LIST_W, OWN_H)
-    ownButton:SetPoint("TOPLEFT", PAD, LIST_TOP - LIST_H - OWN_GAP)
+    ownButton = makeButton(f, TEXT.ownReminder, L.LIST_W, L.OWN_H)
+    ownButton:SetPoint("TOPLEFT", L.PAD, L.LIST_TOP - L.LIST_H - L.OWN_GAP)
     ownButton:SetScript("OnClick", function()
         saveTyped()
         local enc = pickBoss(bosses())
@@ -1341,11 +1342,11 @@ local function build(f)
     -- at the bottom left of the panel.
     local p = panel.frame
     markerCheck = CreateFrame("CheckButton", nil, p, "UICheckButtonTemplate")
-    markerCheck:SetSize(CHECK_SIZE, CHECK_SIZE)
-    markerCheck:SetPoint("BOTTOMLEFT", INSET - 4, BOTTOM_Y - 1)
+    markerCheck:SetSize(L.CHECK_SIZE, L.CHECK_SIZE)
+    markerCheck:SetPoint("BOTTOMLEFT", L.INSET - 4, L.BOTTOM_Y - 1)
     local markerText = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     markerText:SetPoint("LEFT", markerCheck, "RIGHT", 2, 0)
-    markerText:SetWidth(PANEL_W - INSET - CHECK_SIZE - 2 - HELP_ROOM - BUTTONS_W - INSET)
+    markerText:SetWidth(L.PANEL_W - L.INSET - L.CHECK_SIZE - 2 - L.HELP_ROOM - L.BUTTONS_W - L.INSET)
     markerText:SetJustifyH("LEFT")
     markerText:SetWordWrap(false)
     local markerHelp = UI.Help(p, TEXT.markerTitle, TEXT.markerHelp)
