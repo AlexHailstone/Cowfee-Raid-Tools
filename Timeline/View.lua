@@ -47,6 +47,7 @@ local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local NOTES_ICON = "Interface\\Icons\\INV_Misc_Note_01"
+local PERSONAL_ICON = "Interface\\Icons\\INV_Misc_Note_02"
 local FLAG_W, FLAG_HEAD = 12, 14 -- a marker's flag, drawn on a pole as tall as the row less 6 px
 local FLAG_BTN_W = 20 -- the clickable marker: a square at the row top, the flag centred in it
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
@@ -62,6 +63,11 @@ local RENAME_POPUP = "COWFEE_RAID_TOOLS_SAVED_ALERT_RENAME"
 
 local TEXT = {
     notes = "Notes",
+    personal = "Personal notes",
+    personalHelp = "Your personal reminders (Save as: Only me). These are only yours: they stay on your PC and are "
+        .. "never shared with the raid.\n\nDouble-click this row, or drop a saved alert on it, to make one. Drag one "
+        .. "to change its time; Alt+drag adds a time.",
+    view = "View",
     everyone = "Everyone",
     noOne = "No one (timers window only)",
     onlyMe = "Only me",
@@ -735,11 +741,25 @@ end
 
 -- The boss's saved alerts that have a time on what is shown: every timed line of its raid notes (each
 -- difficulty's note) and every time of your reminders. On a recorded pull only phase 1 can be placed.
--- Each gets the lane it goes on; those with no row of their own go on a Notes lane, added at the
--- bottom of lanes. Returns { { t, ph, time, row, text, tags, kind, encounterID, ... } }: a reminder's
--- mark (kind "mine") also holds id and index (which of its times), a note line's (kind "note")
--- noteID, line, difficulty and expected (the raw line as drawn).
+-- Each gets the lane it goes on: a note line its spell's row, else a Notes lane added at the bottom of
+-- lanes; your reminders only the Personal notes lane, added last whenever a boss is shown (with or
+-- without reminders). Returns { { t, ph, time, row, text, tags, kind, encounterID, ... } }: a
+-- reminder's mark (kind "mine") also holds id and index (which of its times), a note line's (kind
+-- "note") noteID, line, difficulty and expected (the raw line as drawn).
 function Methods:Marks(lanes, length)
+    local out = self:NoteAndReminderMarks(lanes, length)
+    if self.pull then
+        lanes[#lanes + 1] = { key = "personal", label = TEXT.personal, icon = PERSONAL_ICON, kind = "personal", marks = {} }
+        for _, m in ipairs(out) do
+            if m.kind == "mine" then
+                m.row = #lanes
+            end
+        end
+    end
+    return out
+end
+
+function Methods:NoteAndReminderMarks(lanes, length)
     local out = {}
     local Reminders = CRT.AlertReminders
     local encounterID = self.pull and Reminders and self:EncounterNumber()
@@ -755,7 +775,8 @@ function Methods:Marks(lanes, length)
         end
         m.text = (type(text) == "string" and text ~= "" and text) or Reminders.SpellName(spellID)
             or (type(spellID) == "number" and string.format(TEXT.spell, spellID)) or TEXT.reminder
-        m.row = rowFor(lanes, spellID, text)
+        -- a reminder's row is the Personal notes lane, set once it is added
+        m.row = m.kind == "note" and rowFor(lanes, spellID, text) or nil
         out[#out + 1] = m
     end
     local Notes = CRT.Notes
@@ -781,7 +802,7 @@ function Methods:Marks(lanes, length)
     end
     local notesRow
     for _, m in ipairs(out) do
-        if not m.row then
+        if m.kind == "note" and not m.row then
             if not notesRow then
                 lanes[#lanes + 1] = { key = "notes", label = TEXT.notes, icon = NOTES_ICON, kind = "notes", marks = {} }
                 notesRow = #lanes
@@ -867,6 +888,22 @@ end
 
 -- Moving a flag ------------------------------------------------------------------------------------
 
+-- Whether you may change the raid note right now (CRT.Notes:CanEditRaid: the raid leader or an
+-- assistant), and the reason when not. Asked at each action, never kept, so a promotion counts at once.
+local function canEditRaid()
+    local Notes = CRT.Notes
+    if not (Notes and Notes.CanEditRaid) then
+        return false
+    end
+    return Notes:CanEditRaid()
+end
+
+-- Whether a marker can be moved, Alt+dragged or deleted by you: your reminders always, a raid note
+-- line only when you may change the raid note.
+local function canChange(m)
+    return m ~= nil and (m.kind ~= "note" or (canEditRaid()))
+end
+
 -- m:ss, with tenths when there are some.
 local function clock(t)
     t = tenth(t)
@@ -906,9 +943,10 @@ function Methods:Ghost()
     return g
 end
 
--- A left button pressed on a flag: remember where, so the release can tell a click from a drag.
+-- A left button pressed on a flag: remember where, so the release can tell a click from a drag. A raid
+-- note line you may not change starts nothing (no ghost, no write); its double-click still opens it.
 function Methods:StartMove(f)
-    if f.mark then
+    if f.mark and canChange(f.mark) then
         -- a copy of the mark: a redraw during the drag can hand this flag to another alert
         local m = {}
         for k, v in pairs(f.mark) do
@@ -1054,6 +1092,12 @@ function Methods:FinishMove()
             ok = Reminders:SetTime(m.encounterID, m.id, m.index, ph, seconds)
         end
     elseif m.kind == "note" then
+        -- asked again at the release: you may have lost the right since the grab
+        local allowed, why = canEditRaid()
+        if not allowed then
+            CRT:Print(why or TEXT.moveRefused)
+            return
+        end
         ok = writeNote(m, ph, seconds, add)
     end
     if not ok then
@@ -1107,9 +1151,17 @@ function Methods:IconSpellAt(x, y)
     return nil
 end
 
+-- The lane at y down from the track's top (as cursorOnTrack gives it), else nil (the empty space below).
+function Methods:LaneAtY(y)
+    local row = y and y >= 0 and math.floor(y / ROW_H) + 1 or nil
+    return row and self.lanes[row] or nil
+end
+
 -- Opens the editor on a new alert from saved alert id at t seconds from the pull (phase + seconds as
--- OpenAt gives them), with spellID (a cast icon's) in place of its own when given.
-function Methods:PlaceSaved(id, t, spellID)
+-- OpenAt gives them), with spellID (a cast icon's) in place of its own when given. Placed on the
+-- Personal notes lane (lane), or as a Raid note by someone who may not change the raid note (asked
+-- now), it is saved as your own.
+function Methods:PlaceSaved(id, t, spellID, lane)
     local Saved = CRT.AlertSaved
     local encounterID = self:EncounterNumber()
     if not encounterID then
@@ -1122,6 +1174,9 @@ function Methods:PlaceSaved(id, t, spellID)
     local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
     local prefill = Saved:Prefill(id, encounterID, ph, tenth(seconds), spellID, self.bossName)
     if prefill then
+        if (lane and lane.kind == "personal") or (prefill.saveAs == "note" and not canEditRaid()) then
+            prefill.saveAs = "mine"
+        end
         CRT.AlertEditor:Open(encounterID, nil, prefill)
     end
 end
@@ -1215,6 +1270,11 @@ end
 local function deleteMark(self, m)
     local ok
     if m.noteID then
+        local allowed, why = canEditRaid()
+        if not allowed then
+            CRT:Print(why or TEXT.deleteRefused)
+            return
+        end
         ok = CRT.Notes:RemoveLine(m.noteID, m.line, m.expected)
     else
         local Reminders = CRT.AlertReminders
@@ -1627,7 +1687,7 @@ function Methods:FinishChipMove()
         return
     end
     local x, y = cursorOnTrack(self)
-    self:PlaceSaved(cm.id, self:TimeAtX(x), self:IconSpellAt(x, y))
+    self:PlaceSaved(cm.id, self:TimeAtX(x), self:IconSpellAt(x, y), self:LaneAtY(y))
 end
 
 -- A chip's menu: Edit, Rename, Delete.
@@ -1687,18 +1747,22 @@ function Methods:RightUp(button, flag)
 end
 
 -- A marker's menu: its text and time as the title, Edit (the double-click) and Delete. Alt+drag is the
--- way to add a time, so there is no Copy.
+-- way to add a time, so there is no Copy. A raid note line you may not change has View in place of
+-- Edit (the editor opens it read-only) and no Delete.
 function Methods:FlagMenu(m, owner)
     local title = tostring(m.text or "")
     title = title .. " \194\183 " .. CRT.AlertReminders.FormatTimes({ { ph = m.ph, t = m.time } })
+    local changeable = canChange(m)
     contextMenu(owner, function(root)
         root:CreateTitle(title)
-        root:CreateButton(TEXT.edit, function()
+        root:CreateButton(changeable and TEXT.edit or TEXT.view, function()
             self:EditMark(m)
         end)
-        root:CreateButton(TEXT.delete, function()
-            askDeleteMark(self, m)
-        end)
+        if changeable then
+            root:CreateButton(TEXT.delete, function()
+                askDeleteMark(self, m)
+            end)
+        end
     end)
 end
 
@@ -1707,8 +1771,7 @@ end
 -- cast icon there).
 function Methods:TrackMenu(x, y)
     local t = self:TimeAtX(x)
-    local row = y >= 0 and math.floor(y / ROW_H) + 1 or nil
-    local lane = row and self.lanes[row]
+    local lane = self:LaneAtY(y)
     local title = clock(t)
     if lane and readable(lane.label) and type(lane.label) == "string" and lane.label ~= "" then
         title = title .. " \194\183 " .. lane.label
@@ -1726,7 +1789,7 @@ function Methods:TrackMenu(x, y)
         end
         for _, e in ipairs(list) do
             place:CreateButton(e.s.name or TEXT.unnamed, function()
-                self:PlaceSaved(e.id, t, spellID)
+                self:PlaceSaved(e.id, t, spellID, lane)
             end)
         end
     end)
@@ -1783,6 +1846,37 @@ function Methods:Label(n)
         l:SetScript("OnLeave", hideTip)
         return l
     end)
+end
+
+-- The (?) on the Personal notes lane's label, just after its name: these are only yours and stay on
+-- your PC. Hidden when no boss is shown.
+function Methods:DrawPersonalHelp(lanes)
+    local row
+    for i, lane in ipairs(lanes) do
+        if lane.kind == "personal" then
+            row = i
+        end
+    end
+    local h = self.personalHelp
+    if not h then
+        if not (row and CRT.UI and CRT.UI.Help) then
+            return
+        end
+        h = CRT.UI.Help(self.body, TEXT.personal, TEXT.personalHelp)
+        self.personalHelp = h
+    end
+    local l = row and self.labels[row]
+    if not l then
+        h:Hide()
+        return
+    end
+    local w = l.text:GetStringWidth()
+    w = type(w) == "number" and w or 0
+    h:ClearAllPoints()
+    -- the name starts 26 px in (after the icon); the (?) stays inside the label
+    h:SetPoint("LEFT", l, "LEFT", math.min(26 + w, LABEL_W - 4 - 24), 0)
+    h:SetFrameLevel((l:GetFrameLevel() or 0) + 2)
+    h:Show()
 end
 
 -- Draws the axis labels and grid lines across the whole track.
@@ -2037,6 +2131,7 @@ function Methods:Refresh()
     for i = #lanes + 1, #self.labels do
         self.labels[i].stripe:Hide()
     end
+    self:DrawPersonalHelp(lanes)
     hideFrom(self.icons, used + 1)
     hideFrom(self.bars, bars + 1)
     hideFrom(self.leads, leads + 1)
