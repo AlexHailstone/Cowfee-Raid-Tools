@@ -14,6 +14,7 @@ local SLOT_H = 22 -- the slot height in UI.SlotGrid, for the drag ghost
 local GRID_TOP = -52
 local PICK_ROWS = 10
 local ROW_H = 22
+local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local GREEN = { 0.3, 1, 0.3 }
@@ -560,34 +561,37 @@ local function refreshPresets()
     for i, preset in ipairs(presets) do
         local b = presetButtons[i]
         if not b then
-            b = CreateFrame("Button", nil, listChild)
-            b:SetHeight(ROW_H)
-            b:SetPoint("TOPLEFT", listChild, "TOPLEFT", 0, -(i - 1) * ROW_H)
-            b:SetPoint("TOPRIGHT", listChild, "TOPRIGHT", 0, -(i - 1) * ROW_H)
-            b.sel = b:CreateTexture(nil, "BACKGROUND")
-            b.sel:SetAllPoints()
-            b.sel:SetColorTexture(1, 0.82, 0, 0.2)
+            b = CreateFrame("Button", nil, listChild, "BackdropTemplate")
+            b:SetHeight(LIST_ROW_H - 2)
+            b:SetPoint("TOPLEFT", listChild, "TOPLEFT", 0, -(i - 1) * LIST_ROW_H)
+            b:SetPoint("TOPRIGHT", listChild, "TOPRIGHT", 0, -(i - 1) * LIST_ROW_H)
+            skin(b, 0.45)
             b.hl = b:CreateTexture(nil, "HIGHLIGHT")
             b.hl:SetAllPoints()
             b.hl:SetColorTexture(1, 1, 1, 0.08)
-            b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+            b.active = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+            b.active:SetPoint("RIGHT", -6, 0)
+            b.active:SetText("|cff40ff40active|r")
+            b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
             b.text:SetPoint("LEFT", 6, 0)
-            b.text:SetPoint("RIGHT", -4, 0)
+            b.text:SetPoint("RIGHT", -52, 0)
             b.text:SetJustifyH("LEFT")
+            b.text:SetWordWrap(false)
             b:SetScript("OnClick", function(self)
                 Groups:Select(self.presetId)
             end)
             presetButtons[i] = b
         end
         b.presetId = preset.id
-        b.text:SetText(preset.id == Groups:Active() and (preset.name .. "  |cff40ff40active|r") or preset.name)
-        b.sel:SetShown(preset.id == g.selected)
+        b.text:SetText(preset.name)
+        b.active:SetShown(preset.id == Groups:Active())
+        setBorder(b, preset.id == g.selected and GOLD or GRAY)
         b:Show()
     end
     for i = #presets + 1, #presetButtons do
         presetButtons[i]:Hide()
     end
-    listChild:SetHeight(math.max(1, #presets * ROW_H))
+    listChild:SetHeight(math.max(1, #presets * LIST_ROW_H))
     emptyText:SetShown(#presets == 0)
 end
 
@@ -777,7 +781,7 @@ local function buildPage(pf)
         slotButtons[index] = b
     end
 
-    UI.Help(pf, "Editing the groups", "Click a slot to choose a name, drag to move or swap, right-click to clear."):SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 4, 84)
+    local editHelp = UI.Help(pf, "Editing the groups", "Click a slot to choose a name, drag to move or swap, right-click to clear.")
 
     -- Bottom left buttons
     local setRoster = makeButton(pf, "Set current roster", SLOT_W)
@@ -832,7 +836,24 @@ local function buildPage(pf)
         Groups:ReplaceWorking({})
     end)
 
-    local apply = makeButton(pf, "Apply groups", 2 * SLOT_W + COL_GAP, 32)
+    editHelp:SetPoint("LEFT", clear, "RIGHT", 6, 0)
+
+    -- Use This Group: the open layout becomes the raid's active roster (tagged active in Quick Load),
+    -- which the Late Tracker expects.
+    local useGroup = makeButton(pf, "Use This Group", 2 * SLOT_W + COL_GAP, 32)
+    useGroup:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 84)
+    useGroup:SetScript("OnClick", function()
+        local preset = gdb().selected and Groups:Find(gdb().selected)
+        if preset then
+            Groups:SetActive(preset.id)
+            CRT:Print(preset.name .. " is now the active group. The Late Tracker expects it.")
+        else
+            CRT:Print("Pick a saved layout in Quick Load first.")
+        end
+    end)
+    UI.Help(pf, "Use This Group", "Makes the layout you have open the raid's active roster, marked active in Quick Load. The Late Tracker expects the people in it, in their groups. During a raid night, using another layout, or changing this one, updates tonight's list straight away; everyone's clock keeps running."):SetPoint("LEFT", useGroup, "RIGHT", 6, 0)
+
+    local apply = makeButton(pf, "Arrange Groups", 2 * SLOT_W + COL_GAP, 32)
     apply:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 8)
     apply:SetScript("OnClick", function()
         CRT.Apply:Start(Groups:Working())
@@ -842,18 +863,6 @@ local function buildPage(pf)
     local quick = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     quick:SetPoint("TOPLEFT", pf, "TOPRIGHT", -8 - RIGHT_W, -12)
     quick:SetText("Quick Load:")
-    -- The active layout: the roster the raid runs with, which the Late Tracker expects.
-    local makeActive = makeButton(pf, "Make active", 110, 22)
-    makeActive:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -8)
-    makeActive:SetScript("OnClick", function()
-        local id = gdb().selected
-        if id then
-            Groups:SetActive(id)
-        else
-            CRT:Print("Pick a saved layout in Quick Load first.")
-        end
-    end)
-    UI.Help(pf, "Make active", "Marks the layout you have open as the raid's active roster. The Late Tracker expects the people in it, in their groups. During a raid night, making another layout active, or changing this one, updates tonight's list straight away; everyone's clock keeps running."):SetPoint("RIGHT", makeActive, "LEFT", -4, 0)
 
     local listBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
     listBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -32)

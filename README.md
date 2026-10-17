@@ -82,13 +82,14 @@ Build a layout of 8 groups with 5 slots each, save it under a name, edit it when
 | Edit the name at the top | The layout is renamed when you press Enter or click away |
 | Press **Set current roster** | The grid fills from your live group, in its current subgroups, after asking if the grid has names |
 | Press **Clear grid** | The grid empties |
-| Press **Apply groups** | The raid is moved into the layout, one move at a time. Leader or assistant only, out of combat |
+| Press **Use This Group** | The open layout becomes the raid's active roster, marked active in Quick Load. The Late Tracker expects the people in it, in their groups, and follows it if it changes during a raid night |
+| Press **Arrange Groups** | The raid is moved into the layout, one move at a time. Leader or assistant only, out of combat |
 
 **Bright and dim names.** A name in your current group shows in its class color with a role icon. A name that is not shows dark grey with a muted red border.
 
 **Import and export.** Export gives a `CRT1;` string to share with anyone using the addon. Import also takes plain names, one per line, such as a column copied from a spreadsheet: rows 1 to 5 fill Group 1, rows 6 to 10 Group 2, and a blank row leaves a slot empty.
 
-**How Apply works.** It moves one player at a time and waits for the game to confirm each move. Players not in the layout keep their group if there is room. Players in combat are skipped and listed, and so are names in the layout who are not in the raid. It stops if combat starts.
+**How Arrange Groups works.** It moves one player at a time and waits for the game to confirm each move. Players not in the layout keep their group if there is room. Players in combat are skipped and listed, and so are names in the layout who are not in the raid. It stops if combat starts.
 
 ## Ready Check
 
