@@ -11,7 +11,7 @@ local UI = CRT.UI
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
 local TEXT = {
-    title = "Reminders",
+    title = "Mech Alerts",
     help = "Tick an ability to get a reminder for it, with the times of the boss's reference timeline. Untick it to turn the reminder off; it is kept, and ticking it again brings it back. Edit changes the text, the times, how it is shown and the difficulty. Your own reminder is one that is not tied to an ability.\n\nDouble-click an ability's row on the Timeline page to make a reminder from it.\n\nThe abilities are read from the Encounter Journal, out of combat only.",
     boss = "Boss",
     difficulty = "Difficulty",

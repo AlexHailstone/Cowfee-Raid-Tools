@@ -30,7 +30,7 @@ local SOUND_ORDER = { "RAID_WARNING", "READY_CHECK", "ALARM_CLOCK_WARNING_3", "U
     "MAP_PING", "IG_QUEST_LIST_OPEN", "IG_MAINMENU_OPTION_CHECKBOX_ON" }
 
 local NOTICE = {
-    speech = "Raid Notes: your note lines are now read out even with the next-spell alert off. Untick 'Read them out' on Raid Notes > Alerts to stop it.",
+    speech = "Raid Notes: your note lines are now read out even with the next-spell alert off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
 }
 
 local Speech = {

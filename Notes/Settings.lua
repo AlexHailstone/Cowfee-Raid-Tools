@@ -30,7 +30,7 @@ local TEXT = {
     -- Alerts.
     alerts = "Alerts",
     alertsHelp = "When your next spell or callout shows and how it is read out.\n\n"
-        .. "Turn the Next spell alert and the speech on or off on the Alerts tab, under Your note lines go to. While one is off, its rows here are greyed out.",
+        .. "Turn the Next spell alert and the speech on or off on the Alert Settings tab, under Your note lines go to. While one is off, its rows here are greyed out.",
     alertSeconds = "Show it early by",
     ttsSeconds = "Count down seconds",
     ttsVolume = "Speech volume",
