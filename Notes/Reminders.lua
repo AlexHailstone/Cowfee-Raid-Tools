@@ -1,10 +1,13 @@
 local ADDON, CRT = ...
 
--- The Reminders tab of the Raid Notes page (Notes/Page.lua builds it into its tab): pick a boss and
--- see its Encounter Journal abilities, each with a tick that makes it a reminder, the times the
--- reminder gets and an Edit button, then your own reminders that are not tied to an ability. The
--- reminders themselves, their times and the editor are in Alerts/Reminders.lua and Alerts/Editor.lua,
--- which this tab only reads when it is built, after login.
+-- The Mech Alerts tab of the Raid Notes page (Notes/Page.lua builds it into its tab): pick a boss, and
+-- on the left see its Encounter Journal abilities, then your own reminders that are not tied to an
+-- ability, each with a tick that turns its reminder on or off. On the right, one panel shows the selected
+-- row's alert, and every change there saves it at once (the first change on an ability makes its
+-- reminder). The draft and its save are Alerts/Draft.lua's, the name lookup of the Icon box is
+-- Alerts/SpellLookup.lua's, and Test and Save as template go through Alerts/Editor.lua, all shared with
+-- the pop-out editor. The reminders and their times are in Alerts/Reminders.lua. This tab only reads
+-- them when it is built, after login.
 
 local UI = CRT.UI
 
@@ -12,26 +15,112 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 local TEXT = {
     title = "Mech Alerts",
-    help = "Tick an ability to get a reminder for it, with the times of the boss's reference timeline. Untick it to turn the reminder off; it is kept, and ticking it again brings it back. Edit changes the text, the times, how it is shown and the difficulty. Your own reminder is one that is not tied to an ability.\n\nDouble-click an ability's row on the Timeline page to make a reminder from it.\n\nThe abilities are read from the Encounter Journal, out of combat only.",
+    help = "On the left are the boss's abilities from the Encounter Journal, then your own reminders that are not tied to an ability. Tick one to get a reminder for it, with the times of the boss's reference timeline; untick it to turn the reminder off. It is kept, and ticking it again brings it back. A small dot means the reference has times for it.\n\nClick a row to see its alert on the right. Every change there is saved at once; the first change on an ability makes its reminder. Your own reminder adds one that is not tied to an ability.\n\nDouble-click an ability's row on the Timeline page to open it in the pop-out editor.\n\nThe abilities are read from the Encounter Journal, out of combat only.",
     boss = "Boss",
     difficulty = "Difficulty",
     any = "Any",
     timesFrom = "Times from",
     timesFromHelpTitle = "Times from",
-    timesFromHelp = "Which of the boss's reference timelines the times below are read from. A reminder with a difficulty of its own, or times you typed, keeps those.",
+    timesFromHelp = "Which of the boss's reference timelines the times are read from. A reminder with a difficulty of its own, or times you typed, keeps those.",
     none = "None on reference",
     ownReminder = "Your own reminder",
-    edit = "Edit",
     unnamed = "Reminder",
+
+    alertMe = "Alert me",
+    saveAs = "Save as",
+    asNote = "Raid note",
+    asMine = "Only me",
+    raidNoteHelp = "Raid note lines have one time each: make them on the Timeline.",
+    triggers = "Triggers",
+    triggersHelp = "Show from: how many seconds before each time the alert shows. Linger: how long it stays after 0.\n\nThe times come from the boss's reference timeline (Times from, above), and are already counted from the start of their phase.",
+    showFrom = "Show from",
+    linger = "Linger",
+    seconds = "%d s",
+    noTimes = "No times on the reference for this mechanic.",
+    showOnTimeline = "Show on the Timeline",
+    notOnTimeline = "That mechanic isn't on the Timeline for this boss yet.",
+    showAs = "Show as",
+    showAsHelp = "Where the alert shows: the Next spell alert, the alert areas (Text, Icon, Bar, Circle), and whether it is read out. Alert Settings sets how each area looks.",
+    nextSpell = "Next spell alert",
+    showText = "Text",
+    showIcon = "Icon",
+    bar = "Bar",
+    circle = "Circle",
+    also = "Also",
+    speak = "Speak the text",
+    count = "Count down 3 2 1",
+    glow = "Glow at 0",
+    look = "Look and sound",
+    text = "Text",
+    icon = "Icon",
+    iconSpell = "Spell",
+    iconID = "Icon ID",
+    iconHelp = "Spell: type the spell's ID. The alert shows its icon and, with no text, its name.\n\nIcon ID: type an icon's file ID to show that icon instead.\n\nOr type a spell name (3 letters or more) to search this boss's abilities and your own spells (a close spelling works too), then click one or press Enter for the top match.",
+    color = "Color",
+    colorDefault = "Default",
+    sound = "Sound",
+    soundNone = "None",
+    test = "Test",
+    template = "Save as template",
+    noTest = "Nothing to test: this alert has no times.",
+
+    markerTitle = "Marker display",
+    markerShow = "Show the marker display: %s",
+    markerHelp = "This boss has a marker display: a small window that shows the raid markers raiders send with their macros, such as /raid {rt3}, in the order they are sent, with who sent each one. Untick it to turn it off for you on this boss.\n\nAny message in group chat fills a slot, because the game hides chat text from addons inside raids. Move the window with Previews.",
 }
 
+-- Layout, from the page's size (UI.PAGE_W x UI.PAGE_H). The tab sits under the Raid Notes tabs.
+local PAD = 8
+local TAB_H = UI.PAGE_H - 66
+local TOP_Y = -6 -- the boss, difficulty and reference dropdowns, beside the title
+local BOSS_X, BOSS_LABEL, BOSS_W = 130, 34, 190
+local DIFF_X, DIFF_LABEL, DIFF_W = 371, 58, 110
+local FROM_X, FROM_LABEL = 556, 66
+local HELP_ROOM = 30 -- a (?) and its gap
+local DROP_GAP = 5 -- UI/Controls.lua: between a row's label and its control
+local FROM_W = UI.PAGE_W - FROM_X - FROM_LABEL - DROP_GAP - HELP_ROOM - PAD
+local LIST_TOP = -44
+local LIST_W = 250
 local ROW_H = 24
-local MAX_ROWS = 14
-local ROW_W = 650 -- the tab is 686 wide; the scroll slider takes the rest
+local OWN_H = 24
+local OWN_GAP = 6
+local LIST_H = TAB_H + LIST_TOP - PAD - OWN_H - OWN_GAP
+local MAX_ROWS = math.floor((LIST_H - 4) / ROW_H)
+local ROW_W = LIST_W - 4
+local NAME_X = 50
+local DOT_SIZE = 6
+local NAME_W = ROW_W - NAME_X - DOT_SIZE - 12
+local THUMB_W = 3
+local PANEL_GAP = 12
+local PANEL_X = PAD + LIST_W + PANEL_GAP
+local PANEL_W = UI.PAGE_W - PAD - PANEL_X
+local PANEL_H = TAB_H + LIST_TOP - PAD
+local INSET = 12
+local HEADER_ICON = 28
+local SAVE_LABEL, SAVE_W = 50, 104
+local SAVE_X = PANEL_W - INSET - HELP_ROOM - (SAVE_LABEL + DROP_GAP + SAVE_W)
+local ALERT_X = SAVE_X - 100
+local TITLE_W = ALERT_X - (INSET + HEADER_ICON + 8) - 10
+local SLIDER_VALUE = 44 -- UI/Controls.lua: a slider's value beside its bar
+local SHOW_LABEL, LINGER_LABEL, SLIDER_W = 70, 50, 150
+local COL_Y = -162
+local COL_GAP = 22
+local COL_W = math.floor((PANEL_W - 2 * INSET - COL_GAP) / 2)
+local COL2_X = INSET + COL_W + COL_GAP
+local CHECK_STEP = 130 -- between the checkboxes of a row
+local CHECK_LABEL_W = 96
+local LABEL_W = 50
+local ICON_DROP_W = 90
+local ID_X = COL2_X + LABEL_W + DROP_GAP + ICON_DROP_W + 8
+local ID_W = COL2_X + COL_W - ID_X - HELP_ROOM
+local SOUND_W = 160
+local BUTTON_H = 22
 local ANY = "any"
 
 local WHITE = { 1, 1, 1 }
 local GREY = { 0.5, 0.5, 0.5 }
+local TIMES_GREY = { 0.55, 0.5, 0.45 }
+local RED = "|cffff6060%s|r"
 
 local function lower(s)
     return tostring(s or ""):lower()
@@ -104,18 +193,31 @@ end
 -- The tab -----------------------------------------------------------------------------------------
 
 local selected, viewDiff
-local tab, rows, items, offset, slider, bossDrop, diffDrop, fromDrop, ownButton, markerCheck
+local tab, rows, items, offset, list, thumb, bossDrop, diffDrop, fromDrop, ownButton, markerCheck
+local panel = {}
 local listening = false
+-- Per boss, for the session: the key of the last selected row, and whether a new reminder of your own
+-- waits for its first change.
+local picked, pendingOwn = {}, {}
+-- The panel's alert: the row's key and item, the boss, and the draft with where it came from (ctx).
+local cur = {}
+local notice -- the last save's problem, shown in red until a change saves
+local saving = false -- a save of the panel's own is firing the change listeners
+local filling = false -- the panel is setting its own boxes
+local followID -- after a save, the row holding this reminder becomes the selected one
+local reveal = false -- scroll the selected row into view on the next refresh
+local lookupFrom -- the spell when the Icon box took the focus
 
-local function pickBoss(list)
-    if not selected or not bossName(list, selected) then
-        selected = list[1] and list[1].key or nil
+local function pickBoss(bosses)
+    if not selected or not bossName(bosses, selected) then
+        selected = bosses[1] and bosses[1].key or nil
         viewDiff = nil
     end
-    return selected, selected and bossName(list, selected)
+    return selected, selected and bossName(bosses, selected)
 end
 
--- The ability rows of the boss from the Journal, then the reminders that match none of them.
+-- The ability rows of the boss from the Journal, then the reminders that match none of them, then a
+-- new reminder of your own waiting for its first change.
 local function buildItems(enc)
     local Reminders = CRT.AlertReminders
     local out = {}
@@ -147,7 +249,20 @@ local function buildItems(enc)
             out[#out + 1] = { id = e.id, r = e.r, spellID = e.r.spellID }
         end
     end
+    if pendingOwn[enc] then
+        out[#out + 1] = { pending = true }
+    end
     return out
+end
+
+-- A row's key, kept per boss: an ability by its spell, a reminder of your own by its id.
+local function itemKey(item)
+    if item.pending then
+        return "new"
+    elseif item.ability then
+        return "a:" .. tostring(item.spellID or item.ability.name)
+    end
+    return "r:" .. tostring(item.id)
 end
 
 local function itemName(item)
@@ -160,87 +275,49 @@ local function itemName(item)
     return CRT.AlertReminders.SpellName(item.spellID) or TEXT.unnamed
 end
 
-local function itemIcon(item)
-    if item.ability and item.ability.icon then
-        return item.ability.icon
-    end
-    if type(item.spellID) == "number" and item.spellID > 0 and C_Spell and C_Spell.GetSpellTexture then
-        local ok, tex = pcall(C_Spell.GetSpellTexture, item.spellID)
+local function spellTexture(id)
+    if type(id) == "number" and id > 0 and C_Spell and C_Spell.GetSpellTexture then
+        local ok, tex = pcall(C_Spell.GetSpellTexture, id)
         if ok and tex ~= nil and (not (CRT.Timeline and CRT.Timeline.readable) or CRT.Timeline.readable(tex)) then
             return tex
         end
     end
 end
 
--- The times column: what the reminder gets, from the reference of the difficulty on show.
-local function timesText(enc, name, item)
+local function itemIcon(item)
+    if item.ability and item.ability.icon then
+        return item.ability.icon
+    end
+    return spellTexture(item.spellID)
+end
+
+-- What a reminder's times read as for the difficulty on show: the text and whether there are any.
+local function timesFor(enc, r)
     local Reminders = CRT.AlertReminders
+    if not r.difficulty then
+        r.difficulty = viewDiff
+    end
+    local found, source, err = Reminders:Times(enc, r)
+    if #found > 0 then
+        return Reminders.FormatTimes(found), true
+    end
+    if source == "typed" and err then
+        return err, false
+    end
+    return nil, false
+end
+
+-- The times a row's reminder gets, from the reference of the difficulty on show.
+local function timesText(enc, name, item)
     local r
     if item.r then
         r = copy(item.r)
     else
         r = { spellID = item.spellID, text = itemName(item), boss = name }
     end
-    if not r.difficulty then
-        r.difficulty = viewDiff
-    end
     r.boss = r.boss or name
-    local list, source, err = Reminders:Times(enc, r)
-    if #list > 0 then
-        return Reminders.FormatTimes(list), true
-    end
-    if source == "typed" and err then
-        return err, false
-    end
-    return TEXT.none, false
-end
-
-local function refresh()
-    if not tab then
-        return
-    end
-    local list = bossList()
-    local enc, name = pickBoss(list)
-    items = buildItems(enc)
-    local maxOffset = math.max(0, #items - MAX_ROWS)
-    offset = math.max(0, math.min(offset or 0, maxOffset))
-    for i, row in ipairs(rows) do
-        local item = items[offset + i]
-        if item then
-            local on = not item.r or item.r.enabled ~= false
-            row.item = item
-            row.icon:SetTexture(itemIcon(item))
-            row.icon:SetShown(itemIcon(item) ~= nil)
-            row.name:SetText(itemName(item))
-            local color = (item.r and on) and WHITE or GREY
-            row.name:SetTextColor(color[1], color[2], color[3])
-            row.check:SetChecked(item.r ~= nil and on)
-            local text, has = timesText(enc, name, item)
-            row.times:SetText(text)
-            local tc = has and WHITE or GREY
-            row.times:SetTextColor(tc[1], tc[2], tc[3])
-            row.frame:Show()
-        else
-            row.item = nil
-            row.frame:Hide()
-        end
-    end
-    if slider then
-        slider:SetMinMaxValues(0, maxOffset)
-        slider:SetValue(offset)
-        slider:SetShown(maxOffset > 0)
-    end
-    for _, d in ipairs({ bossDrop, diffDrop, fromDrop }) do
-        d.refresh()
-    end
-    if markerCheck then
-        markerCheck.refresh()
-    end
-end
-
-local function scrollBy(n)
-    offset = (offset or 0) + n
-    refresh()
+    local text, has = timesFor(enc, r)
+    return text or TEXT.none, has
 end
 
 -- The references of the boss on show, yours first.
@@ -249,8 +326,7 @@ local function bossRefs()
     if not (Ref and selected) then
         return {}
     end
-    local list = bossList()
-    return Ref:ForBoss(selected, bossName(list, selected))
+    return Ref:ForBoss(selected, bossName(bossList(), selected))
 end
 
 local function shownReference()
@@ -265,15 +341,290 @@ local function shownReference()
     return refs[1]
 end
 
-local function onTick(row)
-    local item = row.item
-    local list = bossList()
-    local enc, name = pickBoss(list)
+-- The panel ---------------------------------------------------------------------------------------
+
+local function draftName()
+    local d = cur.draft
+    if not d then
+        return ""
+    end
+    local text = CRT.AlertDraft.trim(d.text)
+    if text ~= "" then
+        return text
+    end
+    return (d.spellID and CRT.AlertReminders.SpellName(d.spellID)) or (cur.item and not cur.item.pending and itemName(cur.item)) or TEXT.unnamed
+end
+
+local function draftIcon()
+    local d = cur.draft
+    if not d then
+        return nil
+    end
+    if d.iconType == "id" and CRT.AlertDraft.validID(d.iconID) then
+        return d.iconID
+    end
+    if d.spellID then
+        return spellTexture(d.spellID)
+    end
+    return cur.item and not cur.item.pending and itemIcon(cur.item) or nil
+end
+
+local function setBox(edit, text)
+    text = text or ""
+    if edit:GetText() ~= text and not edit:HasFocus() then
+        filling = true
+        edit:SetText(text)
+        filling = false
+    end
+end
+
+local function idText(d)
+    local id = d.iconType == "id" and d.iconID or d.spellID
+    return id and tostring(id) or ""
+end
+
+-- Everything on the panel from the draft, except a box being typed in.
+local function drawPanel()
+    if not panel.frame then
+        return
+    end
+    local d = cur.draft
+    panel.content:SetShown(d ~= nil)
+    if not d then
+        panel.name:SetText("")
+        return
+    end
+    local icon = draftIcon()
+    panel.icon:SetTexture(icon)
+    panel.icon:SetShown(icon ~= nil)
+    panel.name:SetText(draftName())
+    panel.alertMe:SetChecked(cur.item and cur.item.r ~= nil and cur.item.r.enabled ~= false)
+    for _, row in ipairs(panel.rows) do
+        row.refresh()
+    end
+    for key, check in pairs(panel.checks) do
+        check:SetChecked(d.show[key] and true or false)
+    end
+    panel.also.speak:SetChecked(d.speak and true or false)
+    panel.also.count:SetChecked(d.count and true or false)
+    panel.also.glow:SetChecked(d.glow and true or false)
+    local c = d.color or WHITE
+    panel.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
+    local r = CRT.AlertDraft.BuildReminder(cur.ctx, d)
+    r.boss = r.boss or cur.bossName
+    local text = timesFor(cur.enc, r)
+    panel.times:SetText(text and text:gsub("; ", " · ") or TEXT.noTimes)
+    panel.message:SetText(notice and RED:format(notice) or "")
+end
+
+-- Loads the selected row into the panel. A row already on show keeps its draft, unless its reminder was
+-- made or changed elsewhere (a tick, the pop-out editor).
+local function loadPanel(item, enc, name)
+    if not item then
+        cur = {}
+        return
+    end
+    local key = itemKey(item)
+    local Draft = CRT.AlertDraft
+    local same = cur.key == key and cur.enc == enc
+    cur.item, cur.bossName = item, name
+    if same and not item.r then
+        return
+    end
+    if item.r then
+        cur.ctx = { encounterID = enc, id = item.id, reminder = Draft.copy(item.r) }
+        cur.draft = Draft.ForReminder(item.r)
+        cur.draft.boss = cur.draft.boss or name
+    elseif item.pending then
+        cur.ctx = { encounterID = enc }
+        cur.draft = Draft.New()
+        cur.draft.boss = name
+    else
+        cur.ctx = { encounterID = enc }
+        cur.draft = Draft.ForSpell(item.spellID, itemName(item), name)
+    end
+    if not same then
+        notice = nil
+        if panel.lookupCtl then
+            panel.lookupCtl:Hide()
+        end
+    end
+    cur.key, cur.enc = key, enc
+    setBox(panel.textEdit, cur.draft.text)
+    setBox(panel.idEdit, idText(cur.draft))
+end
+
+local function refresh(keepDraft)
+    if not tab then
+        return
+    end
+    local bosses = bossList()
+    local enc, name = pickBoss(bosses)
+    items = buildItems(enc)
+    -- the selected row: the one holding a reminder just saved, the boss's last one, else the first
+    local index
+    if enc then
+        if followID then
+            for i, item in ipairs(items) do
+                if item.id == followID then
+                    picked[enc] = itemKey(item)
+                end
+            end
+            followID = nil
+            reveal = true
+        end
+        for i, item in ipairs(items) do
+            if itemKey(item) == picked[enc] then
+                index = i
+            end
+        end
+        if not index and items[1] then
+            index = 1
+            picked[enc] = itemKey(items[1])
+        end
+    end
+    local maxOffset = math.max(0, #items - MAX_ROWS)
+    offset = offset or 0
+    if reveal and index then
+        if index <= offset then
+            offset = index - 1
+        elseif index > offset + MAX_ROWS then
+            offset = index - MAX_ROWS
+        end
+    end
+    reveal = false
+    offset = math.max(0, math.min(offset, maxOffset))
+    local selColor = { 1, 0.82, 0, 0.18 }
+    if UI:IsModern() then
+        local m = CRT.MOCHA.mocha
+        selColor = { m[1], m[2], m[3], 0.95 }
+    end
+    for i, row in ipairs(rows) do
+        local item = items[offset + i]
+        if item then
+            local on = item.r ~= nil and item.r.enabled ~= false
+            row.item = item
+            local icon = itemIcon(item)
+            row.icon:SetTexture(icon)
+            row.icon:SetShown(icon ~= nil)
+            if item.pending then
+                row.name:SetText(TEXT.unnamed)
+            else
+                row.name:SetText(itemName(item))
+            end
+            local color = on and WHITE or GREY
+            row.name:SetTextColor(color[1], color[2], color[3])
+            row.check:SetChecked(on)
+            local has = false
+            if not item.pending then
+                has = select(2, timesText(enc, name, item))
+            end
+            row.dot:SetShown(has)
+            row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
+            row.sel:SetShown(offset + i == index)
+            row.frame:Show()
+        else
+            row.item = nil
+            row.frame:Hide()
+        end
+    end
+    -- the scroll position, as a thin bar at the list's right edge
+    if maxOffset > 0 then
+        local h = math.max(12, math.floor(LIST_H * MAX_ROWS / #items))
+        thumb:SetHeight(h)
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -math.floor((LIST_H - h) * offset / maxOffset))
+        thumb:Show()
+    else
+        thumb:Hide()
+    end
+    for _, d in ipairs({ bossDrop, diffDrop, fromDrop }) do
+        d.refresh()
+    end
+    if markerCheck then
+        markerCheck.refresh()
+    end
+    if saving then
+        return -- the panel's own save: it redraws once the save is done
+    end
+    if not keepDraft then
+        loadPanel(index and items[index], enc, name)
+    else
+        cur.item = index and items[index] or cur.item
+    end
+    drawPanel()
+end
+
+local function scrollBy(n)
+    offset = (offset or 0) + n
+    refresh()
+end
+
+local function selectItem(item)
+    local enc = pickBoss(bossList())
+    if enc and item then
+        picked[enc] = itemKey(item)
+        refresh()
+    end
+end
+
+-- Saves the panel's draft as its row's reminder, or shows why it can't be. The first change on an
+-- ability or a new reminder of your own makes the reminder.
+local function commit()
+    local d, ctx = cur.draft, cur.ctx
+    if not d then
+        return false
+    end
+    local Draft = CRT.AlertDraft
+    local problem = Draft.Problem(ctx, d)
+    if problem then
+        notice = problem
+        drawPanel()
+        return false
+    end
+    saving = true
+    local ok, id, err = pcall(Draft.SaveMine, ctx, d)
+    saving = false
+    if not ok then
+        geterrorhandler()(id)
+        return false
+    end
+    if not id then
+        notice = err
+        drawPanel()
+        return false
+    end
+    notice = nil
+    ctx.id = id
+    ctx.reminder = Draft.copy(CRT.AlertReminders:Get(ctx.encounterID, id))
+    pendingOwn[ctx.encounterID] = nil
+    followID = id
+    refresh(true)
+    local enc = ctx.encounterID
+    cur.key = picked[enc]
+    return true
+end
+
+-- A field changed: `fn` edits the draft, then it is saved.
+local function change(fn)
+    return function(...)
+        if not cur.draft then
+            return
+        end
+        fn(...)
+        commit()
+    end
+end
+
+-- The tick on a row (and Alert me for the selected row): on makes or turns on its reminder, off turns
+-- it off and keeps it. The selected row's new reminder is the panel's alert as it stands.
+local function setEnabled(item, on)
+    local enc, name = pickBoss(bossList())
     if not (item and enc) then
         return
     end
     local Reminders = CRT.AlertReminders
-    local on = row.check:GetChecked() and true or false
+    local Draft = CRT.AlertDraft
     if item.id then
         local r = Reminders:Get(enc, item.id)
         if r then
@@ -281,22 +632,61 @@ local function onTick(row)
             Reminders:Save(enc, item.id, r)
         end
     elseif on then
-        Reminders:Save(enc, nil, { spellID = item.spellID, boss = name, text = itemName(item), enabled = true })
+        if itemKey(item) == cur.key and cur.draft and not Draft.Problem(cur.ctx, cur.draft) then
+            local r = Draft.BuildReminder(cur.ctx, cur.draft)
+            r.enabled = true
+            pendingOwn[enc] = nil
+            followID = Reminders:Save(enc, nil, r)
+            refresh()
+        else
+            Reminders:Save(enc, nil, { spellID = item.spellID, boss = name, text = itemName(item), enabled = true })
+        end
+    else
+        refresh()
     end
 end
 
-local function onEdit(row)
-    local item = row.item
-    local list = bossList()
-    local enc, name = pickBoss(list)
-    if not (item and enc) then
+local function onTick(row)
+    setEnabled(row.item, row.check:GetChecked() and true or false)
+end
+
+local function showOnTimeline()
+    local T = CRT.Timeline
+    if not (cur.draft and cur.enc and T and T.ShowRow) then
         return
     end
-    if item.id then
-        CRT.AlertEditor:Open(enc, item.id)
-    else
-        CRT.AlertEditor:Open(enc, nil, { spellID = item.spellID, text = itemName(item), boss = name })
+    local name = draftName()
+    local spell = CRT.AlertDraft.validID(cur.draft.spellID) or name
+    local ok, found = pcall(T.ShowRow, T, cur.enc, spell, name)
+    if ok and not found then
+        CRT:Print(TEXT.notOnTimeline)
     end
+end
+
+-- The game's color picker on the draft's color; Cancel puts the old one back.
+local function pickColor()
+    if not (cur.draft and ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) then
+        return
+    end
+    local target = cur.draft -- a picker left open never writes into the next alert
+    local before = cur.draft.color and CRT.AlertDraft.copy(cur.draft.color)
+    local c = cur.draft.color or WHITE
+    ColorPickerFrame:SetupColorPickerAndShow({
+        r = c[1], g = c[2], b = c[3], hasOpacity = false,
+        swatchFunc = function()
+            local r, g, b = ColorPickerFrame:GetColorRGB()
+            if cur.draft == target then
+                target.color = { r, g, b, 1 }
+                commit()
+            end
+        end,
+        cancelFunc = function()
+            if cur.draft == target then
+                target.color = before
+                commit()
+            end
+        end,
+    })
 end
 
 local function makeButton(parent, label, width, height)
@@ -304,55 +694,348 @@ local function makeButton(parent, label, width, height)
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 22)
+    b:SetSize(width, height or BUTTON_H)
     b:SetText(label)
     return b
 end
 
-local function makeRow(f, i)
-    local frame = CreateFrame("Frame", nil, f)
+local function makeCheck(parent, label, x, y, onClick)
+    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    check:SetSize(24, 24)
+    check:SetPoint("TOPLEFT", x, y)
+    local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    text:SetPoint("LEFT", check, "RIGHT", 2, 0)
+    text:SetWidth(CHECK_LABEL_W)
+    text:SetJustifyH("LEFT")
+    text:SetWordWrap(false)
+    text:SetText(label)
+    check.label = text
+    check:SetScript("OnClick", function(self)
+        onClick(self:GetChecked() and true or false)
+    end)
+    return check
+end
+
+local function heading(parent, label, x, y, helpText)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    fs:SetPoint("TOPLEFT", x, y)
+    fs:SetText(label)
+    if helpText then
+        UI.Help(parent, label, helpText):SetPoint("LEFT", fs, "RIGHT", 6, 0)
+    end
+    return fs
+end
+
+local function label(parent, text, x, y)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    fs:SetPoint("TOPLEFT", x, y)
+    fs:SetWidth(LABEL_W)
+    fs:SetJustifyH("LEFT")
+    fs:SetText(text)
+    return fs
+end
+
+-- A one-line box of a fixed width: long text scrolls sideways inside it.
+local function makeEdit(parent, x, y, width, onChange)
+    local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    edit:SetAutoFocus(false)
+    edit:SetMultiLine(false)
+    edit:SetFontObject(CRTFontEdit)
+    edit:SetSize(width, 20)
+    edit:SetPoint("TOPLEFT", x, y)
+    edit:SetScript("OnTextChanged", function(self)
+        if not filling then
+            onChange(self:GetText())
+        end
+    end)
+    edit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    edit:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    return edit
+end
+
+local function makeRow(parent, i)
+    local frame = CreateFrame("Button", nil, parent)
     frame:SetSize(ROW_W, ROW_H - 2)
-    frame:SetPoint("TOPLEFT", 8, -92 - (i - 1) * ROW_H)
+    frame:SetPoint("TOPLEFT", 2, -2 - (i - 1) * ROW_H)
     local row = { frame = frame }
+    row.sel = frame:CreateTexture(nil, "BACKGROUND")
+    row.sel:SetAllPoints()
+    row.sel:Hide()
+    local hl = frame:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.06)
     row.check = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    row.check:SetSize(24, 24)
-    row.check:SetPoint("LEFT", 0, 0)
+    row.check:SetSize(22, 22)
+    row.check:SetPoint("LEFT", 2, 0)
     row.check:SetScript("OnClick", function()
         onTick(row)
     end)
     row.icon = frame:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(20, 20)
-    row.icon:SetPoint("LEFT", 30, 0)
+    row.icon:SetSize(18, 18)
+    row.icon:SetPoint("LEFT", 28, 0)
+    row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     row.name = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    row.name:SetPoint("LEFT", 56, 0)
-    row.name:SetWidth(190)
+    row.name:SetPoint("LEFT", NAME_X, 0)
+    row.name:SetWidth(NAME_W)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
-    row.times = frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.times:SetPoint("LEFT", 254, 0)
-    row.times:SetWidth(330)
-    row.times:SetJustifyH("LEFT")
-    row.times:SetWordWrap(false)
-    row.edit = makeButton(frame, TEXT.edit, 56, 20)
-    row.edit:SetPoint("RIGHT", 0, 0)
-    row.edit:SetScript("OnClick", function()
-        onEdit(row)
+    row.dot = frame:CreateTexture(nil, "OVERLAY")
+    row.dot:SetSize(DOT_SIZE, DOT_SIZE)
+    row.dot:SetPoint("RIGHT", -8, 0)
+    local caramel = CRT.MOCHA.caramel
+    row.dot:SetColorTexture(caramel[1], caramel[2], caramel[3], 1)
+    if row.dot.SetMask then
+        row.dot:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") -- round
+    end
+    -- a click on the row, outside the tick, selects it
+    frame:SetScript("OnClick", function()
+        selectItem(row.item)
     end)
     return row
+end
+
+local function backdrop(f, alpha)
+    if f.SetBackdrop then
+        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        local bg, edge = CRT.MOCHA.espresso, CRT.MOCHA.edge
+        f:SetBackdropColor(bg[1] * 0.8, bg[2] * 0.8, bg[3] * 0.8, alpha)
+        f:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+    end
+end
+
+local function buildPanel(f)
+    local Draft = CRT.AlertDraft
+    local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    frame:SetSize(PANEL_W, PANEL_H)
+    frame:SetPoint("TOPLEFT", PANEL_X, LIST_TOP)
+    backdrop(frame, 0.6)
+    panel.frame = frame
+    local p = CreateFrame("Frame", nil, frame)
+    p:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    p:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    panel.content = p
+    panel.rows = {}
+    local function row(r)
+        panel.rows[#panel.rows + 1] = r
+        return r
+    end
+
+    -- Header: the icon and name, Alert me, Save as
+    panel.icon = p:CreateTexture(nil, "ARTWORK")
+    panel.icon:SetSize(HEADER_ICON, HEADER_ICON)
+    panel.icon:SetPoint("TOPLEFT", INSET, -10)
+    panel.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    panel.name = p:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    panel.name:SetPoint("TOPLEFT", INSET + HEADER_ICON + 8, -16)
+    panel.name:SetWidth(TITLE_W)
+    panel.name:SetJustifyH("LEFT")
+    panel.name:SetWordWrap(false)
+    panel.alertMe = makeCheck(p, TEXT.alertMe, ALERT_X, -12, function(on)
+        setEnabled(cur.item, on)
+    end)
+    -- Raid note is greyed out here: a mechanic has several times, a note line one
+    panel.saveAs = row(UI.Dropdown(p, TEXT.saveAs, {
+        labelWidth = SAVE_LABEL, width = SAVE_W,
+        options = function()
+            return { { key = "note", label = TEXT.asNote, disabled = true }, { key = "mine", label = TEXT.asMine } }
+        end,
+        get = function() return "mine" end,
+        set = function() drawPanel() end,
+    }))
+    panel.saveAs:SetPoint("TOPLEFT", SAVE_X, -8)
+    panel.saveAsHelp = UI.Help(p, TEXT.asNote, TEXT.raidNoteHelp)
+    panel.saveAsHelp:SetPoint("TOPLEFT", SAVE_X + SAVE_LABEL + DROP_GAP + SAVE_W + 2, -16)
+
+    -- Triggers: Show from, Linger, the times (read only) and Show on the Timeline
+    heading(p, TEXT.triggers, INSET, -50, TEXT.triggersHelp)
+    local function seconds(v)
+        return string.format(TEXT.seconds, v)
+    end
+    panel.showFrom = row(UI.Slider(p, TEXT.showFrom, {
+        min = 1, max = 60, step = 1, labelWidth = SHOW_LABEL, width = SLIDER_W, format = seconds,
+        get = function() return cur.draft and cur.draft.warn or 5 end,
+        set = change(function(v) cur.draft.warn = v end),
+    }))
+    panel.showFrom:SetPoint("TOPLEFT", INSET, -66)
+    panel.linger = row(UI.Slider(p, TEXT.linger, {
+        min = 0, max = 10, step = 1, labelWidth = LINGER_LABEL, width = SLIDER_W, format = seconds,
+        get = function() return cur.draft and cur.draft.linger or 0 end,
+        set = change(function(v) cur.draft.linger = v end),
+    }))
+    panel.linger:SetPoint("TOPLEFT", INSET + SHOW_LABEL + DROP_GAP + SLIDER_W + SLIDER_VALUE + 20, -66)
+    panel.times = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    panel.times:SetPoint("TOPLEFT", INSET, -104)
+    panel.times:SetWidth(PANEL_W - 2 * INSET)
+    panel.times:SetJustifyH("LEFT")
+    panel.times:SetWordWrap(false)
+    panel.times:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
+    panel.timelineBtn = makeButton(p, TEXT.showOnTimeline, 170)
+    panel.timelineBtn:SetPoint("TOPLEFT", INSET, -124)
+    panel.timelineBtn:SetScript("OnClick", showOnTimeline)
+
+    -- Left column: Show as, Also
+    heading(p, TEXT.showAs, INSET, COL_Y, TEXT.showAsHelp)
+    panel.checks = {}
+    for _, spec in ipairs({ { "alert", TEXT.nextSpell, 0, 1 }, { "text", TEXT.showText, 1, 1 }, { "icon", TEXT.showIcon, 2, 1 },
+        { "bar", TEXT.bar, 0, 2 }, { "circle", TEXT.circle, 1, 2 } }) do
+        local key = spec[1]
+        local x = INSET - 4 + spec[3] * (spec[3] == 2 and 100 or CHECK_STEP)
+        panel.checks[key] = makeCheck(p, spec[2], x, COL_Y - 20 - (spec[4] - 1) * 26, change(function(on)
+            cur.draft.show[key] = on
+        end))
+    end
+    heading(p, TEXT.also, INSET, COL_Y - 78)
+    panel.also = {
+        speak = makeCheck(p, TEXT.speak, INSET - 4, COL_Y - 98, change(function(on) cur.draft.speak = on end)),
+        count = makeCheck(p, TEXT.count, INSET - 4 + CHECK_STEP, COL_Y - 98, change(function(on) cur.draft.count = on end)),
+        glow = makeCheck(p, TEXT.glow, INSET - 4, COL_Y - 124, change(function(on) cur.draft.glow = on end)),
+    }
+
+    -- Right column: Look and sound
+    heading(p, TEXT.look, COL2_X, COL_Y)
+    label(p, TEXT.text, COL2_X, COL_Y - 26)
+    panel.textEdit = makeEdit(p, COL2_X + LABEL_W + 4, COL_Y - 22, COL_W - LABEL_W - 8, function(text)
+        if cur.draft and text ~= cur.draft.text then
+            cur.draft.text = text
+            commit()
+        end
+    end)
+    panel.iconType = row(UI.Dropdown(p, TEXT.icon, {
+        labelWidth = LABEL_W, width = ICON_DROP_W,
+        options = { { key = "spell", label = TEXT.iconSpell }, { key = "id", label = TEXT.iconID } },
+        get = function() return cur.draft and cur.draft.iconType or "spell" end,
+        set = change(function(v)
+            cur.draft.iconType = v
+            filling = true
+            panel.idEdit:SetText(idText(cur.draft))
+            filling = false
+        end),
+    }))
+    panel.iconType:SetPoint("TOPLEFT", COL2_X, COL_Y - 46)
+    panel.idEdit = makeEdit(p, ID_X, COL_Y - 52, ID_W, function(text)
+        if not cur.draft or panel.lookupCtl:Text(text) then
+            return -- letters look a name up and change nothing
+        end
+        local before = idText(cur.draft)
+        Draft.SetID(cur.draft, tonumber(Draft.trim(text)))
+        if idText(cur.draft) ~= before then
+            commit()
+        end
+    end)
+    panel.idEdit:SetScript("OnEditFocusGained", function()
+        lookupFrom = cur.draft and Draft.validID(cur.draft.spellID)
+    end)
+    UI.Help(p, TEXT.icon, TEXT.iconHelp):SetPoint("LEFT", panel.idEdit, "RIGHT", 2, 0)
+    panel.lookupCtl = CRT.AlertSpellLookup.Attach(panel.idEdit, {
+        encounterID = function() return cur.enc end,
+        boss = function() return cur.draft and cur.draft.boss end,
+        enabled = function() return cur.draft ~= nil end,
+        levelFrame = p,
+        alignRight = true,
+        onPick = function(m)
+            if not cur.draft then
+                return
+            end
+            local id, text = Draft.ApplyPick(cur.draft, m, lookupFrom)
+            lookupFrom = nil
+            filling = true
+            if text then
+                panel.textEdit:SetText(text)
+            end
+            if id then
+                panel.idEdit:SetText(tostring(id))
+            end
+            filling = false
+            commit()
+        end,
+        -- closed without a pick: letters left in the box give way to the alert's ID again
+        onClose = function()
+            if cur.draft and Draft.trim(panel.idEdit:GetText()):find("%a") then
+                filling = true
+                panel.idEdit:SetText(idText(cur.draft))
+                filling = false
+            end
+        end,
+    })
+    panel.lookup = panel.lookupCtl.list
+    label(p, TEXT.color, COL2_X, COL_Y - 86)
+    panel.colorSwatch = CreateFrame("Button", nil, p)
+    panel.colorSwatch:SetSize(20, 20)
+    panel.colorSwatch:SetPoint("TOPLEFT", COL2_X + LABEL_W + 4, COL_Y - 82)
+    local edge = panel.colorSwatch:CreateTexture(nil, "BACKGROUND")
+    edge:SetAllPoints()
+    edge:SetColorTexture(0.5, 0.5, 0.5, 1)
+    panel.colorSwatch.tex = panel.colorSwatch:CreateTexture(nil, "ARTWORK")
+    panel.colorSwatch.tex:SetPoint("TOPLEFT", 1, -1)
+    panel.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
+    panel.colorSwatch:SetScript("OnClick", pickColor)
+    panel.colorDefault = makeButton(p, TEXT.colorDefault, 80)
+    panel.colorDefault:SetPoint("TOPLEFT", COL2_X + LABEL_W + 32, COL_Y - 81)
+    panel.colorDefault:SetScript("OnClick", change(function()
+        cur.draft.color = nil
+    end))
+    panel.sound = row(UI.Dropdown(p, TEXT.sound, {
+        labelWidth = LABEL_W, width = SOUND_W, maxHeight = 400,
+        options = function() return Draft.SoundOptions(TEXT.soundNone) end,
+        get = function() return cur.draft and cur.draft.sound or Draft.NO_SOUND end,
+        set = change(function(v) cur.draft.sound = v ~= Draft.NO_SOUND and v or nil end),
+    }))
+    panel.sound:SetPoint("TOPLEFT", COL2_X, COL_Y - 106)
+
+    -- A save's problem, in red
+    panel.message = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    panel.message:SetPoint("TOPLEFT", INSET, COL_Y - 150)
+    panel.message:SetWidth(PANEL_W - 2 * INSET)
+    panel.message:SetJustifyH("LEFT")
+
+    -- Bottom right: Test, Save as template
+    panel.templateBtn = makeButton(p, TEXT.template, 140)
+    panel.templateBtn:SetPoint("BOTTOMRIGHT", -INSET, 10)
+    panel.templateBtn:SetScript("OnClick", function()
+        if not cur.draft then
+            return
+        end
+        local ok, err = CRT.AlertEditor:AskTemplateName(cur.ctx, cur.draft, function(message)
+            notice = message
+            drawPanel()
+        end)
+        if not ok and err then
+            notice = err
+            drawPanel()
+        end
+    end)
+    panel.testBtn = makeButton(p, TEXT.test, 80)
+    panel.testBtn:SetPoint("BOTTOMRIGHT", -INSET - 140 - 8, 10)
+    panel.testBtn:SetScript("OnClick", function()
+        if not cur.draft then
+            return
+        end
+        local ok, err = CRT.AlertEditor:TestDraft(cur.ctx, cur.draft)
+        if not ok then
+            notice = err or TEXT.noTest
+            drawPanel()
+        end
+    end)
+    return frame
 end
 
 local function build(f)
     tab = f
     selected, viewDiff, offset = nil, nil, 0
+    cur, notice, picked, pendingOwn = {}, nil, {}, {}
 
     local title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    title:SetPoint("TOPLEFT", 8, -8)
+    title:SetPoint("TOPLEFT", PAD, -14)
     title:SetText(TEXT.title)
     UI.Help(f, TEXT.title, TEXT.help):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     bossDrop = UI.Dropdown(f, TEXT.boss, {
-        labelWidth = 40,
-        width = 230,
+        labelWidth = BOSS_LABEL,
+        width = BOSS_W,
         options = function()
             local out = {}
             for _, b in ipairs(bossList()) do
@@ -365,14 +1048,15 @@ local function build(f)
         end,
         set = function(key)
             selected, viewDiff, offset = key, nil, 0
+            reveal = true
             refresh()
         end,
     })
-    bossDrop:SetPoint("TOPLEFT", 8, -30)
+    bossDrop:SetPoint("TOPLEFT", BOSS_X, TOP_Y)
 
     diffDrop = UI.Dropdown(f, TEXT.difficulty, {
-        labelWidth = 60,
-        width = 150,
+        labelWidth = DIFF_LABEL,
+        width = DIFF_W,
         options = function()
             local out = { { key = ANY, label = TEXT.any } }
             local seen = {}
@@ -393,11 +1077,11 @@ local function build(f)
             refresh()
         end,
     })
-    diffDrop:SetPoint("TOPLEFT", 300, -30)
+    diffDrop:SetPoint("TOPLEFT", DIFF_X, TOP_Y)
 
     fromDrop = UI.Dropdown(f, TEXT.timesFrom, {
-        labelWidth = 70,
-        width = 330,
+        labelWidth = FROM_LABEL,
+        width = FROM_W,
         options = function()
             local out = {}
             for _, entry in ipairs(bossRefs()) do
@@ -419,64 +1103,61 @@ local function build(f)
             refresh()
         end,
     })
-    fromDrop:SetPoint("TOPLEFT", 8, -58)
+    fromDrop:SetPoint("TOPLEFT", FROM_X, TOP_Y)
     UI.Help(f, TEXT.timesFromHelpTitle, TEXT.timesFromHelp):SetPoint("LEFT", fromDrop, "RIGHT", 6, 0)
 
+    -- Left: the list, scrolled with the mouse wheel
+    list = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    list:SetSize(LIST_W, LIST_H)
+    list:SetPoint("TOPLEFT", PAD, LIST_TOP)
+    backdrop(list, 0.8)
+    f.list = list
     rows = {}
     for i = 1, MAX_ROWS do
-        rows[i] = makeRow(f, i)
+        rows[i] = makeRow(list, i)
     end
     f.rows = rows
-
-    slider = CreateFrame("Slider", nil, f)
-    slider:SetOrientation("VERTICAL")
-    slider:SetSize(10, MAX_ROWS * ROW_H - 4)
-    slider:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -92)
-    slider:SetMinMaxValues(0, 0)
-    slider:SetValueStep(1)
-    slider:SetObeyStepOnDrag(true)
-    local track = slider:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(0.2, 0.2, 0.2, 0.6)
-    slider:SetThumbTexture("Interface\\Buttons\\WHITE8X8")
-    local thumb = slider:GetThumbTexture()
-    if thumb then
-        thumb:SetSize(10, 24)
-        thumb:SetVertexColor(1, 0.82, 0)
-    end
-    slider:SetScript("OnValueChanged", function(_, value)
-        local v = math.floor((value or 0) + 0.5)
-        if v ~= offset then
-            offset = v
-            refresh()
-        end
-    end)
-    slider:Hide()
-
-    f:EnableMouseWheel(true)
-    f:SetScript("OnMouseWheel", function(_, delta)
+    thumb = list:CreateTexture(nil, "OVERLAY")
+    thumb:SetWidth(THUMB_W)
+    local caramel = CRT.MOCHA.caramel
+    thumb:SetColorTexture(caramel[1], caramel[2], caramel[3], 0.7)
+    thumb:Hide()
+    list:EnableMouseWheel(true)
+    list:SetScript("OnMouseWheel", function(_, delta)
         scrollBy(delta > 0 and -1 or 1)
     end)
     f.scroll = scrollBy
 
-    ownButton = makeButton(f, TEXT.ownReminder, 170, 24)
-    ownButton:SetPoint("TOPLEFT", 8, -92 - MAX_ROWS * ROW_H - 8)
+    ownButton = makeButton(f, TEXT.ownReminder, LIST_W, OWN_H)
+    ownButton:SetPoint("TOPLEFT", PAD, LIST_TOP - LIST_H - OWN_GAP)
     ownButton:SetScript("OnClick", function()
-        local enc, name = pickBoss(bossList())
+        local enc = pickBoss(bossList())
         if enc then
-            CRT.AlertEditor:Open(enc, nil, { boss = name })
+            pendingOwn[enc] = true
+            picked[enc] = "new"
+            reveal = true
+            refresh()
         end
     end)
     f.ownButton = ownButton
 
-    -- The boss's marker display (Markers/Display.lua), when it has one: each player's on/off.
-    markerCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    -- Right: the selected row's alert
+    buildPanel(f)
+    f.panel = panel
+
+    -- The boss's marker display (Markers/Display.lua), when it has one: each player's on/off. It sits
+    -- at the bottom left of the panel.
+    local p = panel.frame
+    markerCheck = CreateFrame("CheckButton", nil, p, "UICheckButtonTemplate")
     markerCheck:SetSize(24, 24)
-    markerCheck:SetPoint("LEFT", ownButton, "RIGHT", 16, 0)
-    local markerText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    markerCheck:SetPoint("BOTTOMLEFT", INSET - 4, 9)
+    local markerText = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     markerText:SetPoint("LEFT", markerCheck, "RIGHT", 2, 0)
-    local markerHelp = UI.Help(f, "Marker display", "This boss has a marker display: a small window that shows the raid markers raiders send with their macros, such as /raid {rt3}, in the order they are sent, with who sent each one. Untick it to turn it off for you on this boss.\n\nAny message in group chat fills a slot, because the game hides chat text from addons inside raids. Move the window with Previews.")
-    markerHelp:SetPoint("LEFT", markerText, "RIGHT", 6, 0)
+    markerText:SetWidth(PANEL_W - INSET - 24 - 2 - HELP_ROOM - 240 - INSET)
+    markerText:SetJustifyH("LEFT")
+    markerText:SetWordWrap(false)
+    local markerHelp = UI.Help(p, TEXT.markerTitle, TEXT.markerHelp)
+    markerHelp:SetPoint("LEFT", markerText, "RIGHT", 4, 0)
     markerCheck:SetScript("OnClick", function(self)
         local enc = pickBoss(bossList())
         if enc then
@@ -490,12 +1171,14 @@ local function build(f)
         markerText:SetShown(def ~= nil)
         markerHelp:SetShown(def ~= nil)
         if def then
-            markerText:SetText("Show the marker display: " .. (def.name or "Marker display"))
+            markerText:SetText(string.format(TEXT.markerShow, def.name or TEXT.markerTitle))
             markerCheck:SetChecked(CRT.MarkerDisplay:Enabled(enc))
         end
     end
 
-    f:SetScript("OnShow", refresh)
+    f:SetScript("OnShow", function()
+        refresh()
+    end)
     if not listening then
         listening = true
         CRT.Alerts:OnChange(function()
@@ -507,4 +1190,4 @@ local function build(f)
     refresh()
 end
 
-CRT.NoteReminders = { Build = build, Refresh = refresh, BossList = bossList }
+CRT.NoteReminders = { Build = build, Refresh = function() refresh() end, BossList = bossList }
