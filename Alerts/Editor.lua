@@ -2,10 +2,11 @@ local ADDON, CRT = ...
 
 -- The alert editor: one popout window for every alert, a line of the boss's raid note or one of your
 -- own reminders. It opens from a double-click on the Timeline and from the Timeline's chips, edits a
--- draft (Alerts/Draft.lua), and saves it as a note line (Notes:AddLine or ReplaceLine, through
--- Parser.FormatLine) or as a reminder (CRT.AlertReminders). Switching Save as on a saved alert moves it: the new place is written
--- first, then the old one removed. A note line is only ever written back over the raw line it was
--- opened from, so a note changed elsewhere (a new share) is never overwritten blind.
+-- draft (Alerts/Draft.lua), and saves it through Draft.SaveNote as a note line (Notes:AddLine or
+-- ReplaceLine, through Parser.FormatLine) or through Draft.SaveMine as a reminder (CRT.AlertReminders).
+-- Switching Save as on a saved alert moves it: the new place is written first, then the old one
+-- removed. A note line is only ever written back over the raw line it was opened from, so a note
+-- changed elsewhere (a new share) is never overwritten blind.
 -- Test runs the draft as it stands on screen without saving anything: its items go to a block of their
 -- own ("minetest") that gives them out only to a run started with reason "test". A note line's item is
 -- the note block's own (CRT.NoteEngine.ItemFor) and stays a "note" item, so the note's switches apply.
@@ -98,8 +99,6 @@ local TEXT = {
     testInPull = "Test is off during a pull.",
     testTrigger = "Nothing to test: this alert starts in phase %s, which waits for its trigger.",
     testBlock = "Alert test",
-    noBoss = "This boss has no encounter ID, so it can't have a raid note line.",
-    noteFailed = "The note line could not be saved.",
     reopen = "You can change the raid note now. Close this line and open it again to edit it.",
     noteLineTitle = "Raid note line",
     copyToMine = "Copy to my reminders",
@@ -186,11 +185,6 @@ local function clock(t, exact)
     return string.format("%d:%02d", math.floor(t / 60), t % 60)
 end
 
--- Text fit for a note line: no ";" (it ends a field) and no line ends.
-local function clean(s)
-    return trim((tostring(s or ""):gsub(";", ""):gsub("[\r\n]+", " ")))
-end
-
 local function spellInfo(id)
     id = validID(id)
     if not id then
@@ -235,66 +229,22 @@ local function anyOutput()
     return Draft.AnyOutput(draft)
 end
 
--- The draft as a note line's timer (Parser.FormatLine writes it). A line keeps its dur:.
-local function noteTimer()
-    local base = ctx and ctx.timer or {}
-    local spellID = validID(draft.spellID)
-    local text = clean(draft.text)
-    local show = {}
-    for _, k in ipairs(SHOW_KEYS) do
-        show[k] = draft.show[k] or nil
-    end
-    return {
-        time = parseTime(draft.timeText) or 0,
-        ph = draft.ph or 1,
-        tags = words(draft.tag),
-        spellId = spellID,
-        kind = spellID and "spell" or "text",
-        text = text ~= "" and text or nil,
-        dur = base.dur,
-        color = copy(draft.color),
-        show = show,
-        tts = draft.speak or nil,
-        count = draft.count or nil,
-        sound = draft.sound,
-        glow = draft.glow or nil,
-        warn = draft.warn,
-        linger = draft.linger > 0 and draft.linger or nil,
-        iconID = draft.iconType == "id" and validID(draft.iconID) or nil,
-    }
-end
+-- The draft as note lines, and the note one is saved to, are Alerts/Draft.lua's (shared with a cooldown
+-- placed from the Timeline).
 
--- The fields of the raw line the editor opened that FormatLine doesn't write (such as DisplayType:),
--- kept on the end of the line written back.
+-- The fields of the raw line the editor opened that FormatLine doesn't write, kept on the end of the line.
 local function keptFields()
-    return ctx and ctx.expected and CRT.NoteParser.UnknownFields(ctx.expected) or ""
+    return Draft.KeptFields(ctx)
 end
 
 -- The times of a reminder moving here (keepsTimes), or nil.
 local function keptTimeList()
-    if keepsTimes() then
-        local list = Reminders:Times(ctx.encounterID, timesProbe())
-        if #list > 0 then
-            return list
-        end
-    end
-    return nil
+    return Draft.KeptTimeList(ctx, draft)
 end
 
 -- The draft as note line timers: one per time of a reminder moving here (keepsTimes), else one.
 local function noteTimers()
-    local base = noteTimer()
-    local list = keptTimeList()
-    if list then
-        local out = {}
-        for i, e in ipairs(list) do
-            local t = copy(base)
-            t.ph, t.time = e.ph, e.t
-            out[i] = t
-        end
-        return out
-    end
-    return { base }
+    return Draft.NoteTimers(ctx, draft)
 end
 
 local function buildReminder()
@@ -420,65 +370,15 @@ local function difficultyOptions()
     return out
 end
 
--- The raid difficulty you are in now, by the name a pull there gets (GetDifficultyInfo, as the engine
--- names it on ENCOUNTER_START), or nil outside a raid.
-local function currentDifficulty()
-    if not GetInstanceInfo then
-        return nil
-    end
-    local ok, _, kind, difficultyID, name = pcall(GetInstanceInfo)
-    if not (ok and readable(kind) and kind == "raid") then
-        return nil
-    end
-    if GetDifficultyInfo and readable(difficultyID) and type(difficultyID) == "number" then
-        local okName, n = pcall(GetDifficultyInfo, difficultyID)
-        if okName and readable(n) and type(n) == "string" and trim(n) ~= "" then
-            return n
-        end
-    end
-    if readable(name) and type(name) == "string" and trim(name) ~= "" then
-        return name
-    end
-    return nil
-end
-
--- The note a raid note line saved now goes to: the line's own note while its difficulty is unchanged,
--- else the one a pull of that difficulty reads (Notes:AddLine writes there). Nil: a new note is made.
+-- The note a raid note line saved now goes to (Draft.TargetNote). Nil: a new note is made.
 local function targetNote()
-    if not (ctx and type(ctx.encounterID) == "number") then
-        return nil
-    end
-    local difficulty = draft.difficulty and trim(draft.difficulty) or nil
-    if ctx.noteID and lower(ctx.noteDifficulty) == lower(difficulty) then
-        return ctx.noteID
-    end
-    return CRT.Notes:FindForEncounter(ctx.encounterID, difficulty)
+    return Draft.TargetNote(ctx, draft)
 end
 
--- The Difficulty a new raid note line starts on: that of the note the pull you are in would read, or,
--- outside a raid, of the boss's only note. Nil (Any) when there is no such note.
+-- The Difficulty a new raid note line starts on (Draft.DefaultDifficulty): that of the note the pull you
+-- are in would read, or, outside a raid, of the boss's only note. Nil (Any) when there is no such note.
 local function defaultDifficulty()
-    local encounterID = ctx and ctx.encounterID
-    if type(encounterID) ~= "number" then
-        return nil
-    end
-    local Notes = CRT.Notes
-    local current = currentDifficulty()
-    local id
-    if current then
-        id = Notes:FindForEncounter(encounterID, current)
-    else
-        for _, e in ipairs(Notes:List()) do
-            if e.record.encounterID == encounterID then
-                if id then
-                    return nil
-                end
-                id = e.id
-            end
-        end
-    end
-    local record = id and Notes:Get(id)
-    return record and record.difficulty or nil
+    return Draft.DefaultDifficulty(ctx and ctx.encounterID)
 end
 
 -- Save as changed, or the editor opened: a draft whose difficulty you haven't picked takes the raid
@@ -711,57 +611,12 @@ function Editor:Close()
     ctx, draft, notice = nil, nil, nil
 end
 
--- Whether the note line is still the one the editor opened.
-local function lineUnchanged()
-    return Draft.LineUnchanged(ctx)
-end
-
+-- Saving a note line is Alerts/Draft.lua's (Draft.SaveNote, shared with a cooldown placed from the
+-- Timeline): the window closes on success and shows the message otherwise.
 local function saveNote()
-    local allowed, why = canEditRaid()
-    if not allowed then
-        return fail(why)
-    end
-    local encounterID = ctx.encounterID
-    if type(encounterID) ~= "number" then
-        return fail(TEXT.noBoss)
-    end
-    local Notes = CRT.Notes
-    local extra = keptFields()
-    local lines = {}
-    for i, t in ipairs(noteTimers()) do
-        lines[i] = CRT.NoteParser.FormatLine(t) .. extra
-    end
-    local difficulty = draft.difficulty and trim(draft.difficulty) or nil
-    if ctx.noteID then
-        if not lineUnchanged() then
-            return fail(DTEXT.stale)
-        end
-        -- still going to its own note: the line is replaced where it is
-        if targetNote() == ctx.noteID then
-            if not Notes:ReplaceLine(ctx.noteID, ctx.line, lines[1], ctx.expected) then
-                return fail(DTEXT.stale)
-            end
-            Editor:Close()
-            return true
-        end
-    end
-    -- a new line, or lines moving here from a reminder (one per time) or from another note. If one
-    -- can't be written, the ones written are taken out again and the old alert stays as it was.
-    local written = {}
-    for _, line in ipairs(lines) do
-        local id, n = Notes:AddLine(encounterID, difficulty, draft.boss, line)
-        if not id then
-            for i = #written, 1, -1 do
-                Notes:RemoveLine(written[i].id, written[i].n, written[i].line)
-            end
-            return fail(TEXT.noteFailed)
-        end
-        written[#written + 1] = { id = id, n = n, line = line }
-    end
-    if ctx.noteID then
-        Notes:RemoveLine(ctx.noteID, ctx.line, ctx.expected)
-    elseif ctx.id then
-        Reminders:Delete(encounterID, ctx.id)
+    local ok, err = Draft.SaveNote(ctx, draft)
+    if not ok then
+        return fail(err)
     end
     Editor:Close()
     return true
