@@ -824,7 +824,9 @@ end
 -- How the chosen order moves casts. Returns move(row, t) and parts. move gives the cast's written
 -- time after the move, or false when it would land at or past the end of its new window (hidden,
 -- like a cast past a moved phase line). parts maps a phase index to the part now in that window.
--- With no Order line, or the written order, every cast stays.
+-- The third result, unmove(row, t), is the reverse: a time in the chosen order (as drawn) back to
+-- the written one, or false when t is not inside the part's chosen window (or would fall past its
+-- written window). With no Order line, or the written order, every cast stays and comes back as is.
 function Reference.PartMover(ref, chosen)
     local parts = {}
     local order = ref and ref.order
@@ -832,7 +834,7 @@ function Reference.PartMover(ref, chosen)
         return t
     end
     if not order or not order.phases then
-        return stay, parts
+        return stay, parts, stay
     end
     chosen = Reference.ResolveOrder(ref, chosen)
     local phases = ref.phases
@@ -866,5 +868,20 @@ function Reference.PartMover(ref, chosen)
             return false
         end
         return moved
-    end, parts
+    end, parts, function(row, t)
+        local from, to = written[row.part], now[row.part]
+        if not from or from == to then
+            return t
+        end
+        local newStart, newStop = window(to)
+        if t < newStart or t >= newStop then
+            return false
+        end
+        local start, stop = window(from)
+        local back = t - newStart + start
+        if back >= stop then
+            return false
+        end
+        return back
+    end
 end
