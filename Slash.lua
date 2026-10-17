@@ -150,6 +150,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.WindowLog then
             CRT.WindowLog:Toggle()
         end
+    elseif msg == "dev stamp" then
+        if CRT.WindowLog then
+            CRT.WindowLog:Stamp()
+        end
     elseif msg == "dev reset" then
         if CRT.Dev then
             CRT.Dev:ResetAllPositions()

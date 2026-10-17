@@ -133,6 +133,27 @@ watcher:SetScript("OnUpdate", function()
     wasDown = down
 end)
 
+-- /crt dev stamp: plays the note windows' "note updated" stamp now, without a share, and prints for each
+-- window whether it is shown and whether the stamp is playing a moment later.
+function Log:Stamp()
+    local NW = CRT.NoteWindow
+    if not (NW and NW.Flash) then
+        CRT:Print("Note stamp: the note windows aren't loaded.")
+        return
+    end
+    NW:Flash()
+    C_Timer.After(0.3, function()
+        for _, key in ipairs({ "window", "assignments" }) do
+            local w = NW:Get(key)
+            if not w then
+                print("|cffc8a050stamp|r " .. key .. ": no window")
+            else
+                print(string.format("|cffc8a050stamp|r %s: shown %s, stamp playing %s, pending %s", key, tostring(w.frame:IsShown()), tostring(w.stamp and w.stamp:IsPlaying()), tostring(w.flashPending)))
+            end
+        end
+    end)
+end
+
 function Log:Toggle()
     local f = UI:Create()
     hook(f)
