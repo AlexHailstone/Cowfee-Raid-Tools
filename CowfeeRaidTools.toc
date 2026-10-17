@@ -91,6 +91,10 @@ Seasons\Midnight-S1\NekzaliTheSoulcoiler.lua
 Seasons\Midnight-S1\Sszorak.lua
 Seasons\Midnight-S1\EntombedSentinels.lua
 Seasons\Midnight-S1\TheTwinFangs.lua
+Seasons\Midnight-S1\TheLostExplorers.lua
+Seasons\Midnight-S1\VashnikTheMalignant.lua
+Seasons\Midnight-S1\TheCoiledAltar.lua
+Seasons\Midnight-S1\Ulatek.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
