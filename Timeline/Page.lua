@@ -253,6 +253,30 @@ end
 
 -- The Review tab -------------------------------------------------------------------------------
 
+-- The shown reference, when it has an Order line, and the boss its chosen order is saved under.
+local function orderedRef()
+    local entry = showingReference() and findRef(selectedPull)
+    if entry and entry.ref.order then
+        return entry.ref, entry.ref.encounterID or selectedBoss
+    end
+end
+
+-- The chosen order of the shown reference's parts (a list), or nil with no Order line.
+local function chosenOrder()
+    local ref, boss = orderedRef()
+    return ref and Reference.ResolveOrder(ref, Timeline:Order(boss, selectedGroup))
+end
+
+local function orderOptions()
+    local list = {}
+    local ref = orderedRef()
+    for i, parts in ipairs(ref and Reference.Orders(ref) or {}) do
+        local key = Reference.OrderKey(parts)
+        list[#list + 1] = { key = key, label = key .. (i == 1 and " (as written)" or "") }
+    end
+    return list
+end
+
 local function updateView()
     local base, sig
     if showingReference() then
@@ -264,6 +288,7 @@ local function updateView()
         sig = base
     end
     local overlay = showingReference() and overlayID and Timeline:Pull(selectedBoss, overlayID) or nil
+    view:SetOrder(chosenOrder())
     if sig ~= shownBase or selectedPull ~= shownPull or selectedBoss ~= shownBoss or overlay ~= shownOverlay or selectedGroup ~= shownGroup then
         shownBase, shownPull, shownBoss, shownOverlay, shownGroup = sig, selectedPull, selectedBoss, overlay, selectedGroup
         view:SetData(base, selectedBoss, overlay, bossName(), selectedGroup)
@@ -325,6 +350,22 @@ local function buildReview(f)
             end
             refresh()
         end,
+        -- the raid's order of the shown reference's parts, kept per boss and difficulty
+        order = function()
+            local parts = chosenOrder()
+            return parts and Reference.OrderKey(parts)
+        end,
+        hasOrder = function()
+            return orderedRef() ~= nil
+        end,
+        selectOrder = function(key)
+            local ref, boss = orderedRef()
+            if ref then
+                -- the written order is kept as no choice, so a changed reference starts from it again
+                Timeline:SetOrder(boss, selectedGroup, key ~= Reference.OrderKey(ref.order.parts) and key or nil)
+            end
+        end,
+        orderOptions = orderOptions,
         bossOptions = bossOptions,
         pullOptions = pullOptions,
         pullLabel = pullLabel,

@@ -8,6 +8,8 @@ local ADDON, CRT = ...
 --   Boss: Name            (required)   Difficulty: Mythic   Length: 9:48   Encounter: 3001
 --   Phase: [label] time   a phase line, the time is the last word
 --   Name [spell N] (type raid soak, lead N, color rrggbb): time, time+bar, ...   an ability row
+--   Order: Empowered 1, Empowered 2 = Gebbo, Nama   phases whose parts the raid picks the order of,
+--                                                   with rows tagged (part Gebbo); see Chosen order
 -- A time is m:ss or plain seconds. Blank lines and lines starting with # are skipped. Every line
 -- that cannot be read is reported as "Line N: reason", and nothing is saved until the text is clean.
 
@@ -96,6 +98,9 @@ local function readOptions(row, text)
                     tonumber(hex:sub(3, 4), 16) / 255,
                     tonumber(hex:sub(5, 6), 16) / 255,
                 }
+            elseif key == "part" then
+                -- which part of an Order line the row belongs to (checked against it after reading)
+                row.part = trim(arg)
             elseif key == "type" then
                 row.types = row.types or {}
                 for word in arg:gmatch("%S+") do
@@ -182,6 +187,99 @@ local function readAbility(line)
     end
 end
 
+-- An Order line: the phases whose parts the raid picks the order of, then the parts in the order the
+-- reference was written in, "Empowered 1, Empowered 2, Empowered 3 = Gebbo, Nama, Iku". Returns
+-- { labels, parts }, or nil and a reason. A part name has no digits (the alerts read a phase's
+-- number from its label) and no ">" (a chosen order is shown and kept as "Gebbo > Nama > Iku").
+local MAX_PARTS = 4
+local function readOrder(val)
+    local left, right = val:match("^(.-)=(.*)$")
+    if not left then
+        return nil, "Order needs '=' between the phases and the parts"
+    end
+    local function list(s)
+        local out = {}
+        for item in (s .. ","):gmatch("([^,]*),") do
+            item = trim(item)
+            if item ~= "" then
+                out[#out + 1] = item
+            end
+        end
+        return out
+    end
+    local labels, parts = list(left), list(right)
+    if #labels < 2 or #labels > MAX_PARTS then
+        return nil, "Order needs 2 to " .. MAX_PARTS .. " phases"
+    end
+    if #parts ~= #labels then
+        return nil, "Order needs as many parts as phases"
+    end
+    local seen = {}
+    for _, part in ipairs(parts) do
+        if part:find("[%d>]") then
+            return nil, "part name '" .. part .. "' can't have a digit or '>'"
+        end
+        if seen[part:lower()] then
+            return nil, "part '" .. part .. "' is named twice"
+        end
+        seen[part:lower()] = true
+    end
+    return { labels = labels, parts = parts }
+end
+
+-- After reading: every Order phase must have a Phase line (order.phases gets their indexes, once the
+-- phases are sorted), and every row's part must be one of the Order's parts.
+local function checkOrder(ref, errors)
+    local order = ref.order
+    for _, row in ipairs(ref.rows) do
+        if row.part then
+            local ok = false
+            for _, part in ipairs(order and order.parts or {}) do
+                if part:lower() == row.part:lower() then
+                    row.part, ok = part, true
+                end
+            end
+            if not ok then
+                errors[#errors + 1] = "Line " .. row.line .. ": part '" .. row.part .. "' is not on an Order line"
+            end
+        end
+    end
+    if order then
+        for _, label in ipairs(order.labels) do
+            local found = false
+            for _, phase in ipairs(ref.phases) do
+                if phase.label and fold(phase.label):lower() == fold(label):lower() then
+                    found = true
+                end
+            end
+            if not found then
+                errors[#errors + 1] = "Line " .. order.line .. ": no Phase line called '" .. label .. "'"
+            end
+        end
+        order.line = nil
+    end
+    -- the line numbers were only for these messages
+    for _, row in ipairs(ref.rows) do
+        row.line = nil
+    end
+end
+
+-- The phase index of each Order phase, after the phases are sorted.
+local function orderPhases(ref)
+    local order = ref.order
+    if not order then
+        return
+    end
+    order.phases = {}
+    for k, label in ipairs(order.labels) do
+        for i, phase in ipairs(ref.phases) do
+            if phase.label and fold(phase.label):lower() == fold(label):lower() then
+                order.phases[k] = i
+            end
+        end
+    end
+end
+
 -- Reads reference text. Returns the reference, or nil and a list of "Line N: reason" errors.
 function Reference.Parse(text)
     if type(text) ~= "string" then
@@ -235,9 +333,18 @@ function Reference.Parse(text)
                 else
                     ref.phases[#ref.phases + 1] = { t = t, planned = planned or t, label = label ~= "" and label or nil }
                 end
+            elseif key == "order" then
+                local order, reason = readOrder(val)
+                if order then
+                    order.line = n
+                    ref.order = order
+                else
+                    err = reason
+                end
             else
                 local row, reason = readAbility(line)
                 if row then
+                    row.line = n
                     ref.rows[#ref.rows + 1] = row
                 else
                     err = reason
@@ -251,6 +358,7 @@ function Reference.Parse(text)
     if not ref.boss then
         errors[#errors + 1] = "Missing a Boss line"
     end
+    checkOrder(ref, errors)
     if #ref.rows == 0 and #errors == 0 then
         errors[#errors + 1] = "Needs at least one ability line with a time"
     end
@@ -260,6 +368,7 @@ function Reference.Parse(text)
     table.sort(ref.phases, function(a, b)
         return a.t < b.t
     end)
+    orderPhases(ref)
     local last = 0
     for _, row in ipairs(ref.rows) do
         table.sort(row.casts, function(a, b)
@@ -338,7 +447,7 @@ local function norm(name)
     return type(name) == "string" and fold(trim(name)):lower() or nil
 end
 
-local HEADERS = { boss = true, difficulty = true, length = true, encounter = true, phase = true }
+local HEADERS = { boss = true, difficulty = true, length = true, encounter = true, phase = true, order = true }
 
 -- The Boss and Encounter lines of reference text, read loosely so a box that does not parse yet
 -- still says which boss it is for. Returns the boss name and encounter ID, either may be nil.
@@ -623,8 +732,9 @@ function Reference.CopyTo(text, group)
         local key = line:match("^(%a+)%s*:")
         local drop = false
         if line ~= "" and line:sub(1, 1) ~= "#" and not HEADERS[key and key:lower() or ""] then
-            local one = Reference.Parse("Boss: x\n" .. line)
-            drop = one and Reference.MythicOnly(one.rows[1]) or false
+            -- read as a lone ability line, so a (part ...) row needs no Order line to be judged
+            local row = readAbility(line)
+            drop = row and Reference.MythicOnly(row) or false
         end
         if drop then
             removed = removed + 1
@@ -633,4 +743,110 @@ function Reference.CopyTo(text, group)
         end
     end
     return table.concat(out, "\n"), removed
+end
+
+-- Chosen order ------------------------------------------------------------------------------------
+-- A boss whose parts the raid takes in an order of its choosing (the Lost Explorers' turtles each
+-- empower one window) has an Order line naming those phases and the parts in the order the text was
+-- written in. Picking another order moves each part's rows: a cast in its part's written window keeps
+-- its offset from the window's start and moves to the start of the window the part now has. Rows with
+-- no part, and casts outside their part's window, stay where they are.
+
+-- " > " between the parts: the label and the saved form of an order.
+function Reference.OrderKey(parts)
+    return table.concat(parts, " > ")
+end
+
+-- Every order of the reference's parts, the written one first. Empty with no Order line.
+function Reference.Orders(ref)
+    local order = ref and ref.order
+    if not order then
+        return {}
+    end
+    local out = {}
+    local function permute(done, left)
+        if #left == 0 then
+            out[#out + 1] = done
+            return
+        end
+        for i, part in ipairs(left) do
+            local nextDone, nextLeft = {}, {}
+            for _, p in ipairs(done) do
+                nextDone[#nextDone + 1] = p
+            end
+            nextDone[#nextDone + 1] = part
+            for j, p in ipairs(left) do
+                if j ~= i then
+                    nextLeft[#nextLeft + 1] = p
+                end
+            end
+            permute(nextDone, nextLeft)
+        end
+    end
+    permute({}, order.parts)
+    return out
+end
+
+-- The order to draw: chosen when it is one of the reference's orders (a list of parts or its
+-- OrderKey), else the written one. Nil with no Order line.
+function Reference.ResolveOrder(ref, chosen)
+    local order = ref and ref.order
+    if not order then
+        return nil
+    end
+    local key = type(chosen) == "table" and Reference.OrderKey(chosen) or chosen
+    for _, parts in ipairs(Reference.Orders(ref)) do
+        if Reference.OrderKey(parts) == key then
+            return parts
+        end
+    end
+    return order.parts
+end
+
+-- How the chosen order moves casts. Returns move(row, t) and parts. move gives the cast's written
+-- time after the move, or false when it would land at or past the end of its new window (hidden,
+-- like a cast past a moved phase line). parts maps a phase index to the part now in that window.
+-- With no Order line, or the written order, every cast stays.
+function Reference.PartMover(ref, chosen)
+    local parts = {}
+    local order = ref and ref.order
+    local function stay(_, t)
+        return t
+    end
+    if not order or not order.phases then
+        return stay, parts
+    end
+    chosen = Reference.ResolveOrder(ref, chosen)
+    local phases = ref.phases
+    -- each window runs from its phase's written start to the next phase's, or to the end
+    local function window(k)
+        local i = order.phases[k]
+        local start = phases[i].planned or phases[i].t
+        local nextPhase = phases[i + 1]
+        return start, nextPhase and (nextPhase.planned or nextPhase.t) or math.huge
+    end
+    local written, now = {}, {}
+    for k, part in ipairs(order.parts) do
+        written[part] = k
+    end
+    for k, part in ipairs(chosen) do
+        now[part] = k
+        parts[order.phases[k]] = part
+    end
+    return function(row, t)
+        local from, to = written[row.part], now[row.part]
+        if not from or from == to then
+            return t
+        end
+        local start, stop = window(from)
+        if t < start or t >= stop then
+            return t
+        end
+        local newStart, newStop = window(to)
+        local moved = t - start + newStart
+        if moved >= newStop then
+            return false
+        end
+        return moved
+    end, parts
 end

@@ -40,6 +40,25 @@ function Timeline:Set(field, value)
     self:Fire()
 end
 
+-- The raid's chosen order of a boss's parts (see Reference.PartMover), per boss and difficulty group,
+-- saved as its Reference.OrderKey ("Iku > Gebbo > Nama") in timeline.orders[encounterID][group]. Nil
+-- means the order the reference was written in. Setting nil clears it.
+function Timeline:Order(encounterID, group)
+    local orders = tdb().orders
+    return orders and orders[encounterID] and orders[encounterID][group or "nh"]
+end
+
+function Timeline:SetOrder(encounterID, group, key)
+    if encounterID == nil then
+        return
+    end
+    local db = tdb()
+    db.orders = db.orders or {}
+    db.orders[encounterID] = db.orders[encounterID] or {}
+    db.orders[encounterID][group or "nh"] = key
+    self:Fire()
+end
+
 -- The name of each group, as the dropdowns and messages show it.
 Timeline.GROUP_NAMES = { nh = "Normal/Heroic", mythic = "Mythic" }
 

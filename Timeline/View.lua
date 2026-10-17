@@ -29,6 +29,8 @@ CRT.TimelineView = View
 local LABEL_W = 150 -- the lane name column
 local ROW_H = 30
 local AXIS_H = 20
+local PHASE_ROW_H = 12 -- each row of phase labels above the time labels
+local PHASE_ROWS = 2 -- phase labels stagger over at most this many rows
 local BAR_H = 10 -- the sideways scroll bar
 local UNKNOWN_H = 16 -- the "Time unknown" line under the lanes
 local SCROLLBAR_W = 24 -- room for the lanes' up and down scroll bar
@@ -485,6 +487,12 @@ function Methods:SetData(base, encounterID, overlay, bossName, group)
     self.pull, self.encounterID, self.overlay, self.bossName, self.group = base, encounterID, overlay, bossName, group
     self:Refresh()
     self:ScrollTo(0)
+end
+
+-- The chosen order of the shown reference's parts (a list of part names), or nil for the order the
+-- reference was written in. Takes effect on the next Refresh or SetData.
+function Methods:SetOrder(order)
+    self.order = order
 end
 
 -- The phases, length and end line of what is shown, from the last refresh.
@@ -2066,10 +2074,11 @@ function Methods:Tex(list, n, layer, r, g, b, a)
 end
 
 -- Draws a 2 px red line over all the lanes for each phase, with its label on the axis just right
--- of it. The implied first phase at 0:00 gets no line.
+-- of it, above the time labels. The implied first phase at 0:00 gets no line. Returns how many rows
+-- of labels it used (0 to PHASE_ROWS), which the axis makes room for.
 function Methods:DrawPhases(phases, length, height)
-    local n = 0
-    for _, phase in ipairs(phases or {}) do
+    local n, rows, rowEnds = 0, 0, {}
+    for i, phase in ipairs(phases or {}) do
         if type(phase.t) == "number" and phase.t > 0 and phase.t <= length then
             n = n + 1
             local x = View.TimeToX(phase.t, length, self.trackW)
@@ -2089,13 +2098,35 @@ function Methods:DrawPhases(phases, length, height)
                 fs:SetTextColor(mocha("latte"))
                 return fs
             end)
+            -- the part a chosen order put in this phase is added to the drawn label only: the alerts
+            -- read a phase's number from phase.label, which stays as written
+            local part = self.extra and self.extra.parts and self.extra.parts[i]
+            local label = phase.label
+            if part then
+                label = label and (label .. " \194\183 " .. part) or part
+            end
+            text:SetText(label or "")
+            -- labels go in the first row they fit in without touching the one before, so close phase
+            -- lines stagger; a third that fits nowhere goes back to the first row
+            local row = 0
+            if label then
+                local w = text.GetStringWidth and text:GetStringWidth() or #label * 6
+                while row < PHASE_ROWS and (rowEnds[row] or -math.huge) > x do
+                    row = row + 1
+                end
+                if row == PHASE_ROWS then
+                    row = 0
+                end
+                rowEnds[row] = x + 3 + w + 6
+                rows = math.max(rows, row + 1)
+            end
             text:ClearAllPoints()
-            text:SetPoint("TOPLEFT", self.axis, "TOPLEFT", x + 3, -1)
-            text:SetText(phase.label or "")
+            text:SetPoint("TOPLEFT", self.axis, "TOPLEFT", x + 3, -1 - row * PHASE_ROW_H)
         end
     end
     hideFrom(self.phaseLines, n + 1)
     hideFrom(self.phaseTexts, n + 1)
+    return rows
 end
 
 -- Draws the 2 px line where the overlaid pull ended, or hides it when there is none.
@@ -2165,7 +2196,7 @@ function Methods:Refresh()
     local extra
     if pull then
         local rows = CRT.TimelineJournal:Rows(self.encounterID)
-        self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay, self.group)
+        self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay, self.group, self.order)
     else
         self.lanes, self.unknown = {}, {}
     end
@@ -2182,7 +2213,7 @@ function Methods:Refresh()
     local area = math.max(height, self.vscroll:GetHeight() or 0)
     self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), area)
     self.track:SetSize(self.trackW, area)
-    self.axis:SetSize(self.trackW, AXIS_H)
+    self.axis:SetSize(self.trackW, self.axisH or AXIS_H)
     if self.hscroll.UpdateScrollChildRect then
         self.hscroll:UpdateScrollChildRect() -- so a zoom scroll right after is not cut to the old range
     end
@@ -2193,7 +2224,15 @@ function Methods:Refresh()
         hideFrom(self.ticks, 1)
         hideFrom(self.texts, 1)
     end
-    self:DrawPhases(pull and self.extra.phases, length, height)
+    local phaseRows = self:DrawPhases(pull and self.extra.phases, length, height)
+    -- the axis grows by a row for each row of phase labels, so they never cover the time labels
+    local axisH = AXIS_H + phaseRows * PHASE_ROW_H
+    if axisH ~= (self.axisH or AXIS_H) then
+        self.axisH = axisH
+        self.axisScroll:SetHeight(axisH)
+        self.axis:SetSize(self.trackW, axisH)
+        self.vscroll:SetPoint("TOPLEFT", self.vscroll:GetParent(), "TOPLEFT", 0, -axisH)
+    end
     self:DrawEndLine(pull and self.extra.endLine, length, height)
 
     local size = s.iconSize or 22

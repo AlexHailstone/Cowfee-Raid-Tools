@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 --             for the format), transcribed from a planner screenshot on 2026-10-17 (the vault note
 --             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex
 --             sets them in game with the Reference types tool on the Development page, and its export
---             replaces this block.
+--             replaces this block. The raid picks the order the three turtles empower in: the
+--             Order line names the Empowered phases and the order the planner showed (Gebbo, Nama,
+--             Iku, from Alex on 2026-10-17), and each turtle's own rows carry (part Name).
 
 CRT.Bosses:Register({
     encounterID = 3497,
@@ -24,6 +26,7 @@ Phase: Empowered 1 1:04
 Phase: Empowered 2 3:03
 Phase: Empowered 3 5:06
 Phase: 7:08
+Order: Empowered 1, Empowered 2, Empowered 3 = Gebbo, Nama, Iku
 Malevolent Presence: 0:02+62, 1:04+119, 3:03+123, 5:06+145
 Empower: 0:00, 2:02, 4:01, 6:04
 Blink Nova (lead 8): 0:17, 0:48, 2:20, 2:51, 4:19, 4:50, 5:33, 6:22, 6:53
@@ -34,11 +37,11 @@ Empowered Ascension (lead 6): 5:05, 7:08
 Throw Junk: 0:27, 0:58, 1:37, 2:30, 3:01, 3:29, 4:00, 4:29, 5:00, 5:19, 5:46, 6:32, 7:03
 Evil Eyes: 1:04, 3:03, 5:06
 Binding Anguish: 1:04, 3:03, 5:06
-Mushroom Toss (lead 8): 1:13, 1:45
-Explosive Surprise (lead 12): 1:26, 1:58
+Mushroom Toss (lead 8, part Gebbo): 1:13, 1:45
+Explosive Surprise (lead 12, part Gebbo): 1:26, 1:58
 Dark Whispers: 2:01, 4:00, 6:03
-Mighty Thud (lead 10): 3:15, 3:47
-Frostfire Volley (lead 8): 5:20, 5:47
+Mighty Thud (lead 10, part Nama): 3:15, 3:47
+Frostfire Volley (lead 8, part Iku): 5:20, 5:47
 ]],
     },
 })

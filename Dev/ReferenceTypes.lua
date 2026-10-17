@@ -18,7 +18,7 @@ local Reference = CRT.TimelineReference
 
 local ROW_H = 30
 local TOP = 100 -- where the ability rows start
-local HEADERS = { boss = true, difficulty = true, length = true, encounter = true, phase = true }
+local HEADERS = { boss = true, difficulty = true, length = true, encounter = true, phase = true, order = true }
 
 local win
 local entryKey -- the reference being edited

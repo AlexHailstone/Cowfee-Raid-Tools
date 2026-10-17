@@ -5,9 +5,9 @@ local ADDON, CRT = ...
 -- page builds it with Build(parent, ctx) and gets back { view, holder, recent, emptyLabel,
 -- unnamedHelp, controls }, the controls being everything it must call refresh() on. The page keeps
 -- the choices (difficulty, boss, pull, overlay); ctx gives this file group(), boss(), pull() and
--- the setters selectGroup(key), selectBoss(key), selectPull(key), toggleOverlay(pullID) and
--- movePhase(index, seconds), plus bossOptions, pullOptions, pullLabel, showingReference() and
--- groups (the label of each difficulty group).
+-- the setters selectGroup(key), selectBoss(key), selectPull(key), selectOrder(key),
+-- toggleOverlay(pullID) and movePhase(index, seconds), plus bossOptions, pullOptions, orderOptions,
+-- order(), hasOrder(), pullLabel, showingReference() and groups (the label of each difficulty group).
 
 local Timeline = CRT.Timeline
 local View = CRT.TimelineView
@@ -84,6 +84,37 @@ function ReviewTab.Build(f, ctx)
             return ctx.pull() ~= nil
         end,
     }), 424, -4)
+
+    -- Order: shown only for a reference with an Order line. It sits beside Pull when the window is
+    -- wide enough (popped out), else at the end of the second row, where the docked panel has room.
+    local order = UI.Dropdown(f, "Order", {
+        options = ctx.orderOptions,
+        labelWidth = 40,
+        width = 140,
+        get = ctx.order,
+        set = ctx.selectOrder,
+    })
+    local orderHelp = UI.Help(f, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move into the window it now has; abilities shared by every part stay where they are.\n\nThe choice is kept for this boss and difficulty.")
+    local ORDER_W, WIDE_X, NARROW_X = 40 + 5 + 140, 664, 498
+    local function placeOrder()
+        local wide = (f:GetWidth() or 0) >= WIDE_X + ORDER_W + 32
+        order:ClearAllPoints()
+        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and WIDE_X or NARROW_X, wide and -4 or -38)
+        orderHelp:ClearAllPoints()
+        orderHelp:SetPoint("LEFT", order, "RIGHT", 4, 0)
+        local shown = ctx.hasOrder()
+        order:SetShown(shown)
+        orderHelp:SetShown(shown and wide)
+    end
+    local orderRefresh = order.refresh
+    order.refresh = function()
+        placeOrder()
+        orderRefresh()
+    end
+    controls[#controls + 1] = order
+    if f.HookScript then
+        f:HookScript("OnSizeChanged", placeOrder)
+    end
 
     checkbox(8, -38, "Record every pull", function()
         return settings().record

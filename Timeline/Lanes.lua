@@ -7,9 +7,9 @@ local ADDON, CRT = ...
 -- deaths lane on top and then one lane per row of the reference, in file order; when a recorded
 -- pull is laid over it, that pull's deaths fill the deaths lane and its casts become a row of
 -- ticks at the bottom. The Journal rows are cached, so new lane tables are made instead of
--- marking them. Lanes.Build(base, rows, settings, encounterID, overlay, group) returns the lanes, the
--- deaths that have no time (listed apart), and extra: the phases, the length, and the line where
--- the overlay pull ended.
+-- marking them. Lanes.Build(base, rows, settings, encounterID, overlay, group, order) returns the lanes, the
+-- deaths that have no time (listed apart), and extra: the phases, the length, the line where the
+-- overlay pull ended, and parts (the part now in each Order phase, by phase index).
 
 local Lanes = {}
 CRT.TimelineLanes = Lanes
@@ -119,7 +119,7 @@ end
 -- The lanes of a reference timeline: deaths (from the overlay pull only), one lane per reference
 -- row in file order, and with an overlay a row of ticks for that pull's casts. A row gets its
 -- spell and icon from its own [spell], else from the Journal row of the same name.
-local function referenceLanes(ref, rows, settings, encounterID, overlay, group)
+local function referenceLanes(ref, rows, settings, encounterID, overlay, group, order)
     local lanes, unknown = {}, {}
     local sources = {}
     if overlay then
@@ -167,6 +167,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group)
         end
         return shifted
     end
+    -- a chosen order (see Reference.PartMover) moves a part's casts to its new window first
+    local move, parts = CRT.TimelineReference.PartMover(ref, order)
     local maskedCasts = 0
     for _, row in ipairs(ref.rows or {}) do
         -- on Normal/Heroic a Mythic-only row is left out entirely, its casts included
@@ -185,7 +187,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group)
             if not hidden then
                 local marks = {}
                 for _, cast in ipairs(row.casts or {}) do
-                    local at = place(cast.t)
+                    local moved = move(row, cast.t)
+                    local at = moved and place(moved)
                     if at then
                         marks[#marks + 1] = { t = at, dur = cast.dur }
                     else
@@ -200,7 +203,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group)
         end
     end
 
-    local extra = { phases = phases, masked = maskedCasts, length = math.max(ref.length or 0, overlay and overlay.length or 0) }
+    local extra = { phases = phases, parts = parts, masked = maskedCasts, length = math.max(ref.length or 0, overlay and overlay.length or 0) }
     if overlay then
         local ticks = { key = "overlay", label = "Pull " .. tostring(overlay.id) .. " casts", kind = "ticks", marks = {} }
         for _, cast in ipairs(overlay.casts or {}) do
@@ -215,13 +218,14 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group)
 end
 
 -- group ("nh" or "mythic") is the difficulty shown: "nh" leaves out Mythic-only reference rows
--- and takes the death overlay from that group's pulls. Nil leaves everything in.
-function Lanes.Build(base, rows, settings, encounterID, overlay, group)
+-- and takes the death overlay from that group's pulls. Nil leaves everything in. order is the
+-- chosen order of a reference's parts (a list of part names); nil draws the written order.
+function Lanes.Build(base, rows, settings, encounterID, overlay, group, order)
     if not base then
         return {}, {}, { phases = {}, length = 0 }
     end
     if base.reference then
-        return referenceLanes(base.reference, rows, settings, encounterID, overlay, group)
+        return referenceLanes(base.reference, rows, settings, encounterID, overlay, group, order)
     end
     return pullLanes(base, rows, settings, encounterID, group)
 end
