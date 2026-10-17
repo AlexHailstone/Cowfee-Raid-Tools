@@ -510,7 +510,7 @@ local function createWindow(key, defaultPosition, build)
         -- redraw: a window kept up only for the stamp of a cleared note hides again
         changed()
     end)
-    w.stamp = stamp
+    w.stamp, w.stampTexture = stamp, flash
 
     local font = CreateFont("CRTNoteFont_" .. key)
     font:CopyFontObject(GameFontHighlight)
