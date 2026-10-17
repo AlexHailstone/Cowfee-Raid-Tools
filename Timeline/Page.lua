@@ -1,23 +1,26 @@
 local ADDON, CRT = ...
 
--- The Timeline page, with three tabs: Review (pick a boss and one of its references or saved
--- pulls, see it drawn by the timeline view), References (Timeline/ReferencePage.lua: paste, edit
+-- The Timeline page, with three tabs: Review (Timeline/ReviewTab.lua: pick a boss and one of its
+-- references or saved pulls, see it drawn by the timeline view), References (Timeline/ReferencePage.lua: paste, edit
 -- and delete reference timelines) and Settings (Timeline/SettingsTab.lua: the view, which rows to
 -- show, the deaths, and recording). Every control writes through Timeline:Set or the Journal's
 -- setters, and the page redraws when either tells it something changed. The boss list is the
 -- bosses with saved pulls, the bosses of the raid you are standing in, and the bosses that only
 -- have a reference, so a boss can be opened before its first pull. With a reference shown, the
--- Recent pulls list beside it lays one of the boss's pulls over it; that choice is not saved.
+-- Recent pulls list beside it lays one of the boss's pulls over it; that choice is not saved. The
+-- Difficulty dropdown picks Normal/Heroic or Mythic, and every list shows only that group (the choice
+-- is not saved either: the page starts on Normal/Heroic).
 
 local Timeline = CRT.Timeline
 local Journal = CRT.TimelineJournal
 local View = CRT.TimelineView
 local Reference = CRT.TimelineReference
 local ReferencePage = CRT.TimelineReferencePage
+local ReviewTab = CRT.TimelineReviewTab
 local SettingsTab = CRT.TimelineSettingsTab
 local UI = CRT.UI
 
-local RECENT_W = 150
+local RECENT_W = ReviewTab.RECENT_W
 local DOT = " \194\183 "
 local EMPTY_BOSS = "No pulls recorded for this boss yet"
 local EMPTY_ALL = "No boss pulls recorded yet"
@@ -37,6 +40,8 @@ local BACKDROP = {
     edgeSize = 1,
 }
 
+local GROUPS = { nh = "Normal/Heroic", mythic = "Mythic" }
+
 local TABS = {
     { key = "review", label = "Review" },
     { key = "references", label = "References" },
@@ -47,11 +52,12 @@ local page, view, emptyLabel, unnamedHelp
 local reviewFrame, holder, recent, refTab, settingsTab
 local shareButton, shareHelp
 local tabButtons, tabFrames = {}, {}
-local controls = {}
+local controls = {} -- the Review tab's controls, which refresh() redraws
 local currentTab = "review"
 local selectedBoss, selectedPull
+local selectedGroup = "nh" -- "nh" or "mythic": which difficulty the page shows
 local selectedBossName -- the selected boss's name, to find it again if its key changes
-local shownBoss, shownPull, shownBase, shownOverlay
+local shownBoss, shownPull, shownBase, shownOverlay, shownGroup
 local overlayID -- the pull laid over the shown reference, by id; not saved
 local bossList -- { { key, name, label } } for the dropdown and name lookups, rebuilt on each refresh
 local refsByBoss = {} -- boss key -> its references, { { key, ref, own, text } }, rebuilt with bossList
@@ -90,31 +96,6 @@ local function button(parent, text, width)
     return b
 end
 
--- A checkbox with its text on the right. get() is the setting, set(on) saves it.
-local function checkbox(parent, x, y, text, get, set)
-    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    cb:SetSize(24, 24)
-    cb:SetPoint("TOPLEFT", parent, "TOPLEFT", x - 4, y)
-    cb.Label = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    cb.Label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    cb.Label:SetJustifyH("LEFT")
-    cb.Label:SetText(text)
-    cb:SetScript("OnClick", function(self)
-        set(self:GetChecked() and true or false)
-    end)
-    cb.refresh = function()
-        cb:SetChecked(get() and true or false)
-    end
-    controls[#controls + 1] = cb
-    return cb
-end
-
-local function place(row, parent, x, y)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
-    controls[#controls + 1] = row
-    return row
-end
-
 -- The bosses ------------------------------------------------------------------------------------
 
 -- Bosses with saved pulls first, then this raid's bosses that have none, then the bosses that only
@@ -125,7 +106,7 @@ end
 local function buildBossList()
     local list, seen = {}, {}
     refsByBoss = {}
-    for _, boss in ipairs(Timeline:Bosses()) do
+    for _, boss in ipairs(Timeline:Bosses(selectedGroup)) do
         seen[boss.encounterID] = true
         local name = boss.name ~= "" and boss.name or tostring(boss.encounterID)
         list[#list + 1] = { key = boss.encounterID, name = name, label = name .. " (" .. boss.count .. ")" }
@@ -136,7 +117,7 @@ local function buildBossList()
             list[#list + 1] = { key = boss.encounterID, name = boss.name, label = boss.name }
         end
     end
-    for _, entry in ipairs(Reference:List()) do
+    for _, entry in ipairs(Reference:ForGroup(Reference:List(), selectedGroup)) do
         local key = Reference:BossKey(entry, list)
         if not seen[key] then
             seen[key] = true
@@ -172,8 +153,24 @@ local function showingReference()
     return type(selectedPull) == "string"
 end
 
+-- The game's name for a pull's difficulty, else the name of its group.
+local function difficultyName(pull)
+    if type(pull.difficultyID) == "number" and GetDifficultyInfo then
+        local ok, name = pcall(GetDifficultyInfo, pull.difficultyID)
+        if ok and type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+    return GROUPS[Timeline.DifficultyGroup(pull.difficultyID)]
+end
+
 local function pullLabel(pull)
-    return "Pull " .. pull.id .. DOT .. View.Format(pull.length or 0) .. DOT .. (pull.kill and "kill" or "wipe")
+    return "Pull " .. pull.id .. DOT .. View.Format(pull.length or 0) .. DOT .. (pull.kill and "kill" or "wipe") .. DOT .. difficultyName(pull)
+end
+
+-- A pull belongs to the shown difficulty group.
+local function inGroup(pull)
+    return Timeline.DifficultyGroup(pull.difficultyID) == selectedGroup
 end
 
 -- The boss's references first, then its recorded pulls, newest first.
@@ -183,7 +180,7 @@ local function pullOptions()
         list[#list + 1] = { key = entry.key, label = Reference.Label(entry.ref) .. (entry.own and (DOT .. "yours") or "") }
     end
     if selectedBoss then
-        for _, pull in ipairs(Timeline:Pulls(selectedBoss)) do
+        for _, pull in ipairs(Timeline:Pulls(selectedBoss, selectedGroup)) do
             list[#list + 1] = { key = pull.id, label = pullLabel(pull) }
         end
     end
@@ -236,11 +233,12 @@ local function fixSelection()
     if showingReference() then
         valid = findRef(selectedPull) ~= nil
     else
-        valid = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull) ~= nil
+        local pull = selectedBoss and selectedPull and Timeline:Pull(selectedBoss, selectedPull)
+        valid = pull ~= nil and inGroup(pull)
     end
     if not valid then
         local refs = bossRefs()
-        local pulls = selectedBoss and Timeline:Pulls(selectedBoss) or {}
+        local pulls = selectedBoss and Timeline:Pulls(selectedBoss, selectedGroup) or {}
         selectedPull = (refs[1] and refs[1].key) or (pulls[1] and pulls[1].id) or nil
     end
     if not showingReference() or not (overlayID and Timeline:Pull(selectedBoss, overlayID)) then
@@ -261,9 +259,9 @@ local function updateView()
         sig = base
     end
     local overlay = showingReference() and overlayID and Timeline:Pull(selectedBoss, overlayID) or nil
-    if sig ~= shownBase or selectedPull ~= shownPull or selectedBoss ~= shownBoss or overlay ~= shownOverlay then
-        shownBase, shownPull, shownBoss, shownOverlay = sig, selectedPull, selectedBoss, overlay
-        view:SetData(base, selectedBoss, overlay, bossName())
+    if sig ~= shownBase or selectedPull ~= shownPull or selectedBoss ~= shownBoss or overlay ~= shownOverlay or selectedGroup ~= shownGroup then
+        shownBase, shownPull, shownBoss, shownOverlay, shownGroup = sig, selectedPull, selectedBoss, overlay, selectedGroup
+        view:SetData(base, selectedBoss, overlay, bossName(), selectedGroup)
     else
         view:Refresh()
     end
@@ -271,105 +269,63 @@ local function updateView()
     emptyLabel:SetShown(base == nil)
     -- the Recent pulls list takes the right edge while a reference is shown
     holder:SetPoint("BOTTOMRIGHT", reviewFrame, "BOTTOMRIGHT", showingReference() and -(RECENT_W + 16) or -8, 8)
-    recent:Update(showingReference() and Timeline:Pulls(selectedBoss) or {}, overlayID, showingReference())
+    recent:Update(showingReference() and Timeline:Pulls(selectedBoss, selectedGroup) or {}, overlayID, showingReference())
 end
 
 local function buildReview(f)
     reviewFrame = f
-    local boss = UI.Dropdown(f, "Boss", {
-        options = bossOptions,
-        labelWidth = 40,
-        width = 230,
-        get = function()
+    local tab = ReviewTab.Build(f, {
+        groups = GROUPS,
+        group = function()
+            return selectedGroup
+        end,
+        boss = function()
             return selectedBoss
         end,
-        set = function(key)
+        pull = function()
+            return selectedPull
+        end,
+        -- Switching difficulty drops the overlay and repairs the selection.
+        selectGroup = function(key)
+            selectedGroup, overlayID, bossList = key, nil, nil
+            fixSelection()
+            refresh()
+        end,
+        selectBoss = function(key)
             selectedBoss, selectedPull, overlayID = key, nil, nil
             fixSelection()
             refresh()
         end,
-    })
-    place(boss, f, 8, -4)
-    local pulls = UI.Dropdown(f, "Pull", {
-        options = pullOptions,
-        labelWidth = 36,
-        width = 250,
-        get = function()
-            return selectedPull
-        end,
-        set = function(key)
+        selectPull = function(key)
             selectedPull, overlayID = key, nil
             refresh()
         end,
-        enabledIf = function()
-            return selectedPull ~= nil
+        toggleOverlay = function(pullID)
+            overlayID = overlayID ~= pullID and pullID or nil
+            refresh()
         end,
-    })
-    place(pulls, f, 330, -4)
-
-    checkbox(f, 8, -38, "Record every pull", function()
-        return settings().record
-    end, function(on)
-        Timeline:Set("record", on)
-    end)
-    local overlay = checkbox(f, 220, -38, "Deaths from recent pulls", function()
-        return settings().overlayOn
-    end, function(on)
-        Timeline:Set("overlayOn", on)
-    end)
-    overlay.Label:SetWidth(170)
-    UI.Help(f, "Deaths from recent pulls", "Draws the deaths of the pulls before this one over it, faded by how old they are, so deaths that repeat stand out. How many pulls it covers is on the Settings tab."):SetPoint("TOPLEFT", f, "TOPLEFT", 440, -40)
-
-    unnamedHelp = UI.Help(f, "Unnamed casts", function()
-        local text = "Some boss casts come from the game without a readable spell, so they are drawn in the \"Boss casts (unnamed)\" row with only their time. That is the game hiding the name, not a missing record."
-        -- a reference has no casts of its own, so the hint is for recorded pulls only
-        if view and view:CastCount() == 0 and selectedPull and not showingReference() then
-            text = text .. "\n\nThis pull has no casts at all. The game's Boss Timeline option may be off, so no boss events arrived. Check it in the game's options."
-        end
-        return text
-    end)
-    unnamedHelp:SetPoint("TOPLEFT", f, "TOPLEFT", 470, -40)
-
-    -- Zoom: the mouse wheel writes span without telling the page, so refresh re-reads it here.
-    place(UI.Slider(f, "Time visible", {
-        min = 60, max = 600, step = 30, format = View.Format,
-        labelWidth = 80, width = 160,
-        get = function()
-            return settings().span
-        end,
-        set = function(value)
-            Timeline:Set("span", value)
-            view:SetSpan(value)
-        end,
-    }), f, 8, -64)
-
-    recent = ReferencePage.Recent(f, RECENT_W, pullLabel, function(pullID)
-        overlayID = overlayID ~= pullID and pullID or nil
-        refresh()
-    end)
-
-    holder = CreateFrame("Frame", nil, f)
-    holder:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -96)
-    holder:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
-    view = View.Create(holder)
-    -- A phase line moved (or put back) on the timeline is written into the shown reference. A shipped
-    -- reference is never changed: the move makes a reference of your own, which is then shown.
-    view.onPhaseMoved = function(index, seconds)
-        if type(selectedPull) ~= "string" then
-            return
-        end
-        local key, copied = Reference:MovePhase(selectedPull, index, seconds)
-        if key then
-            selectedPull = key
-            if copied then
-                CRT:Print(TEXT.phaseCopy)
+        -- A phase line moved (or put back) on the timeline is written into the shown reference. A
+        -- shipped reference is never changed: the move makes a reference of your own, which is then
+        -- shown.
+        movePhase = function(index, seconds)
+            if type(selectedPull) ~= "string" then
+                return
             end
-        end
-        refresh()
-    end
-    emptyLabel = holder:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    emptyLabel:SetPoint("CENTER", holder, "CENTER")
-    emptyLabel:SetText(EMPTY_ALL)
+            local key, copied = Reference:MovePhase(selectedPull, index, seconds)
+            if key then
+                selectedPull = key
+                if copied then
+                    CRT:Print(TEXT.phaseCopy)
+                end
+            end
+            refresh()
+        end,
+        bossOptions = bossOptions,
+        pullOptions = pullOptions,
+        pullLabel = pullLabel,
+        showingReference = showingReference,
+    })
+    view, holder, recent, emptyLabel, unnamedHelp, controls = tab.view, tab.holder, tab.recent, tab.emptyLabel, tab.unnamedHelp, tab.controls
 end
 
 -- The pop-out window -----------------------------------------------------------------------------
@@ -706,6 +662,9 @@ local function build(pf)
             return selectedBoss
         end,
         bossName = bossName,
+        difficulty = function()
+            return selectedGroup
+        end,
         references = bossRefs,
         refresh = function()
             refresh()
@@ -716,6 +675,9 @@ local function build(pf)
             return selectedBoss
         end,
         bossName = bossName,
+        difficulty = function()
+            return selectedGroup
+        end,
         showingReference = showingReference,
         shownReference = function()
             return showingReference() and findRef(selectedPull) or nil

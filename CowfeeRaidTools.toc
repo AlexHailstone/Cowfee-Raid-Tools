@@ -60,6 +60,7 @@ Timeline\Reference.lua
 Timeline\Lanes.lua
 Timeline\View.lua
 Timeline\ReferencePage.lua
+Timeline\ReviewTab.lua
 Timeline\SettingsTab.lua
 Timeline\Page.lua
 Alerts\Reminders.lua

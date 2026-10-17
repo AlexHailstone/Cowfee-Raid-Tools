@@ -5,8 +5,10 @@ local ADDON, CRT = ...
 -- the first errors. On the right, the selected boss's references: yours with Edit and Delete, the
 -- shipped ones with Copy, which puts their text in the box to change and save as your own. The
 -- Timeline page builds it with Build(parent, ctx) and calls tab:Refresh() when anything changes;
--- ctx gives it selectedBoss(), bossName(), references() (the selected boss's references, by the
--- same rule as the boss list) and refresh(). Recent(parent, width, pullLabel, toggle) makes the
+-- ctx gives it selectedBoss(), bossName(), difficulty() (the page's difficulty group, "nh" or
+-- "mythic"), references() (the selected boss's references of that group, by the same rule as the
+-- boss list) and refresh(). Save stamps the text with the page's difficulty, and each listed
+-- reference has a Copy to button that adds a copy for the other group. Recent(parent, width, pullLabel, toggle) makes the
 -- Review tab's Recent pulls list: the boss's saved pulls beside a reference, where a click lays
 -- one over it (toggle(pullID)); the page keeps which one, and says with recent:Update.
 
@@ -20,9 +22,13 @@ CRT.TimelineReferencePage = ReferencePage
 local ROW_H = 24
 local BOX_W = 340
 local LIST_X = 364
+local LIST_W = 430
 local MAX_ERRORS = 3
 local REF_ROWS = 4 -- references listed before the Journal abilities start
 local ABILITY_H = 20
+
+local GROUP_NAMES = { nh = "Normal/Heroic", mythic = "Mythic" }
+local OTHER_GROUP = { nh = "mythic", mythic = "nh" }
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local BACKDROP = {
@@ -201,9 +207,15 @@ function ReferencePage.Build(f, ctx)
     save:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -6)
     save:SetScript("OnClick", function()
         edit:ClearFocus()
-        local text = edit:GetText()
+        -- What is typed is checked as typed (so an error names the right line); what is saved is
+        -- stamped with the difficulty the page shows, and the box then shows it as saved.
+        local typed = edit:GetText()
+        local text = Reference.StampDifficulty(typed, ctx.difficulty())
         local ok, errors
-        if editing then
+        local _, typedErrors = Reference.Parse(typed)
+        if typedErrors then
+            errors = typedErrors
+        elseif editing then
             ok, errors = Reference:Update(editing, text)
         else
             local key
@@ -212,6 +224,7 @@ function ReferencePage.Build(f, ctx)
             editing = key or nil -- a second Save changes this one instead of adding another
         end
         if ok then
+            edit:SetText(text)
             -- a reference for another boss is not in this boss's list: say where it went
             local saved = Reference.Parse(text)
             local here = false
@@ -219,7 +232,8 @@ function ReferencePage.Build(f, ctx)
                 here = here or entry.key == editing
             end
             local sameName = saved and ctx.bossName() and saved.boss:lower() == ctx.bossName():lower()
-            status:SetText((here or sameName or not saved) and "Saved" or ("Saved for " .. saved.boss))
+            local where = (here or sameName or not saved) and GROUP_NAMES[ctx.difficulty()] or saved.boss
+            status:SetText(saved and ("Saved for " .. where) or "Saved")
             status:SetTextColor(0.4, 1, 0.4)
         else
             local shown = {}
@@ -236,6 +250,22 @@ function ReferencePage.Build(f, ctx)
     clear:SetScript("OnClick", function()
         fill("", nil)
     end)
+
+    -- Adds a copy of a reference for the other difficulty group. Mythic-only rows are left out of a
+    -- Normal/Heroic copy; a reference that is nothing but those rows has nothing to copy.
+    local function copyTo(entry)
+        local group = OTHER_GROUP[ctx.difficulty()]
+        local text, removed = Reference.CopyTo(entry.text, group)
+        local key = Reference:Add(text)
+        if not key then
+            status:SetText("Nothing to copy: every row is Mythic-only")
+            status:SetTextColor(1, 0.3, 0.3)
+            return
+        end
+        status:SetText("Copied to " .. GROUP_NAMES[group]
+            .. (removed > 0 and (" (" .. removed .. " Mythic-only row" .. (removed == 1 and "" or "s") .. " left out)") or ""))
+        status:SetTextColor(0.4, 1, 0.4)
+    end
 
     -- The boss whose Journal abilities fit the box: its Boss and Encounter lines when it has them,
     -- else the selected boss. Returns the encounter ID to ask the Journal (or nil) and a name.
@@ -286,15 +316,15 @@ function ReferencePage.Build(f, ctx)
             return l
         end
         l = CreateFrame("Frame", nil, f)
-        l:SetSize(310, ROW_H)
+        l:SetSize(LIST_W, ROW_H)
         l:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, -30 - (i - 1) * ROW_H)
         l.name = label(l, "", "CRTFontSmall")
         l.name:SetPoint("LEFT", 0, 0)
-        l.name:SetWidth(150)
+        l.name:SetWidth(130)
         l.name:SetJustifyH("LEFT")
         l.name:SetWordWrap(false)
         l.kind = label(l, "", "CRTFontSmall")
-        l.kind:SetPoint("LEFT", 154, 0)
+        l.kind:SetPoint("LEFT", 134, 0)
         l.kind:SetTextColor(0.6, 0.6, 0.6)
         l.delete = button(l, "Delete", 52)
         l.delete:SetPoint("RIGHT", 0, 0)
@@ -302,6 +332,14 @@ function ReferencePage.Build(f, ctx)
         l.edit:SetPoint("RIGHT", l.delete, "LEFT", -4, 0)
         l.copy = button(l, "Copy", 52)
         l.copy:SetPoint("RIGHT", 0, 0)
+        l.copyTo = button(l, "", 128)
+        l.copyTo:SetPoint("RIGHT", l.edit, "LEFT", -4, 0)
+        l.copyTo:SetScript("OnClick", function(self)
+            local entry = Reference:Find(self.key)
+            if entry then
+                copyTo(entry)
+            end
+        end)
         l.edit:SetScript("OnClick", function(self)
             local entry = Reference:Find(self.key)
             if entry then
@@ -422,6 +460,11 @@ function ReferencePage.Build(f, ctx)
             l.edit:SetShown(entry.own)
             l.delete:SetShown(entry.own)
             l.copy:SetShown(not entry.own)
+            l.copyTo.key = entry.key
+            l.copyTo:SetText("Copy to " .. GROUP_NAMES[OTHER_GROUP[ctx.difficulty()]])
+            l.copyTo:ClearAllPoints()
+            l.copyTo:SetPoint("RIGHT", entry.own and l.edit or l.copy, "LEFT", -4, 0)
+            l.copyTo:Show()
             l:Show()
         end
         for i = #refs + 1, #lines do
@@ -429,6 +472,7 @@ function ReferencePage.Build(f, ctx)
             lines[i].edit:Hide()
             lines[i].delete:Hide()
             lines[i].copy:Hide()
+            lines[i].copyTo:Hide()
         end
         empty:SetShown(boss ~= nil and #refs == 0)
         placeAbilities(#refs)
