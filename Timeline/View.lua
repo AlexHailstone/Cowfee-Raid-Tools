@@ -23,8 +23,9 @@ local ADDON, CRT = ...
 -- spell of a cast icon it is dropped on); right-clicking a chip edits, renames or deletes it. Under it a
 -- Cooldowns row lists healer cooldowns and raid defensives (CRT.AlertCooldowns, filtered by its
 -- dropdown): dragged the same way, one opens a new alert of your own with its spell; right-clicked, it
--- can be saved as a template. A right click on the track that doesn't move opens a menu there: New
--- alert here, or Place a template or a cooldown.
+-- can be saved as a template. Each group's chips wrap onto rows, up to 3 shown (fewer when the lanes
+-- would get under 3 rows); the wheel scrolls the rest. A right click on the track that doesn't move
+-- opens a menu there: New alert here, or Place a template or a cooldown.
 
 local View = {}
 CRT.TimelineView = View
@@ -58,11 +59,13 @@ local FLAG_BTN_W = 20 -- the clickable marker: a square at the row top, the flag
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
 local MOVE_DIST = 4 -- a flag held and moved less than this many pixels is a click, not a drag
 local STRIP_ROW = 26 -- one row of the strip under the scroll bar: the templates, then the cooldowns
-local STRIP_H = STRIP_ROW * 2
+local STRIP_H = STRIP_ROW * 2 -- the strip at one row per group; it grows with the rows shown (view.stripH)
+local STRIP_MAX_ROWS = 3 -- the most rows of chips a group shows; the wheel scrolls the rest
+local STRIP_MIN_LANES = 3 -- lane rows that always stay in view: the groups show fewer rows first
+local STRIP_IND_W, STRIP_IND_GAP = 3, 3 -- the bar at a group's right end showing its rows in view
 local CHIP_H, CHIP_ICON, CHIP_EDGE, CHIP_GAP = 20, 16, 3, 4
 local CHIP_NAME_MAX = 160 -- a longer name is cut short on its chip
 local PLUS_W = 22
-local CHIP_WHEEL = 40 -- pixels the chips scroll per mouse wheel notch
 local MENU_DIST, MENU_TIME = 6, 0.3 -- a right click that moves less and lets go sooner opens the menu
 local DASH, DASH_GAP = 6, 4 -- the dashed line where a dragged chip would land
 local RENAME_POPUP = "COWFEE_RAID_TOOLS_SAVED_ALERT_RENAME"
@@ -354,7 +357,7 @@ function View.Create(parent)
     local view = setmetatable({
         icons = {}, labels = {}, lines = {}, ticks = {}, texts = {}, lanes = {}, unknown = {}, trackW = 1,
         bars = {}, leads = {}, phaseLines = {}, phaseTexts = {}, pullTicks = {}, extra = { phases = {}, length = 0 },
-        flags = {}, marks = {}, chips = {}, dashes = {}, cdChips = {},
+        flags = {}, marks = {}, chips = {}, dashes = {}, cdChips = {}, stripH = STRIP_H,
     }, Methods)
     local f = CreateFrame("Frame", nil, parent)
     f:SetAllPoints(parent)
@@ -381,8 +384,9 @@ function View.Create(parent)
     base:SetColorTexture(mocha("caramel"))
 
     view.unknownText = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    view.unknownText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, STRIP_H + 2)
-    view.unknownText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, STRIP_H + 2)
+    -- placed above the strip by PlaceStrip, as are the scroll bar and the lanes
+    view.unknownText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, view.stripH + 2)
+    view.unknownText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, view.stripH + 2)
     view.unknownText:SetJustifyH("LEFT")
 
     view:BuildStrip()
@@ -390,8 +394,8 @@ function View.Create(parent)
     -- the sideways scroll bar under the track
     local bar = CreateFrame("Slider", nil, f)
     bar:SetOrientation("HORIZONTAL")
-    bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LABEL_W, STRIP_H + UNKNOWN_H + 2)
-    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, STRIP_H + UNKNOWN_H + 2)
+    bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LABEL_W, view.stripH + UNKNOWN_H + 2)
+    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, view.stripH + UNKNOWN_H + 2)
     bar:SetHeight(BAR_H)
     local barBg = bar:CreateTexture(nil, "BACKGROUND")
     barBg:SetAllPoints()
@@ -414,7 +418,7 @@ function View.Create(parent)
     -- the lanes: an up and down scroll frame holding the name column and the sideways track
     local vscroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsTimelineView" .. count, f, "UIPanelScrollFrameTemplate")
     vscroll:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -AXIS_H)
-    vscroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, STRIP_H + UNKNOWN_H + BAR_H + 4)
+    vscroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, view.stripH + UNKNOWN_H + BAR_H + 4)
     local body = CreateFrame("Frame", nil, vscroll)
     body:SetSize(1, 1)
     vscroll:SetScrollChild(body)
@@ -1737,15 +1741,16 @@ local function fillCooldownChip(c, e)
     return paintChip(c, e.name, tex, { mocha("caramel") }, { mocha("latte", 0.6) })
 end
 
--- The strip along the bottom: two rows. The templates: their label (with help) and the chips in a
--- sideways scroll frame. Under them the cooldowns: a label (with help), the filter dropdown and their
--- chips, scrolling the same way.
+-- The strip along the bottom: two groups of chips. The templates: their label (with help) and the
+-- chips in a scroll frame, wrapping onto rows. Under them the cooldowns: a label (with help), the
+-- filter dropdown and their chips, wrapping the same way. Each group shows up to STRIP_MAX_ROWS rows
+-- (LayoutStrip); the wheel over it scrolls the rest, a thin bar at its right end showing where.
 function Methods:BuildStrip()
     local f = self.frame
     local strip = CreateFrame("Frame", nil, f)
     strip:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 2)
     strip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, 2)
-    strip:SetHeight(STRIP_H)
+    strip:SetHeight(self.stripH)
     local line = strip:CreateTexture(nil, "ARTWORK")
     line:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
     line:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
@@ -1769,13 +1774,29 @@ function Methods:BuildStrip()
         scroll:EnableMouseWheel(true)
         return scroll, row
     end
+    -- the bar at a group's right end: a faint track as tall as the group, the thumb its rows in view;
+    -- on the strip, so the scroll frame does not clip it
+    local function rowsBar(scroll)
+        local track = strip:CreateTexture(nil, "OVERLAY")
+        track:SetWidth(STRIP_IND_W)
+        track:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 0, 0)
+        track:SetColorTexture(mocha("latte", 0.15))
+        track:Hide()
+        local thumb = strip:CreateTexture(nil, "OVERLAY")
+        thumb:SetWidth(STRIP_IND_W)
+        thumb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 0, 0)
+        thumb:SetColorTexture(mocha("caramel"))
+        thumb:Hide()
+        return { track = track, thumb = thumb }
+    end
     local scroll, row = chipScroll()
     scroll:SetPoint("TOPLEFT", strip, "TOPLEFT", LABEL_W, -3)
     scroll:SetPoint("BOTTOMRIGHT", strip, "TOPRIGHT", 0, -STRIP_ROW + 3)
     scroll:SetScript("OnMouseWheel", function(_, delta)
-        self:ScrollChips(-delta * CHIP_WHEEL)
+        self:ScrollStripRows("chip", delta)
     end)
     self.chipScroll, self.chipRow = scroll, row
+    self.chipBar = rowsBar(scroll)
 
     -- the Cooldowns row: label, (?), the filter dropdown, then the chips
     local cdLabel = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -1802,7 +1823,7 @@ function Methods:BuildStrip()
             end,
             set = function(key)
                 Cooldowns:SetFilter(key)
-                self.cdScroll:SetHorizontalScroll(0) -- a new list starts at its first chip
+                self.cdFirst = 0 -- a new list starts at its first row
                 self:DrawCooldowns()
             end,
         })
@@ -1812,17 +1833,18 @@ function Methods:BuildStrip()
         after = drop.Dropdown or drop
     end
     -- the chips start just after the dropdown (else the (?), else the label), whatever their widths, and
-    -- run to the strip's right end, centred on the second row
+    -- run to the strip's right end, under the templates' rows (LayoutStrip moves them as those change)
     local cdScroll, cdRow = chipScroll()
     cdScroll:SetPoint("LEFT", after, "RIGHT", 6, 0)
     cdScroll:SetPoint("RIGHT", strip, "TOPRIGHT", 0, -STRIP_ROW - STRIP_ROW / 2)
     cdScroll:SetHeight(CHIP_H)
     cdScroll:SetScript("OnMouseWheel", function(_, delta)
-        self:ScrollCooldowns(-delta * CHIP_WHEEL)
+        self:ScrollStripRows("cd", delta)
     end)
-    self.cdScroll, self.cdRow = cdScroll, cdRow
+    self.cdScroll, self.cdRow, self.cdAfter = cdScroll, cdRow, after
+    self.cdBar = rowsBar(cdScroll)
     self.cdEmpty = cdRow:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    self.cdEmpty:SetPoint("LEFT", cdRow, "LEFT", 4, 0)
+    self.cdEmpty:SetPoint("LEFT", cdRow, "TOPLEFT", 4, -CHIP_H / 2)
     self.cdEmpty:SetTextColor(mocha("latte", 0.7))
     self.cdEmpty:SetText(TEXT.noCooldowns)
     self.cdEmpty:Hide()
@@ -1851,18 +1873,119 @@ function Methods:BuildStrip()
     self.plus = plus
 end
 
--- Scrolls a row of chips sideways by dx pixels, within its width.
-local function scrollRow(scroll, rowW, dx)
-    local most = math.max(0, (rowW or 0) - (scroll:GetWidth() or 0))
-    scroll:SetHorizontalScroll(math.max(0, math.min(most, (scroll:GetHorizontalScroll() or 0) + dx)))
+-- The height of n rows of chips: a chip, then STRIP_ROW more per row.
+local function rowsHeight(n)
+    return n * STRIP_ROW - (STRIP_ROW - CHIP_H)
 end
 
-function Methods:ScrollChips(dx)
-    scrollRow(self.chipScroll, self.chipRowW, dx)
+-- The width a group's chips wrap within: its scroll frame, less room for the bar at its right end.
+-- Not laid out yet (no width), everything goes on one row until the next redraw.
+local function wrapWidth(scroll)
+    local w = scroll:GetWidth() or 0
+    if w <= 0 then
+        return math.huge
+    end
+    return w - STRIP_IND_W - STRIP_IND_GAP
 end
 
-function Methods:ScrollCooldowns(dx)
-    scrollRow(self.cdScroll, self.cdRowW, dx)
+-- Places chips left to right on row (a group's scroll child), starting a new row whenever the next
+-- would pass width. The returned function places frame f of width w and returns its row number.
+local function flow(row, width)
+    local x, n = 0, 1
+    return function(f, w)
+        if x > 0 and x + w > width then
+            x, n = 0, n + 1
+        end
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", row, "TOPLEFT", x, -(n - 1) * STRIP_ROW)
+        x = x + w + CHIP_GAP
+        return n
+    end
+end
+
+-- Shows a group's rows from first (0 based) and its bar: only when it has more rows than shown, the
+-- thumb's share and place those of the rows in view.
+local function showRows(scroll, bar, first, shown, rows)
+    if scroll.UpdateScrollChildRect then
+        scroll:UpdateScrollChildRect()
+    end
+    scroll:SetVerticalScroll(first * STRIP_ROW)
+    local more = rows > shown
+    bar.track:SetShown(more)
+    bar.thumb:SetShown(more)
+    if more then
+        local h = rowsHeight(shown)
+        bar.track:SetHeight(h)
+        bar.thumb:SetHeight(h * shown / rows)
+        bar.thumb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 0, -h * first / rows)
+    end
+end
+
+local function clampRow(first, rows, shown)
+    return math.max(0, math.min(rows - shown, first or 0))
+end
+
+-- The wheel over a group ("chip" the templates, "cd" the cooldowns): one row per notch, within its rows.
+function Methods:ScrollStripRows(group, delta)
+    local key = group == "cd" and "cd" or "chip"
+    local rows, shown = self[key .. "Rows"] or 1, self[key .. "Shown"] or 1
+    local first = clampRow((self[key .. "First"] or 0) + (delta > 0 and -1 or 1), rows, shown)
+    self[key .. "First"] = first
+    showRows(self[key .. "Scroll"], self[key .. "Bar"], first, shown, rows)
+end
+
+-- Puts Time unknown, the scroll bar and the bottom of the lanes above the strip at its current height.
+function Methods:PlaceStrip()
+    local f, h = self.frame, self.stripH
+    self.strip:SetHeight(h)
+    self.unknownText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 4, h + 2)
+    self.unknownText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, h + 2)
+    self.bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", LABEL_W, h + UNKNOWN_H + 2)
+    self.bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, h + UNKNOWN_H + 2)
+    self.vscroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, h + UNKNOWN_H + BAR_H + 4)
+    -- the lanes' window changed height: the track still reaches its bottom
+    local area = math.max(math.max(1, #self.lanes * ROW_H), self.vscroll:GetHeight() or 0)
+    self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), area)
+    self.track:SetSize(self.trackW, area)
+    if self.hscroll.UpdateScrollChildRect then
+        self.hscroll:UpdateScrollChildRect()
+    end
+end
+
+-- Sizes the two groups to their rows, up to STRIP_MAX_ROWS each, and the strip to the sum. The lanes
+-- keep STRIP_MIN_LANES rows in view: without room, the group with more rows shown gives one up first
+-- (each keeps one), so it scrolls instead.
+function Methods:LayoutStrip()
+    local tRows, cRows = self.chipRows or 1, self.cdRows or 1
+    local t, c = math.min(STRIP_MAX_ROWS, tRows), math.min(STRIP_MAX_ROWS, cRows)
+    local room = (self.frame:GetHeight() or 0) - (self.axisH or AXIS_H) - UNKNOWN_H - BAR_H - 4
+        - STRIP_MIN_LANES * ROW_H
+    local most = math.max(2, math.floor(room / STRIP_ROW))
+    while t + c > most do
+        if t >= c and t > 1 then
+            t = t - 1
+        else
+            c = c - 1
+        end
+    end
+    self.chipShown, self.cdShown = t, c
+    self.chipFirst = clampRow(self.chipFirst, tRows, t)
+    self.cdFirst = clampRow(self.cdFirst, cRows, c)
+    -- the templates from the top; the cooldowns under them, their label on their first row and their
+    -- chips centred in their rows (the left edge follows the dropdown, level with the same middle)
+    self.chipScroll:SetPoint("BOTTOMRIGHT", self.strip, "TOPRIGHT", 0, -t * STRIP_ROW + 3)
+    local top = -t * STRIP_ROW
+    self.cdLabel:SetPoint("LEFT", self.strip, "TOPLEFT", 4, top - STRIP_ROW / 2)
+    self.cdScroll:SetPoint("LEFT", self.cdAfter, "RIGHT", 6, -(c - 1) * STRIP_ROW / 2)
+    self.cdScroll:SetPoint("RIGHT", self.strip, "TOPRIGHT", 0, top - c * STRIP_ROW / 2)
+    self.cdScroll:SetHeight(rowsHeight(c))
+    showRows(self.chipScroll, self.chipBar, self.chipFirst, t, tRows)
+    showRows(self.cdScroll, self.cdBar, self.cdFirst, c, cRows)
+    local h = (t + c) * STRIP_ROW
+    if h ~= self.stripH then
+        self.stripH = h
+        self:PlaceStrip()
+    end
 end
 
 -- A chip from pool list on row: left-drag places it, a right click opens its menu. kind is "saved" (a
@@ -1912,21 +2035,16 @@ function Methods:DrawStrip()
         return
     end
     local list = CRT.AlertSaved and CRT.AlertSaved:List() or {}
-    local x = 0
+    local width = wrapWidth(self.chipScroll)
+    local put = flow(self.chipRow, width)
     for n, e in ipairs(list) do
         local c = self:Chip(n)
         c.savedID = e.id
-        local w = fillChip(c, e.s)
-        c:ClearAllPoints()
-        c:SetPoint("LEFT", self.chipRow, "LEFT", x, 0)
-        x = x + w + CHIP_GAP
+        put(c, fillChip(c, e.s))
     end
     hideFrom(self.chips, #list + 1)
-    self.plus:ClearAllPoints()
-    self.plus:SetPoint("LEFT", self.chipRow, "LEFT", x, 0)
-    self.chipRowW = x + PLUS_W
-    self.chipRow:SetSize(self.chipRowW, CHIP_H)
-    self:ScrollChips(0)
+    self.chipRows = put(self.plus, PLUS_W) -- the + chip last
+    self.chipRow:SetSize(width < math.huge and width or 1, rowsHeight(self.chipRows))
     self:DrawCooldowns()
 end
 
@@ -1936,26 +2054,25 @@ function Methods:CooldownList()
     return Cooldowns and Cooldowns:List(Cooldowns:Filter()) or {}
 end
 
--- Draws the Cooldowns row: a chip for each cooldown of the chosen filter.
+-- Draws the Cooldowns group: a chip for each cooldown of the chosen filter, then lays out the strip.
 function Methods:DrawCooldowns()
     if self.cdFilter and self.cdFilter.refresh then
         self.cdFilter.refresh()
     end
     local list = self:CooldownList()
-    local x = 0
+    local width = wrapWidth(self.cdScroll)
+    local put = flow(self.cdRow, width)
+    local rows = 1
     for n, e in ipairs(list) do
         local c = self:CooldownChip(n)
         c.cooldown = e
-        local w = fillCooldownChip(c, e)
-        c:ClearAllPoints()
-        c:SetPoint("LEFT", self.cdRow, "LEFT", x, 0)
-        x = x + w + CHIP_GAP
+        rows = put(c, fillCooldownChip(c, e))
     end
     hideFrom(self.cdChips, #list + 1)
     self.cdEmpty:SetShown(#list == 0)
-    self.cdRowW = math.max(1, x - CHIP_GAP)
-    self.cdRow:SetSize(self.cdRowW, CHIP_H)
-    self:ScrollCooldowns(0)
+    self.cdRows = rows
+    self.cdRow:SetSize(width < math.huge and width or 1, rowsHeight(rows))
+    self:LayoutStrip()
 end
 
 -- The ghost chip that follows the cursor while a chip is dragged; above everything, taking no clicks.
