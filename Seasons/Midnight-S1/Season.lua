@@ -1,12 +1,12 @@
 local ADDON, CRT = ...
 
--- Midnight Season 1: one file per boss in this folder, each a CRT.Bosses:Register call (see
+-- Midnight Season 2: one file per boss in this folder, each a CRT.Bosses:Register call (see
 -- Bosses/Registry.lua for the fields). A new season gets a folder of its own, its own Season.lua with
 -- current = true, and this one's current set to false.
 
 CRT.Bosses:Season({
     key = "midnight-s1",
-    name = "Midnight Season 1",
+    name = "Midnight Season 2",
     expansion = "Midnight",
     order = 1,
     current = true,
@@ -17,7 +17,7 @@ CRT.Bosses:Season({
     raids = {
         {
             key = "midnight-s1",
-            name = "Midnight Season 1",
+            name = "Midnight Season 2",
             bosses = {
                 3470, -- Nek'zali the Soulcoiler
                 3497, -- The Lost Explorers
