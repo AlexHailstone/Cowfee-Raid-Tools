@@ -1,12 +1,13 @@
 local ADDON, CRT = ...
 
--- The General Settings page: settings for the whole addon, in two columns. Only settings, so it has no
--- tabs.
---   Left    Window (the main window's scale, style and background opacity, UI:ApplyStyle in
---           UI/Panel.lua), Text (the font, outline and size of every text the addon draws with its
---           shared fonts, CRT:ApplyFonts in Core.lua), Sound, Reports and the Minimap button
---   Right   Layers (which frame strata each kind of window is drawn in, UI:SetLayer in UI/Panel.lua)
---           and Profiles (Profiles.lua)
+-- The General Settings page: settings for the whole addon, on two tabs (the last one is remembered in
+-- CRTDB.ui.settingsTab).
+--   Appearance  left: Window (the main window's scale, style and background opacity, UI:ApplyStyle in
+--               UI/Panel.lua), Text (the font, outline and size of every text the addon draws with its
+--               shared fonts, CRT:ApplyFonts in Core.lua), Sound, Reports and the Minimap button;
+--               right: Layers (which frame strata each group of windows is drawn in, UI:SetLayer in
+--               UI/Panel.lua)
+--   Profiles    Profiles.lua
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
 
 local UI = CRT.UI
@@ -407,7 +408,10 @@ local function buildRight(pf)
         refresh()
     end)
 
-    local top = lastLayer - 44
+end
+
+local function buildProfiles(pf)
+    local x, top = LEFT_X, -44
     heading(pf, x, top, "Profiles", "A profile holds everything the addon saves: every setting and window position, plus your raid layouts, notes, consumables lists, and the Late Tracker and Tattlebot history.\n\nEach character remembers its own profile. New characters start on the profile picked under New characters.\n\nSwitching, copying or resetting a profile reloads your interface, like /reload.\n\nExport gives the profile as text to share or keep. Import saves pasted text as a new profile.")
 
     local current = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -534,16 +538,65 @@ local function buildRight(pf)
     import:SetScript("OnClick", showImport)
 end
 
+local TABS = {
+    { key = "appearance", label = "Appearance" },
+    { key = "profiles", label = "Profiles" },
+}
+local tabButtons, tabFrames = {}, {}
+
+local function selectTab(key)
+    if not tabFrames[key] then
+        key = "appearance"
+    end
+    CRT.db.ui.settingsTab = key
+    for _, tab in ipairs(TABS) do
+        local on = tab.key == key
+        tabFrames[tab.key]:SetShown(on)
+        UI:SetTabSelected(tabButtons[tab.key], on)
+    end
+end
+
 local function build(pf)
     page = pf
 
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("General Settings")
-    UI.Help(pf, "General Settings", "Settings for the whole addon: the main window, the text everywhere, sound, the minimap button, which windows are drawn above which, and profiles. Every change applies straight away, except profile changes, which reload your interface."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "General Settings", "Settings for the whole addon. Appearance: the main window, the text everywhere, sound, reports, the minimap button, and which windows are drawn above which. Profiles: saving, sharing and switching everything the addon keeps. Every change applies straight away, except profile changes, which reload your interface."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
-    buildLeft(pf)
-    buildRight(pf)
+    for i, tab in ipairs(TABS) do
+        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
+        b:SetSize(160, 26)
+        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
+        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        b.sel = b:CreateTexture(nil, "ARTWORK")
+        b.sel:SetAllPoints()
+        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(tab.label)
+        b:SetScript("OnClick", function()
+            selectTab(tab.key)
+        end)
+        tabButtons[tab.key] = b
+        UI:RegisterTab(b)
+
+        -- The tab's content starts 30 lower than the page did, so the columns keep their own offsets.
+        local f = CreateFrame("Frame", nil, pf)
+        f:SetPoint("TOPLEFT", 0, -30)
+        f:SetPoint("BOTTOMRIGHT", 0, 0)
+        f:Hide()
+        tabFrames[tab.key] = f
+    end
+    local line = pf:CreateTexture(nil, "ARTWORK")
+    line:SetColorTexture(0.35, 0.35, 0.35, 1)
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", 8, -62)
+    line:SetPoint("TOPRIGHT", -8, -62)
+
+    buildLeft(tabFrames.appearance)
+    buildRight(tabFrames.appearance)
+    buildProfiles(tabFrames.profiles)
+    selectTab(CRT.db.ui.settingsTab)
 
     pf:SetScript("OnShow", refresh)
     -- Ctrl + mouse wheel changes the scale too, so the slider follows it.
