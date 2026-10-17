@@ -143,6 +143,7 @@ local function getTextDialog()
         return textDialog
     end
     local d = CreateFrame("Frame", "CowfeeRaidToolsProfileText", UIParent, "BasicFrameTemplateWithInset")
+    UI:StyleWindow(d)
     d:SetSize(520, 340)
     d:SetPoint("CENTER")
     d:SetFrameStrata("FULLSCREEN_DIALOG")

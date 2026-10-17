@@ -277,6 +277,7 @@ end
 
 local function build()
     win = CreateFrame("Frame", "CowfeeRaidToolsReferenceTypes", UIParent, "BasicFrameTemplateWithInset")
+    UI:StyleWindow(win)
     win:SetSize(600, 400)
     win:SetPoint("CENTER")
     win:SetFrameStrata("DIALOG")
