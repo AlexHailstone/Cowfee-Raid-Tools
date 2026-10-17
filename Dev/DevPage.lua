@@ -63,7 +63,7 @@ local function build(pf)
     UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev markers, /crt dev types, /crt dev winlog and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     -- Three columns: tools, more tools, and every window's layer.
-    local x, right, third = 8, 330, 600
+    local x, right, third = 8, 360, 700
 
     -- Layout editor.
     heading(pf, x, -44, "Layout editor", "Change where the pieces of a page sit, without changing the code: pick a piece, move it with the mouse or arrows, size it with the wheel. Changes are saved and applied after each /reload, and Export lists them so they can be written into the code.\n\nMove pieces is off by default, so with the editor open the panel still works as usual. Tick it to pick and move things.")
