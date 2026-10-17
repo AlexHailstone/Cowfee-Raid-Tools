@@ -493,8 +493,12 @@ local function buildPopout()
         save()
     end)
 
-    -- Closing the window, however it closes, puts the Review tab back.
+    -- Closing the window, however it closes, puts the Review tab back, and ends a Show on the
+    -- Timeline's light.
     popWin:SetScript("OnHide", function()
+        if view then
+            view:ClearHighlight()
+        end
         if popped then
             dock()
         end
