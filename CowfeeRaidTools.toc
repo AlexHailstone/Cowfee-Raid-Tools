@@ -87,6 +87,8 @@ UI\SettingsPage.lua
 Seasons\Midnight-S1\Season.lua
 Seasons\Midnight-S1\NekzaliTheSoulcoiler.lua
 Seasons\Midnight-S1\Sszorak.lua
+Seasons\Midnight-S1\EntombedSentinels.lua
+Seasons\Midnight-S1\TheTwinFangs.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
