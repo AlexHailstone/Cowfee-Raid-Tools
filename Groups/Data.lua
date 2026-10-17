@@ -203,11 +203,13 @@ function Groups:Working()
     return g.working
 end
 
--- The names in the layout the Raid Groups page shows (the selected one, with any edits not yet saved
--- to it), in slot order, each once: { key, ... }. Reads only; an empty list when there is none.
-function Groups:SelectedNames()
-    local g = CRT.db and CRT.db.groups
-    local slots = g and g.working
+-- The names in the active layout (Active: the roster the raid runs with, set by "Use This Group"), in
+-- slot order, each once: { key, ... }. Never the working grid, which is a draft. Empty when no layout is
+-- active.
+function Groups:ActiveNames()
+    local id = self:Active()
+    local preset = id and self:Find(id)
+    local slots = preset and preset.slots
     local out, seen = {}, {}
     if type(slots) ~= "table" then
         return out

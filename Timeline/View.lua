@@ -71,6 +71,7 @@ local MENU_DIST, MENU_TIME = 6, 0.3 -- a right click that moves less and lets go
 local DASH, DASH_GAP = 6, 4 -- the dashed line where a dragged chip would land
 local RENAME_POPUP = "COWFEE_RAID_TOOLS_SAVED_ALERT_RENAME"
 local CD_DROP_W = 120 -- the Cooldowns row's filter dropdown
+local ASSIGN_MENU_MAX_H = 400 -- the "Anyone else" submenu scrolls past this height
 
 local TEXT = {
     notes = "Notes",
@@ -1511,7 +1512,7 @@ local function classColored(name, class)
     return "|c" .. hex .. name .. "|r"
 end
 
--- Who a cooldown can be given to: the names of the Raid Groups page's layout (CRT.Groups:SelectedNames),
+-- Who a cooldown can be given to: the names of the active Raid Groups layout (CRT.Groups:ActiveNames),
 -- else the live group. { { key, name, class } } in name order: name as the editor's For shows it (no
 -- realm on your own), class from the live group, else the class cache, else nil.
 function Methods:AssignRoster()
@@ -1528,7 +1529,7 @@ function Methods:AssignRoster()
             end
         end
     end
-    local keys = Groups.SelectedNames and Groups:SelectedNames() or {}
+    local keys = Groups.ActiveNames and Groups:ActiveNames() or {}
     if #keys == 0 then
         for _, entry in ipairs(live) do
             keys[#keys + 1] = entry.key
@@ -1542,7 +1543,7 @@ function Methods:AssignRoster()
         local class = entry and entry.class
         if not (readable(class) and type(class) == "string" and class ~= "") then
             class = cache[key:lower()]
-            if type(class) ~= "string" or class == "" then
+            if not (readable(class) and type(class) == "string" and class ~= "") then
                 class = nil
             end
         end
@@ -1560,9 +1561,9 @@ end
 -- Fills root (the drop's menu, or a cooldown's Place submenu) with who cooldown e can be given at t: under
 -- its class's name that class's players, or a greyed line saying there are none and Leave unassigned (a
 -- Raid note for no one); then Anyone else, the rest of the roster; then Just me (your own, as before).
--- With nobody on the roster: Leave unassigned and Just me.
-function Methods:AssignMenu(root, e, t)
-    local roster = self:AssignRoster()
+-- With nobody on the roster: Leave unassigned and Just me. roster is AssignRoster's, read here when nil.
+function Methods:AssignMenu(root, e, t, roster)
+    roster = roster or self:AssignRoster()
     local ofClass, others = {}, {}
     for _, p in ipairs(roster) do
         if p.class and p.class == e.class then
@@ -1598,6 +1599,9 @@ function Methods:AssignMenu(root, e, t)
     if #others > 0 then
         root:CreateDivider()
         local sub = root:CreateButton(TEXT.anyoneElse)
+        if sub.SetScrollMode then
+            sub:SetScrollMode(ASSIGN_MENU_MAX_H)
+        end
         for _, p in ipairs(others) do
             forPlayer(sub, p)
         end
@@ -1616,7 +1620,8 @@ function Methods:PlaceCooldown(e, t, lane)
     if not (e and e.spellID) then
         return
     end
-    if not (self:EncounterNumber() and assigns(lane)) then
+    -- without the game's menus, as before: the editor at once
+    if not (self:EncounterNumber() and assigns(lane) and MenuUtil and MenuUtil.CreateContextMenu) then
         self:OpenAt(t, e.spellID, e.name)
         return
     end
@@ -2543,9 +2548,10 @@ function Methods:TrackMenu(x, y)
             cooldowns:CreateTitle(TEXT.noCooldowns)
         end
         local assigning = assigns(lane) and self:EncounterNumber() ~= nil
+        local roster = assigning and #cds > 0 and self:AssignRoster() -- read once for every cooldown
         for _, e in ipairs(cds) do
             if assigning then
-                self:AssignMenu(cooldowns:CreateButton(e.name), e, t)
+                self:AssignMenu(cooldowns:CreateButton(e.name), e, t, roster)
             else
                 cooldowns:CreateButton(e.name, function()
                     self:PlaceCooldown(e, t, lane)
