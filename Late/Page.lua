@@ -331,20 +331,27 @@ local function showTotals()
         w = 370
     end
     local list = Late:Totals()
+    -- The player's name takes 40% of the width, and the three numbers share the rest evenly, each
+    -- centred under its heading, so the columns spread out as the box grows.
+    local nameW = math.floor(w * 0.4)
+    local colW = math.floor((w - nameW - 4) / 3)
+    local function col(k)
+        return nameW + 4 + (k - 1) * colW
+    end
     for i = 0, #list do
         local row = totalRow(i + 1)
         local y = -24 - i * TOTAL_ROW_H
         if i == 0 then
-            place(row.name, 2, y, w - 214, "LEFT", "|cff999999Player|r")
-            place(row.late, w - 208, y, 64, "RIGHT", "|cff999999Late|r")
-            place(row.time, w - 140, y, 84, "RIGHT", "|cff999999Time late|r")
-            place(row.never, w - 62, y, 60, "RIGHT", "|cff999999No-Show|r")
+            place(row.name, 2, y, nameW - 2, "LEFT", "|cff999999Player|r")
+            place(row.late, col(1), y, colW, "CENTER", "|cff999999Late|r")
+            place(row.time, col(2), y, colW, "CENTER", "|cff999999Time late|r")
+            place(row.never, col(3), y, colW, "CENTER", "|cff999999No-Show|r")
         else
             local t = list[i]
-            place(row.name, 2, y, w - 214, "LEFT", name(t.key))
-            place(row.late, w - 208, y, 64, "RIGHT", t.late .. " of " .. t.nights)
-            place(row.time, w - 140, y, 84, "RIGHT", t.late > 0 and minutes(t.seconds) or "-")
-            place(row.never, w - 62, y, 60, "RIGHT", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
+            place(row.name, 2, y, nameW - 2, "LEFT", name(t.key))
+            place(row.late, col(1), y, colW, "CENTER", t.late .. " of " .. t.nights)
+            place(row.time, col(2), y, colW, "CENTER", t.late > 0 and minutes(t.seconds) or "-")
+            place(row.never, col(3), y, colW, "CENTER", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
         end
     end
     detailChild:SetHeight(24 + (#list + 1) * TOTAL_ROW_H + 8)
