@@ -372,22 +372,32 @@ end
 local function buildRight(pf)
     local x = RIGHT_X
 
-    heading(pf, x, -44, "Layers", "Which layer each window is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nThe game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
-    for i, layer in ipairs(UI.LAYERS) do
-        add(UI.Dropdown(pf, layer.label, {
-            options = UI:LayerChoices(layer.key),
+    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nAlerts: your next spell, alert bars, icons, texts and circles, and the low-health banner.\nRaid windows: the ready check window, your consumables bar and the debuff panel.\n\nMixed means the windows of a group are in different layers; picking one puts them all in it. The game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
+    for i, group in ipairs(UI.LAYER_GROUPS) do
+        add(UI.Dropdown(pf, group.label, {
+            options = function()
+                local list = UI:GroupLayerChoices(group)
+                if UI:GroupLayer(group) == "mixed" then
+                    local withMixed = { { key = "mixed", label = "Mixed", disabled = true } }
+                    for _, s in ipairs(list) do
+                        withMixed[#withMixed + 1] = s
+                    end
+                    return withMixed
+                end
+                return list
+            end,
             labelWidth = LABEL_W + 30,
             width = CONTROL_W - 10,
             get = function()
-                return UI:Layer(layer.key)
+                return UI:GroupLayer(group)
             end,
             set = function(key)
-                UI:SetLayer(layer.key, key)
+                UI:SetGroupLayer(group, key)
                 refresh()
             end,
         }), x, -62 - (i - 1) * 30)
     end
-    local lastLayer = -62 - #UI.LAYERS * 30
+    local lastLayer = -62 - #UI.LAYER_GROUPS * 30
     local resetLayers = button(pf, "Default layers", 130)
     resetLayers:SetPoint("TOPLEFT", x, lastLayer - 4)
     resetLayers:SetScript("OnClick", function()

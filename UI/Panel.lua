@@ -177,6 +177,47 @@ function UI:SetLayer(key, strata)
     end
 end
 
+-- The groups General Settings shows, each setting the layer of several windows at once. The
+-- Development page (/crt dev) still lists every window on its own.
+UI.LAYER_GROUPS = {
+    { key = "panel", label = "Main window", layers = { "panel" } },
+    { key = "notes", label = "Note windows", layers = { "notes" } },
+    { key = "timeline", label = "Timeline window", layers = { "timeline" } },
+    { key = "alerts", label = "Alerts", layers = { "alert", "alertbars", "alerticons", "alerttexts", "alertcircles", "lowhealth" } },
+    { key = "raid", label = "Raid windows", layers = { "readycheck", "bar", "debuffs" } },
+}
+
+-- The layer every window of a group is in, or "mixed" when they differ.
+function UI:GroupLayer(group)
+    local common
+    for _, key in ipairs(group.layers) do
+        local strata = self:Layer(key)
+        if common and strata ~= common then
+            return "mixed"
+        end
+        common = strata
+    end
+    return common
+end
+
+-- The layers a group can be set to: up to the lowest highest-allowed layer of its windows.
+function UI:GroupLayerChoices(group)
+    local choices
+    for _, key in ipairs(group.layers) do
+        local list = self:LayerChoices(key)
+        if not choices or #list < #choices then
+            choices = list
+        end
+    end
+    return choices or self.STRATA
+end
+
+function UI:SetGroupLayer(group, strata)
+    for _, key in ipairs(group.layers) do
+        self:SetLayer(key, strata)
+    end
+end
+
 local layerEvents = CreateFrame("Frame")
 layerEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
 layerEvents:SetScript("OnEvent", function()
