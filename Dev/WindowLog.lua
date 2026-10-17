@@ -85,7 +85,7 @@ local function outside(f)
                 if l and r and t and b then
                     local over = math.max(fl - l, r - fr, t - ft, fb - b)
                     if over > 2 then
-                        found[#found + 1] = { over = over, text = string.format("%s %s past by %.0f (l %.0f r %.0f t %.0f b %.0f)", child:GetObjectType(), child:GetName() or (child:GetDebugName and child:GetDebugName()) or "?", over, l, r, t, b) }
+                        found[#found + 1] = { over = over, text = string.format("%s %s past by %.0f (l %.0f r %.0f t %.0f b %.0f)", child:GetObjectType(), child:GetName() or (child.GetDebugName and child:GetDebugName()) or "?", over, l, r, t, b) }
                     end
                 end
                 walk(child, depth + 1)
