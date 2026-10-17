@@ -913,14 +913,16 @@ local function nearDistance(q, s, from, len)
     return back1[len]
 end
 
--- The most typos a near match may have: more for a longer query.
+-- The most typos a near match may have: more for a longer query, none under 4 letters (too many hits).
 local function nearLimit(n)
     if n >= 10 then
         return 3
     elseif n >= 6 then
         return 2
+    elseif n >= 4 then
+        return 1
     end
-    return 1
+    return -1
 end
 
 local function isWordByte(c)
