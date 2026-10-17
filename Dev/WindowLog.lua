@@ -62,7 +62,7 @@ end
 -- method hook above never sees a drag start.
 local JUMP = 40
 local watcher = CreateFrame("Frame")
-local lastLeft, lastTop, wasDown
+local wasDown
 
 local function cursor(f)
     local x, y = GetCursorPosition()
@@ -104,24 +104,33 @@ local function outside(f)
     end
 end
 
+-- The windows watched: the main one and the Timeline's pop-out, each with its last place.
+local WATCHED = {
+    { name = "main", get = function() return UI.frame end },
+    { name = "pop-out", get = function() return _G.CowfeeRaidToolsTimelineWindow end },
+}
+
 watcher:SetScript("OnUpdate", function()
-    local f = UI.frame
-    if not on or not f or not f:IsShown() then
-        lastLeft, lastTop = nil, nil
-        return
-    end
     local down = IsMouseButtonDown("LeftButton")
-    if down and not wasDown and f:IsMouseOver() then
-        say("left button down, " .. cursor(f), f)
-        outside(f)
+    for _, w in ipairs(WATCHED) do
+        local f = w.get()
+        if not on or not f or not f:IsShown() then
+            w.left, w.top = nil, nil
+        else
+            if down and not wasDown and f:IsMouseOver() then
+                say(w.name .. ", left button down, " .. cursor(f), f)
+                if w.name == "main" then
+                    outside(f)
+                end
+            end
+            local left, top = f:GetLeft(), f:GetTop()
+            if left and top and w.left and (math.abs(left - w.left) > JUMP or math.abs(top - w.top) > JUMP) then
+                say(string.format("|cffff4040JUMP|r %s from left %.0f top %.0f, %s", w.name, w.left, w.top, cursor(f)), f)
+            end
+            w.left, w.top = left, top
+        end
     end
     wasDown = down
-    local left, top = f:GetLeft(), f:GetTop()
-    if left and top and lastLeft and (math.abs(left - lastLeft) > JUMP or math.abs(top - lastTop) > JUMP) then
-        say(string.format("|cffff4040JUMP|r from left %.0f top %.0f, %s", lastLeft, lastTop, cursor(f)), f)
-        outside(f)
-    end
-    lastLeft, lastTop = left, top
 end)
 
 function Log:Toggle()
