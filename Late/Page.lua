@@ -149,11 +149,7 @@ local function tonightLines(night, now)
             lines[#lines + 1] = l
         end
     end
-    local ok = onTimeLine(onTime)
-    if ok then
-        lines[#lines + 1] = ""
-        lines[#lines + 1] = ok
-    end
+    -- Who is here on time shows in the grid above, as a ready check.
     return table.concat(lines, "\n")
 end
 
@@ -494,11 +490,101 @@ local function refreshList()
     listChild:SetHeight(#entries * ROW_H)
 end
 
+-- Tonight's grid -----------------------------------------------------------
+-- The expected roster as its 8 groups (UI.SlotGrid, the same grid as Raid Groups), each player with a
+-- ready check icon: ready once they are in your group, a ? while they are not. A late arrival shows how
+-- late on the right, and someone not here yet their running time. Players added by hand fill the empty
+-- slots after the layout's. Clicking a ? counts that player as here on time (Late:SetOnTime).
+
+local READY_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
+local WAITING_ICON = "Interface\\RaidFrame\\ReadyCheck-Waiting"
+local GRID_RIGHT_W = 60 -- room for "+12 min" or "1:04:30"
+local tonightGrid
+
+-- The player at each grid slot: the layout's slots, then players added by hand in the empty ones.
+-- Without a running night, the layout's names with no status.
+local function gridPlayers(night)
+    local preset = CRT.Groups:Find(Late:Settings().layoutId)
+    local bySlot, placed = {}, {}
+    local byKey = {}
+    if night then
+        for _, p in ipairs(night.players) do
+            byKey[p.key:lower()] = p
+        end
+    end
+    for i = 1, CRT.Groups.NUM_SLOTS do
+        local key = preset and preset.slots[i]
+        if key and key ~= "" then
+            if not night then
+                bySlot[i] = { key = key, idle = true }
+            elseif byKey[key:lower()] and not placed[key:lower()] then
+                bySlot[i] = byKey[key:lower()]
+                placed[key:lower()] = true
+            end
+        end
+    end
+    if night then
+        local free = 1
+        for _, p in ipairs(night.players) do
+            if not placed[p.key:lower()] then
+                while bySlot[free] and free <= CRT.Groups.NUM_SLOTS do
+                    free = free + 1
+                end
+                if free > CRT.Groups.NUM_SLOTS then
+                    break
+                end
+                bySlot[free] = p
+                placed[p.key:lower()] = true
+            end
+        end
+    end
+    return bySlot
+end
+
+local function paintGrid(night, now)
+    if not tonightGrid then
+        return
+    end
+    local bySlot = gridPlayers(night)
+    for i, b in ipairs(tonightGrid.slots) do
+        local p = bySlot[i]
+        b.player = p
+        if not p then
+            b.text:SetText("")
+            b.icon:Hide()
+            b.right:SetText("")
+        else
+            b.text:SetText(Groups.ReportName(p.key))
+            if p.idle then
+                b.text:SetTextColor(0.6, 0.6, 0.6)
+                b.icon:Hide()
+                b.right:SetText("")
+            elseif p.joinedAt then
+                b.text:SetTextColor(Groups.ClassColor(p.key))
+                b.icon:SetTexture(READY_ICON)
+                b.icon:Show()
+                if Late.IsLate(night, p) then
+                    b.right:SetText("|cffffd100+" .. minutes(Late.Seconds(night, p)) .. "|r")
+                else
+                    b.right:SetText("")
+                end
+            else
+                b.text:SetTextColor(0.6, 0.6, 0.6)
+                b.icon:SetTexture(WAITING_ICON)
+                b.icon:Show()
+                b.right:SetText("|cffff6060" .. running(Late.Seconds(night, p, now)) .. "|r")
+            end
+        end
+        UI.FitText(b.text)
+    end
+end
+
 -- Refresh ----------------------------------------------------------------
 
 local function refreshTonight()
     local night = Late:Current()
     local now = time()
+    paintGrid(night, now)
     if night then
         setText(tonightText, tonightChild, tonightLines(night, now))
         startButton:SetText("Restart from now")
@@ -807,9 +893,37 @@ local function buildTonight(f)
     end)
     tooltip(editButton, "Edit roster", "Change tonight's list while the raid runs: add someone from your group or by name, count a player as on time, or take someone off the list. Only tonight changes, not the expected roster layout.")
 
+    -- The expected roster as a grid, then who is missing and who came late in a wide box under it.
+    local GRID_TOP = -44
+    tonightGrid = UI.SlotGrid(f, { cols = 4, x = 8, top = GRID_TOP, width = UI.PAGE_W - 16, rightW = GRID_RIGHT_W, skin = skin })
+    for _, b in ipairs(tonightGrid.slots) do
+        b:SetScript("OnEnter", function(self)
+            local p = self.player
+            if not p or p.idle then
+                return
+            end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(Groups.ReportName(p.key), 1, 1, 1)
+            if p.joinedAt then
+                GameTooltip:AddLine("In the group since " .. clock(p.joinedAt) .. ".", 0.8, 0.8, 0.8, true)
+            else
+                GameTooltip:AddLine("Not in the group yet. Click to count them as here on time, such as for someone on another character or excused.", 0.8, 0.8, 0.8, true)
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        b:SetScript("OnClick", function(self)
+            local p = self.player
+            if p and not p.idle and not p.joinedAt then
+                Late:SetOnTime(p.key)
+            end
+        end)
+    end
     local tonightBox
     tonightBox, tonightText, tonightChild = textBox(f, "CowfeeRaidToolsLateTonightScroll")
-    tonightBox:SetPoint("TOPLEFT", 8, -40)
+    tonightBox:SetPoint("TOPLEFT", 8, GRID_TOP - 2 * tonightGrid.blockH - 6)
     tonightBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
 end
 
