@@ -86,10 +86,12 @@ UI\Minimap.lua
 UI\SettingsPage.lua
 Seasons\Midnight-S1\Season.lua
 Seasons\Midnight-S1\NekzaliTheSoulcoiler.lua
+Seasons\Midnight-S1\Sszorak.lua
 #@do-not-package@
 Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
 Dev\MarkerEditor.lua
 Dev\SeasonTools.lua
+Dev\ReferenceTypes.lua
 Dev\DevPage.lua
 #@end-do-not-package@
