@@ -275,10 +275,9 @@ local function buildNotes(pf)
     local share = makeButton(pf, "Share to raid", 122)
     share:SetPoint("LEFT", active, "RIGHT", 6, 0)
     share:SetScript("OnClick", function()
-        if selected then
-            CRT.NoteComm:Share(selected)
-            refresh()
-        end
+        -- with no note picked, Share sends the Empty note (Notes/Comm.lua)
+        CRT.NoteComm:Share(selected)
+        refresh()
     end)
     local roster = makeButton(pf, "Open roster in Raid Groups", 250)
     roster:SetPoint("TOPLEFT", active, "BOTTOMLEFT", 0, -4)

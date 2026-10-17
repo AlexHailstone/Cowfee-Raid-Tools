@@ -535,6 +535,8 @@ end
 local function shareNote()
     local encounterID = shownEncounter()
     if not encounterID then
+        -- no boss: Share sends the Empty note (Notes/Comm.lua)
+        CRT.NoteComm:Share(nil)
         return
     end
     local id, made = CRT.Notes:NoteFor(encounterID, shownDifficulty(), bossName())

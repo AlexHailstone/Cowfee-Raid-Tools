@@ -120,6 +120,19 @@ end
 
 -- Sending -----------------------------------------------------------------------------------------
 
+-- The Empty note: what Share sends when there is no note to share. A name and one line of text, so every
+-- version of the addon takes it as a note; no encounter ID, so no boss uses it.
+local EMPTY_TEXT = "EncounterID:;Name:Empty\nEmpty"
+
+local function emptyNote()
+    for id, record in pairs(CRT.db.notes.list) do
+        if record.raw == EMPTY_TEXT then
+            return id
+        end
+    end
+    return (Notes:Import(EMPTY_TEXT))
+end
+
 function Comm:CanShare()
     if not channel() then
         return false, "You need to be in a group to share a note."
@@ -184,9 +197,15 @@ end
 -- leader or an assistant, or a share still running); the chat then says why it wasn't sent.
 function Comm:Share(id)
     local record = Notes:Get(id)
-    if not record then
-        CRT:Print("Pick a note to share first.")
-        return
+    -- No note, or one with no text: share the Empty note, which replaces everyone's note with "Empty"
+    -- (and still shows the stamp). The one you have is reused, so it is never made twice.
+    if not record or (record.raw or "") == "" then
+        id = emptyNote()
+        record = Notes:Get(id)
+        if not record then
+            CRT:Print("Couldn't make the Empty note.")
+            return
+        end
     end
     if Notes:Active() ~= id then
         Notes:SetActive(id)
