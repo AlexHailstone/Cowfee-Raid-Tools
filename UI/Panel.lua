@@ -3,12 +3,12 @@ local ADDON, CRT = ...
 local UI = { pages = {}, order = {} }
 CRT.UI = UI
 
--- The main window: wide and short, so pages lay out in columns (1040 x 600 since 0.19.0; it was 860 x
+-- The main window: wide and short, so pages lay out in columns (1200 x 600 since 0.19.0; it was 860 x
 -- 762). A page gets the area right of the menu: PAGE_W x PAGE_H. Pages size their columns from these,
 -- never from numbers of their own, and /crt dev layout reports anything placed outside them.
-local FRAME_W, FRAME_H = 1040, 600
+local FRAME_W, FRAME_H = 1200, 600
 local MENU_W = 150
-UI.PAGE_W = FRAME_W - 8 - MENU_W - 8 - 8 -- 866: the menu's left margin, the menu, the gap, the right margin
+UI.PAGE_W = FRAME_W - 8 - MENU_W - 8 - 8 -- 1026: the menu's left margin, the menu, the gap, the right margin
 UI.PAGE_H = FRAME_H - 32 - 8 -- 560: under the title bar, above the bottom margin
 
 -- Pages register themselves; the panel builds each one lazily the first time it is shown.

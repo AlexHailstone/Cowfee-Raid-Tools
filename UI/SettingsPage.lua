@@ -13,12 +13,13 @@ local ADDON, CRT = ...
 local UI = CRT.UI
 local Profiles = CRT.Profiles
 
--- The columns of the Appearance tab across the page (UI.PAGE_W, 866): a slider row is LABEL_W + 5 +
--- CONTROL_W plus its value, about 310, and a dropdown row about 265.
-local LEFT_X, MIDDLE_X, RIGHT_X = 10, 320, 600
-local LABEL_W = 110
-local CONTROL_W = 150
-local CHECK_TEXT_W = 250 -- a checkbox's text wraps at this width, inside its column
+-- The columns of the Appearance tab, a third of the page each (UI.PAGE_W): a slider row is LABEL_W + 5
+-- + CONTROL_W plus its value, about 330, and a dropdown row about 285.
+local COL_W = math.floor(UI.PAGE_W / 3)
+local LEFT_X, MIDDLE_X, RIGHT_X = 10, 10 + COL_W, 10 + 2 * COL_W
+local LABEL_W = 120
+local CONTROL_W = 160
+local CHECK_TEXT_W = COL_W - 40 -- a checkbox's text wraps at this width, inside its column
 
 local page
 local controls = {}

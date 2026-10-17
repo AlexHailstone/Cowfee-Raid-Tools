@@ -46,7 +46,7 @@ local TEXT = {
 
 -- Four columns across the page (UI.PAGE_W): the three note windows, COLUMN_W each, then Alerts and
 -- Sharing in what is left. A slider row is 4 + labelWidth + 5 + width + its value (about 44).
-local COLUMN_W = 205
+local COLUMN_W = math.floor((UI.PAGE_W - 16) / 4)
 local ALERTS_X = 8 + 3 * COLUMN_W + 10
 local ALERTS_W = UI.PAGE_W - 8 - ALERTS_X
 local ICON_POSITIONS = {
@@ -128,7 +128,7 @@ local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
 end
 
 -- A number setting as an Edit Mode style slider. opts: low and high (the range), labelWidth and
--- width (default 84 and 70, to fit a column), format (the text beside the bar) and enabledIf.
+-- width (default 100 and 76, to fit a column), format (the text beside the bar) and enabledIf.
 -- getter and setter come last because setting() and alert() return both: Lua only passes every
 -- return value of a call when it is the last argument, so in the middle the setter is lost.
 local function makeNumber(parent, x, y, label, opts, getter, setter)
@@ -136,8 +136,8 @@ local function makeNumber(parent, x, y, label, opts, getter, setter)
         min = opts.low,
         max = opts.high,
         step = 1,
-        labelWidth = opts.labelWidth or 84,
-        width = opts.width or 70,
+        labelWidth = opts.labelWidth or 100,
+        width = opts.width or 76,
         format = opts.format,
         enabledIf = opts.enabledIf,
         get = getter,
@@ -238,7 +238,7 @@ local function build(pf)
         return Notes:Alert().tts and true or false
     end
     local top, x = -14, ALERTS_X
-    local LABEL, CONTROL = 96, 76 -- a slider row: 4 + 96 + 5 + 76 + its value fills ALERTS_W
+    local LABEL, CONTROL = 116, 76 -- a slider row: 4 + LABEL + 5 + CONTROL + its value, inside ALERTS_W
     local alertsTitle = heading(pf, x, top, TEXT.alerts)
     UI.Help(pf, TEXT.alerts, TEXT.alertsHelp):SetPoint("LEFT", alertsTitle, "RIGHT", 6, 0)
     makeNumber(pf, x - 4, top - 22, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = LABEL, width = CONTROL, format = seconds, enabledIf = alertsOn }, alert("seconds"))
