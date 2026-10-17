@@ -60,7 +60,7 @@ local TEXT = {
     iconHelp = "Spell: type the spell's ID. The alert shows its icon and, with no text, its name.\n\n"
         .. "Icon ID: type an icon's file ID to show that icon instead.\n\n"
         .. "Or type a spell name (3 letters or more) to search this boss's abilities and your own "
-        .. "spells, then click one or press Enter for the top match.",
+        .. "spells (a close spelling works too), then click one or press Enter for the top match.",
     lookupBoss = "Boss",
     lookupTimeline = "Timeline",
     lookupYours = "Yours",
@@ -267,7 +267,7 @@ local function spellInfo(id)
     local icon
     if C_Spell and C_Spell.GetSpellTexture then
         local ok, tex = pcall(C_Spell.GetSpellTexture, id)
-        if ok and tex ~= nil and readable(tex) then
+        if ok and readable(tex) and tex ~= nil then
             icon = tex
         end
     end
@@ -777,6 +777,7 @@ local SOURCE_ORDER = { boss = 1, timeline = 2, yours = 3 }
 local SOURCE_TAG = { boss = TEXT.lookupBoss, timeline = TEXT.lookupTimeline, yours = TEXT.lookupYours }
 local yours -- your spellbook's spells, read once per open the first time a name is looked up
 local matches = {} -- the matches the list shows, best first
+local lookupFrom -- the spell when the box took the focus: text naming it is refilled by a pick
 
 local function readableString(v)
     return readable(v) and type(v) == "string" and v ~= ""
@@ -787,7 +788,7 @@ local function readableID(v)
 end
 
 local function readableIcon(v)
-    if v ~= nil and readable(v) and (type(v) == "number" or type(v) == "string") then
+    if readable(v) and v ~= nil and (type(v) == "number" or type(v) == "string") then
         return v
     end
 end
@@ -819,7 +820,9 @@ local function spellbook()
                     local okItem, item = pcall(SB.GetSpellBookItemInfo, index, bank)
                     if okItem and type(item) == "table" then
                         local id, name, kind = readableID(item.spellID), item.name, item.itemType
-                        if id and readableString(name) and readable(kind) and kind == spellType then
+                        local passive = item.isPassive
+                        passive = readable(passive) and passive == true
+                        if id and not passive and readableString(name) and readable(kind) and kind == spellType then
                             yours[#yours + 1] = { spellID = id, name = name, icon = readableIcon(item.iconID) }
                         end
                     end
@@ -852,7 +855,8 @@ local function lookupCandidates()
         end
         for _, row in ipairs(journal) do
             if type(row) == "table" then
-                add(row.spellID, row.name, row.icon, "boss")
+                -- your own rows added to the boss's list are not its abilities
+                add(row.spellID, row.name, row.icon, row.own and "timeline" or "boss")
             end
         end
         local Ref, Lanes = CRT.TimelineReference, CRT.TimelineLanes
@@ -875,27 +879,106 @@ local function lookupCandidates()
     return out
 end
 
--- The spells whose name holds the query, in any case: names starting with it first, then by source,
+-- Optimal string alignment distance (Levenshtein plus swapping two neighbours) between q and the len
+-- characters of s from position from, both already lower case. Three rows, reused.
+local osaRows = { {}, {}, {} }
+local function nearDistance(q, s, from, len)
+    local back2, back1, row = osaRows[1], osaRows[2], osaRows[3]
+    for j = 0, len do
+        back1[j] = j
+    end
+    local qPrev
+    for i = 1, #q do
+        local qc = q:byte(i)
+        row[0] = i
+        local sPrev
+        for j = 1, len do
+            local sc = s:byte(from + j - 1)
+            local v = back1[j - 1] + (qc == sc and 0 or 1)
+            if back1[j] + 1 < v then
+                v = back1[j] + 1
+            end
+            if row[j - 1] + 1 < v then
+                v = row[j - 1] + 1
+            end
+            if i > 1 and j > 1 and qc == sPrev and qPrev == sc and back2[j - 2] + 1 < v then
+                v = back2[j - 2] + 1
+            end
+            row[j] = v
+            sPrev = sc
+        end
+        qPrev = qc
+        back2, back1, row = back1, row, back2
+    end
+    return back1[len]
+end
+
+-- The most typos a near match may have: more for a longer query.
+local function nearLimit(n)
+    if n >= 10 then
+        return 3
+    elseif n >= 6 then
+        return 2
+    end
+    return 1
+end
+
+local function isWordByte(c)
+    return (c >= 48 and c <= 57) or (c >= 97 and c <= 122) or c >= 128
+end
+
+-- The best distance of q to the name's start, or to the same length from any word start in it.
+local function nameDistance(q, name)
+    local n, total = #q, #name
+    local best = nearDistance(q, name, 1, math.min(n, total))
+    for at = 2, total do
+        if best == 0 then
+            break
+        end
+        if isWordByte(name:byte(at)) and not isWordByte(name:byte(at - 1)) then
+            local d = nearDistance(q, name, at, math.min(n, total - at + 1))
+            if d < best then
+                best = d
+            end
+        end
+    end
+    return best
+end
+
+-- The spells for a query, in any case: names holding it (those starting with it first), then near
+-- matches, close spellings of the name's start or of a word in it, by distance. Each group by source,
 -- then by name.
 local function findMatches(query)
     local q = query:lower()
+    local limit = nearLimit(#q)
     local found = {}
     for _, c in ipairs(lookupCandidates()) do
-        local at = c.name:lower():find(q, 1, true)
+        local key = c.name:lower()
+        c.key = key
+        local at = key:find(q, 1, true)
         if at then
-            c.starts = at == 1
+            c.rank, c.dist = at == 1 and 0 or 1, 0
             found[#found + 1] = c
+        else
+            local d = nameDistance(q, key)
+            if d <= limit then
+                c.rank, c.dist = 2, d
+                found[#found + 1] = c
+            end
         end
     end
     table.sort(found, function(a, b)
-        if a.starts ~= b.starts then
-            return a.starts
+        if a.rank ~= b.rank then
+            return a.rank < b.rank
+        end
+        if a.dist ~= b.dist then
+            return a.dist < b.dist
         end
         if a.source ~= b.source then
             return SOURCE_ORDER[a.source] < SOURCE_ORDER[b.source]
         end
-        if a.name:lower() ~= b.name:lower() then
-            return a.name:lower() < b.name:lower()
+        if a.key ~= b.key then
+            return a.key < b.key
         end
         return a.spellID < b.spellID
     end)
@@ -907,6 +990,20 @@ local function hideLookup()
     if frame and frame.lookup then
         frame.lookup:Hide()
     end
+end
+
+-- The list closed without a pick: letters left in the box give way to the alert's ID again.
+local function putIDBack()
+    if not (draft and frame) or readOnly() or not trim(frame.idEdit:GetText()):find("%a") then
+        return
+    end
+    local id = draft.iconType == "id" and draft.iconID or draft.spellID
+    frame.idEdit:SetText(tostring(id or ""))
+end
+
+local function closeLookup()
+    hideLookup()
+    putIDBack()
 end
 
 -- The icon a pick in Icon ID mode takes: the source's, else the game's when it reads as a number.
@@ -929,7 +1026,8 @@ local function pickMatch(m)
     if not (draft and m) or readOnly() then
         return
     end
-    local before = validID(draft.spellID)
+    local before = validID(lookupFrom) or validID(draft.spellID)
+    lookupFrom = nil
     local beforeName = before and Reminders.SpellName(before)
     local text = trim(draft.text)
     local id
@@ -942,7 +1040,8 @@ local function pickMatch(m)
         id = m.spellID
         draft.spellID = id
     end
-    if text == "" or (beforeName and text == trim(beforeName)) then
+    -- an icon alone leaves the text: it still names the alert's spell
+    if draft.iconType ~= "id" and (text == "" or (beforeName and text == trim(beforeName))) then
         draft.text = m.name
         frame.textEdit:SetText(m.name)
     end
@@ -982,7 +1081,6 @@ local function showLookup(query)
             row.nameText:SetTextColor(0.6, 0.6, 0.6)
             row.idText:SetText("")
             row.tagText:SetText("")
-            row:SetEnabled(false)
             row:Show()
         else
             row:Hide()
@@ -1749,13 +1847,16 @@ local function build()
         self:ClearFocus()
     end)
     f.idEdit:SetScript("OnEscapePressed", function(self)
-        hideLookup()
+        closeLookup()
         self:ClearFocus()
     end)
+    f.idEdit:SetScript("OnEditFocusGained", function()
+        lookupFrom = draft and validID(draft.spellID)
+    end)
     f.idEdit:SetScript("OnEditFocusLost", function()
-        -- a click on a row takes the focus first: the row's own click closes the list then
+        -- a click on the list takes the focus first: the click itself closes the list then
         if not (f.lookup:IsShown() and f.lookup:IsMouseOver()) then
-            hideLookup()
+            closeLookup()
         end
     end)
     lay(UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp), 296 + ID_SHIFT, -140 - ROW1_EXTRA)
@@ -1774,6 +1875,8 @@ local function build()
     list:SetFrameStrata(f:GetFrameStrata())
     list:SetFrameLevel((f:GetFrameLevel() or 1) + LOOKUP_LEVEL)
     list:EnableMouse(true)
+    -- a click on the list between rows closes it too, so it is never left open without the focus
+    list:SetScript("OnMouseDown", closeLookup)
     local M = CRT.MOCHA
     list.edge = list:CreateTexture(nil, "BACKGROUND")
     list.edge:SetAllPoints()
@@ -1808,9 +1911,12 @@ local function build()
         r.nameText:SetPoint("RIGHT", r.idText, "LEFT", -6, 0)
         r.nameText:SetJustifyH("LEFT")
         r.nameText:SetWordWrap(false)
+        -- a match is picked; the grey "No spells match" row closes the list
         r:SetScript("OnClick", function(self)
             if self.match then
                 pickMatch(self.match)
+            else
+                closeLookup()
             end
         end)
         list.rows[i] = r
@@ -2033,6 +2139,7 @@ end
 local function show()
     notice = nil
     yours = nil -- the spellbook is read again, on the first lookup of this open
+    lookupFrom = nil
     hideLookup()
     setTitle()
     applyLayout(ctx.savedMode == true)
