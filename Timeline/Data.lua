@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- Timeline: the saved pulls of each raid boss, for the Timeline page. This file is the store: it
--- keeps the last few pulls of every boss in CRTDB.timeline.bosses (a pull is when the boss spells
+-- keeps the last few pulls of every boss, per difficulty, in CRTDB.timeline.bosses (a pull is when the boss spells
 -- were cast and when players died, in seconds from the pull start), drops the oldest past the
 -- keep limit, and answers the questions the page asks (the bosses, a boss's pulls, the deaths of
 -- recent pulls). Everything is read from CRT.db.timeline fresh each time, so switching profile
@@ -40,11 +40,11 @@ function Timeline:Set(field, value)
     self:Fire()
 end
 
--- The difficulty group a difficultyID belongs to: Mythic (16) is "mythic", every other
--- difficulty (or none) is "nh" (Normal/Heroic).
 -- The name of each group, as the dropdowns and messages show it.
 Timeline.GROUP_NAMES = { nh = "Normal/Heroic", mythic = "Mythic" }
 
+-- The difficulty group a difficultyID belongs to: Mythic (16) is "mythic", every other
+-- difficulty (or none) is "nh" (Normal/Heroic).
 function Timeline.DifficultyGroup(difficultyID)
     return difficultyID == 16 and "mythic" or "nh"
 end

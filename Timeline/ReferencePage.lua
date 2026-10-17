@@ -39,7 +39,7 @@ local BACKDROP = {
 
 local FORMAT_HELP = "One line per thing:\n\n"
     .. "Boss: Nek'zali the Soulcoiler  (required)\n"
-    .. "Difficulty: Mythic  (shown in its name)\n"
+    .. "Difficulty: Mythic  (shown in its name; Save writes the difficulty chosen on the Review tab)\n"
     .. "Length: 9:48  (else the last cast plus its bar)\n"
     .. "Encounter: 3001  (the boss's encounter ID, optional)\n"
     .. "Phase: P2 7:20  (a phase line, the label is optional)\n"
@@ -191,7 +191,8 @@ function ReferencePage.Build(f, ctx)
         if not entry then
             editing = nil
         end
-        mode:SetText(entry and ("Editing " .. Reference.Label(entry.ref)) or "New reference")
+        local where = " \194\183 " .. GROUP_NAMES[ctx.difficulty()]
+        mode:SetText((entry and ("Editing " .. Reference.Label(entry.ref)) or "New reference") .. where)
     end
 
     -- Fills the box. key is your reference being edited, nil for text to save as a new one.
@@ -450,8 +451,19 @@ function ReferencePage.Build(f, ctx)
     function tab:Refresh()
         refreshAbilities()
         local boss = ctx.selectedBoss()
-        listLabel:SetText(boss and ("References for " .. (ctx.bossName() or tostring(boss))) or "Pick a boss on the Review tab")
+        listLabel:SetText(boss and ("References for " .. (ctx.bossName() or tostring(boss)) .. " (" .. GROUP_NAMES[ctx.difficulty()] .. ")") or "Pick a boss on the Review tab")
         local refs = boss and ctx.references() or {}
+        -- a reference that is no longer in this list (another difficulty or boss) is not edited any more:
+        -- Save then adds a new one and the box keeps its text
+        if editing then
+            local listed = false
+            for _, entry in ipairs(refs) do
+                listed = listed or entry.key == editing
+            end
+            if not listed then
+                editing = nil
+            end
+        end
         for i, entry in ipairs(refs) do
             local l = line(i)
             l.name:SetText(Reference.Label(entry.ref))

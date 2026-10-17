@@ -171,30 +171,32 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group)
     for _, row in ipairs(ref.rows or {}) do
         -- on Normal/Heroic a Mythic-only row is left out entirely, its casts included
         local skip = group == "nh" and CRT.TimelineReference.MythicOnly(row)
-        local key = trimLower(row.name)
-        local spellID = Lanes.RowSpell(row, eid, rows)
-        local match = spellID ~= 0 and byID[spellID] or nil
-        local icon = match and match.icon
-        if not icon and spellID ~= 0 and C_Spell and C_Spell.GetSpellTexture then
-            local ok, tex = pcall(C_Spell.GetSpellTexture, spellID)
-            icon = ok and tex or nil
-        end
-        local hidden = (spellID ~= 0 and CRT.TimelineJournal:IsHidden(eid, spellID))
-            or (hiddenNames and hiddenNames[key])
-        if not hidden and not skip then
-            local marks = {}
-            for _, cast in ipairs(row.casts or {}) do
-                local at = place(cast.t)
-                if at then
-                    marks[#marks + 1] = { t = at, dur = cast.dur }
-                else
-                    maskedCasts = maskedCasts + 1
-                end
+        if not skip then
+            local key = trimLower(row.name)
+            local spellID = Lanes.RowSpell(row, eid, rows)
+            local match = spellID ~= 0 and byID[spellID] or nil
+            local icon = match and match.icon
+            if not icon and spellID ~= 0 and C_Spell and C_Spell.GetSpellTexture then
+                local ok, tex = pcall(C_Spell.GetSpellTexture, spellID)
+                icon = ok and tex or nil
             end
-            lanes[#lanes + 1] = {
-                key = "ref:" .. row.name, label = row.name, color = row.color, lead = row.lead, kind = "reference",
-                types = row.types, spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
-            }
+            local hidden = (spellID ~= 0 and CRT.TimelineJournal:IsHidden(eid, spellID))
+                or (hiddenNames and hiddenNames[key])
+            if not hidden then
+                local marks = {}
+                for _, cast in ipairs(row.casts or {}) do
+                    local at = place(cast.t)
+                    if at then
+                        marks[#marks + 1] = { t = at, dur = cast.dur }
+                    else
+                        maskedCasts = maskedCasts + 1
+                    end
+                end
+                lanes[#lanes + 1] = {
+                    key = "ref:" .. row.name, label = row.name, color = row.color, lead = row.lead, kind = "reference",
+                    types = row.types, spellID = spellID, icon = icon or UNNAMED_ICON, marks = marks,
+                }
+            end
         end
     end
 

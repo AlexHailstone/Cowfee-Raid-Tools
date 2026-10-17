@@ -66,7 +66,7 @@ function ReviewTab.Build(f, ctx)
         get = ctx.group,
         set = ctx.selectGroup,
     }), 8, -4)
-    UI.Help(f, "Difficulty", "Normal and Heroic share one schedule, so they are one view, and Mythic is the other. The boss list, the pulls, the references and the recent pulls show only the difficulty picked here. The page starts on Normal/Heroic each time.\n\nRows and abilities that are Mythic-only never show on Normal/Heroic."):SetPoint("TOPLEFT", f, "TOPLEFT", 172, -8)
+    UI.Help(f, "Difficulty", "Normal and Heroic share one schedule, so they are one view, and Mythic is the other. The boss list, the pulls, the references and the recent pulls show only the difficulty picked here. The page starts on Normal/Heroic each time.\n\nRows and abilities that are Mythic-only never show on Normal/Heroic."):SetPoint("TOPLEFT", f, "TOPLEFT", 176, -8)
     place(UI.Dropdown(f, "Boss", {
         options = ctx.bossOptions,
         labelWidth = 40,

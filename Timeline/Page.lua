@@ -153,15 +153,20 @@ local function showingReference()
     return type(selectedPull) == "string"
 end
 
--- The game's name for a pull's difficulty, else the name of its group.
-local function difficultyName(pull)
-    if type(pull.difficultyID) == "number" and GetDifficultyInfo then
-        local ok, name = pcall(GetDifficultyInfo, pull.difficultyID)
+-- The game's name for a difficultyID ("Mythic", "Heroic"), or nil when the game gives none.
+local function gameDifficultyName(difficultyID)
+    if type(difficultyID) == "number" and GetDifficultyInfo then
+        local ok, name = pcall(GetDifficultyInfo, difficultyID)
         if ok and type(name) == "string" and name ~= "" then
             return name
         end
     end
-    return GROUPS[Timeline.DifficultyGroup(pull.difficultyID)]
+    return nil
+end
+
+-- The game's name for a pull's difficulty, else the name of its group.
+local function difficultyName(pull)
+    return gameDifficultyName(pull.difficultyID) or GROUPS[Timeline.DifficultyGroup(pull.difficultyID)]
 end
 
 local function pullLabel(pull)
@@ -506,13 +511,7 @@ local function shownDifficulty()
     if base.reference then
         return base.reference.difficulty
     end
-    if type(base.difficultyID) == "number" and GetDifficultyInfo then
-        local ok, name = pcall(GetDifficultyInfo, base.difficultyID)
-        if ok and type(name) == "string" and name ~= "" then
-            return name
-        end
-    end
-    return nil
+    return gameDifficultyName(base.difficultyID)
 end
 
 -- The shown boss's encounter ID, or nil when no boss with a known ID is shown.
@@ -675,9 +674,6 @@ local function build(pf)
             return selectedBoss
         end,
         bossName = bossName,
-        difficulty = function()
-            return selectedGroup
-        end,
         showingReference = showingReference,
         shownReference = function()
             return showingReference() and findRef(selectedPull) or nil

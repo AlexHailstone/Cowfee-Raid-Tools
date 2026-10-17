@@ -197,7 +197,7 @@ local defaults = {
     timeline = {
         record = true,
         minPull = 15, -- seconds; shorter pulls are not kept
-        keep = 10, -- pulls kept per boss
+        keep = 10, -- pulls kept per boss per difficulty
         bosses = {},
         rows = {}, -- [encounterID] = { hidden = { [spellID] = true }, custom = { spellID, ... } }
         span = 300, -- seconds visible

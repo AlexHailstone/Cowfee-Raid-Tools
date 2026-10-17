@@ -571,6 +571,10 @@ function Reference:ForGroup(entries, group)
     return out
 end
 
+local function unspace(s)
+    return (s:gsub("\194\160", " "):gsub("\226\128\139", ""))
+end
+
 -- The text with its Difficulty line set for the group: Mythic for "mythic"; for "nh" a Normal or Heroic
 -- line stays, anything else becomes Heroic. A text with no Difficulty line gets one right after the Boss
 -- line (at the top when there is none). Every other line, and each line's own \r, is kept.
@@ -582,7 +586,8 @@ function Reference.StampDifficulty(text, group)
     for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
         local cr = raw:sub(-1) == "\r" and "\r" or ""
         local line = cr == "" and raw or raw:sub(1, -2)
-        local indent, key, val = line:match("^(%s*)(%a+)%s*:%s*(.*)$")
+        -- matched the way Parse reads it: a non-breaking space is a space, a zero-width space is nothing
+        local indent, key, val = unspace(line):match("^(%s*)(%a+)%s*:%s*(.*)$")
         key = key and key:lower()
         if key == "difficulty" then
             stamped = true
@@ -614,7 +619,7 @@ function Reference.CopyTo(text, group)
     end
     local out, removed = {}, 0
     for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
-        local line = trim((raw:gsub("\r", "")))
+        local line = trim(unspace((raw:gsub("\r", ""))))
         local key = line:match("^(%a+)%s*:")
         local drop = false
         if line ~= "" and line:sub(1, 1) ~= "#" and not HEADERS[key and key:lower() or ""] then
