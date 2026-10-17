@@ -22,8 +22,9 @@ local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interfac
 local FLASH_ALPHA = 0.75
 local FLASH_HOLD = 0.15
 local FLASH_FADE = 1.2
--- The windows that show the shared note, and so flash when one arrives.
-local SHARED_WINDOWS = { window = true, assignments = true }
+-- The windows that flash when a note is shared: all three, the personal one included, so a share is seen
+-- whichever window you keep up.
+local STAMP_WINDOWS = { window = true, assignments = true, personal = true }
 
 -- The same list as the General Settings page's font choice, in Core.lua.
 NoteWindow.FONTS = CRT.FONTS
@@ -666,11 +667,11 @@ function NoteWindow:ResetPosition(key)
     end
 end
 
--- The "note updated" stamp on the windows that show the shared note (timers and assignments), played
--- on their next draw.
+-- The "note updated" stamp on the note windows (timers, assignments and personal), played on their next
+-- draw.
 function NoteWindow:Flash()
     for key, w in pairs(self.windows) do
-        if SHARED_WINDOWS[key] then
+        if STAMP_WINDOWS[key] then
             w.flashPending = true
         end
     end

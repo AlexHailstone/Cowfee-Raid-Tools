@@ -143,7 +143,7 @@ function Log:Stamp()
     end
     NW:Flash()
     C_Timer.After(0.3, function()
-        for _, key in ipairs({ "window", "assignments" }) do
+        for _, key in ipairs({ "window", "assignments", "personal" }) do
             local w = NW:Get(key)
             if not w then
                 print("|cffc8a050stamp|r " .. key .. ": no window")
