@@ -540,3 +540,92 @@ function Reference:MovePhase(key, index, t)
     local newKey = self:Add(text)
     return newKey, newKey ~= nil
 end
+
+-- Difficulty ----------------------------------------------------------------------------------------
+-- A reference belongs to one of two groups: "nh" (Normal and Heroic share a schedule) or "mythic".
+-- The group comes from its Difficulty line; anything but Mythic, or no line, is "nh".
+
+function Reference.Group(ref)
+    local d = ref and type(ref.difficulty) == "string" and trim(ref.difficulty):lower()
+    return d == "mythic" and "mythic" or "nh"
+end
+
+-- True for a row marked (type ... mythic ...).
+function Reference.MythicOnly(row)
+    for _, t in ipairs(row and row.types or {}) do
+        if t == "mythic" then
+            return true
+        end
+    end
+    return false
+end
+
+-- The entries (as List returns them) that belong to the group.
+function Reference:ForGroup(entries, group)
+    local out = {}
+    for _, entry in ipairs(entries or {}) do
+        if Reference.Group(entry.ref) == group then
+            out[#out + 1] = entry
+        end
+    end
+    return out
+end
+
+-- The text with its Difficulty line set for the group: Mythic for "mythic"; for "nh" a Normal or Heroic
+-- line stays, anything else becomes Heroic. A text with no Difficulty line gets one right after the Boss
+-- line (at the top when there is none). Every other line, and each line's own \r, is kept.
+function Reference.StampDifficulty(text, group)
+    if type(text) ~= "string" then
+        return text
+    end
+    local lines, bossAt, stamped = {}, nil, false
+    for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
+        local cr = raw:sub(-1) == "\r" and "\r" or ""
+        local line = cr == "" and raw or raw:sub(1, -2)
+        local indent, key, val = line:match("^(%s*)(%a+)%s*:%s*(.*)$")
+        key = key and key:lower()
+        if key == "difficulty" then
+            stamped = true
+            local d = trim(val):lower()
+            if group == "mythic" then
+                line = indent .. "Difficulty: Mythic"
+            elseif d ~= "normal" and d ~= "heroic" then
+                line = indent .. "Difficulty: Heroic"
+            end
+        elseif key == "boss" and not bossAt then
+            bossAt = #lines + 1
+        end
+        lines[#lines + 1] = line .. cr
+    end
+    if not stamped then
+        local at = bossAt and bossAt + 1 or 1
+        local cr = (lines[bossAt or 1] or ""):sub(-1) == "\r" and "\r" or ""
+        table.insert(lines, at, "Difficulty: " .. (group == "mythic" and "Mythic" or "Heroic") .. cr)
+    end
+    return table.concat(lines, "\n")
+end
+
+-- The text copied to a difficulty group: stamped for it, and for "nh" without the Mythic-only ability
+-- lines. Header, Phase and # lines stay as they are. Returns the text and how many lines were left out.
+function Reference.CopyTo(text, group)
+    text = Reference.StampDifficulty(text, group)
+    if type(text) ~= "string" or group == "mythic" then
+        return text, 0
+    end
+    local out, removed = {}, 0
+    for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
+        local line = trim((raw:gsub("\r", "")))
+        local key = line:match("^(%a+)%s*:")
+        local drop = false
+        if line ~= "" and line:sub(1, 1) ~= "#" and not HEADERS[key and key:lower() or ""] then
+            local one = Reference.Parse("Boss: x\n" .. line)
+            drop = one and Reference.MythicOnly(one.rows[1]) or false
+        end
+        if drop then
+            removed = removed + 1
+        else
+            out[#out + 1] = raw
+        end
+    end
+    return table.concat(out, "\n"), removed
+end
