@@ -165,14 +165,39 @@ function Notes:Parsed(id)
     return entry.note
 end
 
--- All notes, sorted by boss name: { id, record }.
+local DIFFICULTY_RANK = { mythic = 1, heroic = 2, normal = 3 }
+
+-- All notes, in the raid route (CRT.Bosses:RouteIndex of the EncounterID in each note's header), the
+-- same order as every boss list; a boss's notes Mythic, Heroic, Normal, then any other difficulty.
+-- Notes for a boss the route doesn't list, or with no EncounterID, come last, by name: { id, record }.
 function Notes:List()
     local out = {}
+    local Bosses = CRT.Bosses
     for id, record in pairs(ndb().list) do
-        out[#out + 1] = { id = id, record = record }
+        local route = record.encounterID and Bosses and Bosses:RouteIndex(record.encounterID)
+        out[#out + 1] = {
+            id = id,
+            record = record,
+            route = route or math.huge,
+            rank = DIFFICULTY_RANK[(record.difficulty or ""):lower()] or 4,
+            name = (record.name or ""):lower(),
+        }
     end
     table.sort(out, function(a, b)
-        return (a.record.name or ""):lower() < (b.record.name or ""):lower()
+        if a.route ~= b.route then
+            return a.route < b.route
+        end
+        -- outside the route, the name keeps one boss's notes together
+        if a.route == math.huge and a.name ~= b.name then
+            return a.name < b.name
+        end
+        if a.rank ~= b.rank then
+            return a.rank < b.rank
+        end
+        if a.name ~= b.name then
+            return a.name < b.name
+        end
+        return a.id < b.id
     end)
     return out
 end

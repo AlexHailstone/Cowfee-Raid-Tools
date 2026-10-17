@@ -432,6 +432,7 @@ local function buildNotes(pf)
 
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)
+    CRT.Bosses:OnRouteChange(refresh) -- the raid route, the note list's order
 end
 
 -- Tabs ---------------------------------------------------------------------------------------
