@@ -9,8 +9,9 @@ local ADDON, CRT = ...
 --
 -- Message under the prefix CRTNote2: "<hash>|<part>|<total>|<data>". hash is a fingerprint of the
 -- note text, so a raider who already has that exact note skips the download and makes their stored
--- copy the active note. Sharing a note always makes it the active note for everyone, the sender too,
--- so notes can be shared ahead of time and shared again to switch the raid to one. data is the compressed note,
+-- copy the active note. Sharing a note always makes it the active note for everyone, the sender too
+-- (the sender's even when it can't be sent), so notes can be shared ahead of time and shared again to
+-- switch the raid to one. data is the compressed note,
 -- with byte 0 (not allowed in addon messages) and the escape byte 1 written as two bytes each.
 -- Version 0.12 and earlier sent plain text under CRTNote, "<id>|<part>|<total>|<text>", which is
 -- still received so older senders keep working. Only a raid leader or assistant can share, and by
@@ -178,15 +179,21 @@ local function sendParts()
     finish(format("Shared %s with the group in %d part%s, %.1f seconds.", outgoing.name, #outgoing.parts, #outgoing.parts == 1 and "" or "s", seconds))
 end
 
+-- Shares a note with the group. It always becomes your own active note first, so the Raid Notes
+-- page and the alerts show what you meant to share even when it can't be sent (no group, not the
+-- leader or an assistant, or a share still running); the chat then says why it wasn't sent.
 function Comm:Share(id)
-    local ok, why = self:CanShare()
-    if not ok then
-        CRT:Print(why)
-        return
-    end
     local record = Notes:Get(id)
     if not record then
         CRT:Print("Pick a note to share first.")
+        return
+    end
+    if Notes:Active() ~= id then
+        Notes:SetActive(id)
+    end
+    local ok, why = self:CanShare()
+    if not ok then
+        CRT:Print(format("%s is now your active note, but it wasn't sent to the group: %s", record.name or "The note", why))
         return
     end
     local text = record.raw or ""
@@ -214,10 +221,7 @@ function Comm:Share(id)
         return
     end
 
-    -- Sharing makes it the active note, here and for everyone who receives it.
-    if Notes:Active() ~= id then
-        Notes:SetActive(id)
-    end
+    -- It is already the active note here (above); everyone who receives it makes it theirs too.
     outgoing = {
         prefix = prefix,
         hash = prefix == PREFIX and fingerprint(text) or format("%04x", math.random(0, 65535)),

@@ -26,7 +26,9 @@ local EMPTY_ALL = "No boss pulls recorded yet"
 
 local TEXT = {
     shareNote = "Share note",
-    shareHelp = "Sends this boss's raid note to everyone in the group with the addon, as Share to raid on Raid Notes does. It becomes everyone's active note.\n\nShown when this boss has a raid note and you are the raid leader or an assistant. Notes can't be shared during a boss fight.",
+    shareHelp = "Sends this boss's raid note to everyone in the group with the addon, as Share to raid on Raid Notes does, with every line added or moved here. It becomes everyone's active note, and yours, so Raid Notes shows it.\n\nWhen the boss has no raid note yet, one is made first, with its EncounterID, Difficulty and Name header, and it appears on Raid Notes.\n\nOnly the raid leader or an assistant can send it to the group; anyone else (or solo) just makes it their own active note. Notes can't be sent during a boss fight.",
+    noNote = "This boss has no encounter ID yet, so no raid note can be made for it.",
+    made = "Made a raid note for %s. It is on Raid Notes.",
 }
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -784,23 +786,58 @@ local function togglePopout()
     end
 end
 
--- The raid note of the shown boss and difficulty that this player can share now, or nil.
-local function shareableNote()
-    local Notes, Comm = CRT.Notes, CRT.NoteComm
-    local encounterID = view and view.EncounterNumber and view:EncounterNumber()
-    if not (encounterID and Notes and Comm and Comm:CanShare()) then
+-- The difficulty name of what is shown: a reference's Difficulty line, or a recorded pull's
+-- difficulty as the game names it ("Mythic", "Heroic"). Nil when neither says.
+local function shownDifficulty()
+    local base = view and view.pull
+    if not base then
         return nil
     end
-    local ref = view.pull and view.pull.reference
-    return Notes:FindForEncounter(encounterID, ref and ref.difficulty)
+    if base.reference then
+        return base.reference.difficulty
+    end
+    if type(base.difficultyID) == "number" and GetDifficultyInfo then
+        local ok, name = pcall(GetDifficultyInfo, base.difficultyID)
+        if ok and type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+    return nil
 end
 
+-- The shown boss's encounter ID, or nil when no boss with a known ID is shown.
+local function shownEncounter()
+    return view and view.EncounterNumber and view:EncounterNumber() or nil
+end
+
+-- Shown whenever a boss with a known encounter ID is on the timeline: Share note makes or finds its
+-- raid note, so it works before the boss has a note, and solo (the note then only becomes yours).
 local function updateShare()
     if shareButton then
-        local on = shareableNote() ~= nil
+        local on = shownEncounter() ~= nil and CRT.Notes ~= nil and CRT.NoteComm ~= nil
         shareButton:SetShown(on)
         shareHelp:SetShown(on)
     end
+end
+
+-- Share note: the note a pull of the shown boss and difficulty reads (Notes:NoteFor, the same note
+-- the timeline's lines are written to), made with its header when the boss has no note at all, then
+-- shared as Share to raid does. Sharing makes it the active note, so Raid Notes shows it.
+local function shareNote()
+    local encounterID = shownEncounter()
+    if not encounterID then
+        return
+    end
+    local id, made = CRT.Notes:NoteFor(encounterID, shownDifficulty(), bossName())
+    if not id then
+        CRT:Print(TEXT.noNote)
+        return
+    end
+    if made then
+        local record = CRT.Notes:Get(id)
+        CRT:Print(string.format(TEXT.made, (record and record.name) or "the boss"))
+    end
+    CRT.NoteComm:Share(id)
 end
 
 -- The Pop out button on the Review tab, and the note left on the tab while it is popped out.
@@ -810,16 +847,10 @@ local function buildPopControls()
     popButton:SetScript("OnClick", togglePopout)
     UI.Help(reviewFrame, "Pop out", "Moves the timeline into a window of its own that you can drag to any size, for a wider view. Drag its title to move it and its corner to resize it.\n\nDock, the window's X or Escape puts it back here."):SetPoint("RIGHT", popButton, "LEFT", -2, 0)
 
-    -- Share note: the boss's raid note for the shown difficulty, to the group, through the same sharing as
-    -- Share to raid on Raid Notes. Shown only when there is a note and you may share it.
+    -- Share note: see shareNote above.
     shareButton = button(reviewFrame, TEXT.shareNote, 90)
     shareButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8, -66)
-    shareButton:SetScript("OnClick", function()
-        local id = shareableNote()
-        if id then
-            CRT.NoteComm:Share(id)
-        end
-    end)
+    shareButton:SetScript("OnClick", shareNote)
     shareHelp = UI.Help(reviewFrame, TEXT.shareNote, TEXT.shareHelp)
     shareHelp:SetPoint("RIGHT", shareButton, "LEFT", -2, 0)
     shareButton:Hide()

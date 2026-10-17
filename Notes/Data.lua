@@ -315,6 +315,34 @@ function Notes:TimerAt(id, lineNumber)
     return nil
 end
 
+-- The first line of a new note for a boss: "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali".
+local function headerLine(encounterID, difficultyName, bossName)
+    local header = "EncounterID:" .. tostring(encounterID)
+    if difficultyName then
+        header = header .. ";Difficulty:" .. difficultyName
+    end
+    if bossName then
+        header = header .. ";Name:" .. bossName
+    end
+    return header
+end
+
+-- The note a pull of that difficulty reads (FindForEncounter), made when the boss has no note at
+-- all: a note with only the header line, which the Raid Notes page then shows like any other.
+-- Returns the note id and true when it was just made.
+function Notes:NoteFor(encounterID, difficultyName, bossName)
+    if type(encounterID) ~= "number" then
+        return nil
+    end
+    difficultyName, bossName = headerWord(difficultyName), headerWord(bossName)
+    local id = self:FindForEncounter(encounterID, difficultyName)
+    if id then
+        return id, false
+    end
+    local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n")
+    return newId, newId ~= nil
+end
+
 -- Adds a line where a pull of that difficulty reads it: the note FindForEncounter gives (that
 -- difficulty's note, else the boss's other note). A new note is made only when the boss has none at
 -- all. Returns the note id and the line's number.
@@ -325,14 +353,7 @@ function Notes:AddLine(encounterID, difficultyName, bossName, line)
     difficultyName, bossName = headerWord(difficultyName), headerWord(bossName)
     local id = self:FindForEncounter(encounterID, difficultyName)
     if not id then
-        local header = "EncounterID:" .. tostring(encounterID)
-        if difficultyName then
-            header = header .. ";Difficulty:" .. difficultyName
-        end
-        if bossName then
-            header = header .. ";Name:" .. bossName
-        end
-        local newId = self:Import(header .. "\n" .. line)
+        local newId = self:Import(headerLine(encounterID, difficultyName, bossName) .. "\n" .. line)
         return newId, newId and 2 or nil
     end
     return id, self:AddLineTo(id, line)

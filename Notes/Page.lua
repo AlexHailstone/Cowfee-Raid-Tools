@@ -25,6 +25,10 @@ local BACKDROP = {
 }
 
 local page, rows, editor, status, selected = nil, {}, nil, nil, nil
+-- The active note the page last followed. When the active note changes (shared from here or the
+-- Timeline, received from the raid leader, or made from the Timeline), the page selects it, so the
+-- text shown is the note that runs; clicking another note still shows that one until the next change.
+local followedActive
 local controls = {}
 local importDialog
 local refresh
@@ -134,6 +138,14 @@ end
 refresh = function()
     if not page or not page:IsShown() then
         return
+    end
+    local newActive = Notes:Active()
+    -- not while you are typing in the note text: the jump waits for the next refresh after that
+    if newActive ~= followedActive and not (editor and editor:HasFocus()) then
+        followedActive = newActive
+        if newActive then
+            selected = newActive
+        end
     end
     local id, record = selectedNote()
     local activeId = Notes:Active()
