@@ -106,7 +106,9 @@ UI.LAYERS = {
     { key = "bar", label = "Your consumables bar", default = "HIGH" },
     { key = "debuffs", label = "Debuff panel", default = "HIGH" },
     { key = "lowhealth", label = "Low-health banner", default = "DIALOG" },
-    { key = "timeline", label = "Timeline window", default = "HIGH" },
+    -- At most Fullscreen: the alert editor and the game's dropdown lists sit above it, on Fullscreen
+    -- dialog and Tooltip, so editing from the Timeline window always shows on top.
+    { key = "timeline", label = "Timeline window", default = "HIGH", max = "FULLSCREEN" },
 }
 
 local layerDefaults, layerFrames = {}, {}
@@ -116,9 +118,38 @@ for _, layer in ipairs(UI.LAYERS) do
 end
 local layersWaiting = false -- a change blocked by combat, applied when combat ends
 
+local strataRank, layerMax = {}, {}
+for i, s in ipairs(UI.STRATA) do
+    strataRank[s.key] = i
+end
+for _, layer in ipairs(UI.LAYERS) do
+    layerMax[layer.key] = layer.max
+end
+
 function UI:Layer(key)
     local saved = CRT.db and CRT.db.ui and CRT.db.ui.layers[key]
-    return saved or layerDefaults[key] or "MEDIUM"
+    local strata = saved or layerDefaults[key] or "MEDIUM"
+    -- a layer with a highest allowed strata never goes above it, a choice saved before included
+    local max = layerMax[key]
+    if max and (strataRank[strata] or 0) > (strataRank[max] or 0) then
+        strata = max
+    end
+    return strata
+end
+
+-- The strata a layer can be set to: every one, or up to its highest allowed.
+function UI:LayerChoices(key)
+    local max = layerMax[key]
+    if not max then
+        return self.STRATA
+    end
+    local out = {}
+    for _, s in ipairs(self.STRATA) do
+        if strataRank[s.key] <= strataRank[max] then
+            out[#out + 1] = s
+        end
+    end
+    return out
 end
 
 -- A protected frame (one holding secure buttons) can't change strata in combat, so that waits.

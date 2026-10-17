@@ -375,7 +375,7 @@ local function buildRight(pf)
     heading(pf, x, -44, "Layers", "Which layer each window is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nThe game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
     for i, layer in ipairs(UI.LAYERS) do
         add(UI.Dropdown(pf, layer.label, {
-            options = UI.STRATA,
+            options = UI:LayerChoices(layer.key),
             labelWidth = LABEL_W + 30,
             width = CONTROL_W - 10,
             get = function()
