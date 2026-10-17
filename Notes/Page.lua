@@ -13,6 +13,12 @@ local Notes = CRT.Notes
 local Engine = CRT.NoteEngine
 local UI = CRT.UI
 
+local TEXT = {
+    noteText = "Note text",
+    saveText = "Save text changes",
+    saved = "Saved.",
+}
+
 local ROW_H = 24
 local MAX_ROWS = 9
 
@@ -43,6 +49,10 @@ end
 -- nothing. This makes the whole box and its scroll area put the cursor at the end of the text.
 local function clickToType(box, scroll, edit)
     local function focus()
+        -- a box that is read-only (greyed) takes no typing
+        if edit.IsEnabled and not edit:IsEnabled() then
+            return
+        end
         edit:SetFocus()
         edit:SetCursorPosition(#(edit:GetText() or ""))
     end
@@ -284,7 +294,7 @@ local function buildNotes(pf)
     -- Right: the note text, editable.
     local textLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     textLabel:SetPoint("TOPLEFT", 272, -14)
-    textLabel:SetText("Note text")
+    textLabel:SetText(TEXT.noteText)
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
     box:SetPoint("TOPLEFT", 272, -36)
     box:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -36)
@@ -304,16 +314,38 @@ local function buildNotes(pf)
     scroll:SetScrollChild(editor)
     clickToType(box, scroll, editor)
 
-    local save = makeButton(pf, "Save text changes", 170)
+    local save = makeButton(pf, TEXT.saveText, 170)
     save:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", 0, -6)
     save:SetScript("OnClick", function()
         if selected then
+            -- asked again at the click: you may have lost the right since the page drew
+            local allowed, why = Notes:CanEditRaid()
+            if not allowed then
+                CRT:Print(why)
+                return
+            end
             editor:ClearFocus()
             editor.loaded = editor:GetText()
             Notes:UpdateRaw(selected, editor:GetText())
-            CRT:Print("Saved.")
+            CRT:Print(TEXT.saved)
         end
     end)
+
+    -- Only the raid leader or an assistant changes the raid note (P4): for anyone else the text is
+    -- read-only and Save is greyed, with a (?) saying why. Set again at every redraw and show, so a
+    -- promotion unlocks it. Import, Use this note and Delete stay: they choose which note you hold.
+    local lockHelp = UI.Help(pf, TEXT.noteText, function()
+        local _, why = Notes:CanEditRaid()
+        return why or ""
+    end)
+    lockHelp:SetPoint("LEFT", textLabel, "RIGHT", 6, 0)
+    lockHelp.refresh = function()
+        local allowed = Notes:CanEditRaid()
+        editor:SetEnabled(allowed and true or false)
+        save:SetEnabled(allowed and true or false)
+        lockHelp:SetShown(not allowed)
+    end
+    controls[#controls + 1] = lockHelp
 
     status = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     status:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -8)

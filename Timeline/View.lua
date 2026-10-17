@@ -839,7 +839,10 @@ function Methods:Flag(n)
         f.icon:Hide()
         f:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         f:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.15)
-        f:SetScript("OnEnter", flagEnter)
+        f:SetScript("OnEnter", function(btn)
+            self:FlagHighlight(btn)
+            flagEnter(btn)
+        end)
         f:SetScript("OnLeave", hideTip)
         f:SetScript("OnMouseDown", function(_, button)
             self.clickAt = nil
@@ -902,6 +905,15 @@ end
 -- line only when you may change the raid note.
 local function canChange(m)
     return m ~= nil and (m.kind ~= "note" or (canEditRaid()))
+end
+
+-- No hover highlight on a flag you can't change (a raid note line, for anyone else); its tooltip
+-- stays. Set at each draw and each hover, so a promotion counts without a redraw.
+function Methods:FlagHighlight(f)
+    local hl = f.GetHighlightTexture and f:GetHighlightTexture()
+    if hl then
+        hl:SetAlpha(canChange(f.mark) and 1 or 0)
+    end
 end
 
 -- m:ss, with tenths when there are some.
@@ -1802,6 +1814,7 @@ function Methods:DrawMarks(length)
     for n, m in ipairs(self.marks) do
         local f = self:Flag(n)
         f.mark = m
+        self:FlagHighlight(f)
         f:ClearAllPoints()
         f:SetPoint("TOPLEFT", self.track, "TOPLEFT", View.TimeToX(m.t, length, self.trackW) - 1 - (FLAG_BTN_W - FLAG_W) / 2, -(m.row - 1) * ROW_H)
         f:SetFrameLevel(level)
@@ -1870,8 +1883,8 @@ function Methods:DrawPersonalHelp(lanes)
         h:Hide()
         return
     end
-    local w = l.text:GetStringWidth()
-    w = type(w) == "number" and w or 0
+    -- its name's own width (a width set by the label's anchors caps GetStringWidth)
+    local w = textWidth(l.text)
     h:ClearAllPoints()
     -- the name starts 26 px in (after the icon); the (?) stays inside the label
     h:SetPoint("LEFT", l, "LEFT", math.min(26 + w, LABEL_W - 4 - 24), 0)

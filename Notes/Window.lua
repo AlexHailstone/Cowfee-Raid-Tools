@@ -407,6 +407,21 @@ local function remindersBlock()
     return table.concat(lines, "\n")
 end
 
+-- Whether the personal window counts down: the current boss comes from a run and has a reminder of
+-- yours. Anything else (no reminders, the note's boss) uses the normal refresh.
+local function personalLive()
+    local R = CRT.AlertReminders
+    if not (R and CRT.Alerts and CRT.Alerts.running) then
+        return false
+    end
+    local ok, encounterID, run = pcall(currentBoss)
+    if not (ok and encounterID and run) then
+        return false
+    end
+    local listed, list = pcall(R.List, R, encounterID)
+    return listed and type(list) == "table" and #list > 0
+end
+
 local function personalText()
     local lines = splitLines(Notes:Personal())
     local ok, reminders = pcall(remindersBlock)
@@ -554,9 +569,9 @@ local function createWindow(key, defaultPosition, build)
     end
 
     function w:Refresh()
-        -- the timers window counts down while a note runs, the personal window (your reminders) while
-        -- any run goes
-        local live = (key == "window" and Engine.running) or (key == "personal" and CRT.Alerts and CRT.Alerts.running) or false
+        -- the timers window counts down while a note runs, the personal window while a run of a boss
+        -- you have reminders for goes
+        local live = (key == "window" and Engine.running) or (key == "personal" and personalLive()) or false
         if not live and not self.wasLive and self.drawnVersion == contentVersion and GetTime() - (self.drawnAt or 0) < SAFETY_SECONDS then
             return
         end

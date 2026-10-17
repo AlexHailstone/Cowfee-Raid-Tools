@@ -105,7 +105,7 @@ local TEXT = {
     noBoss = "This boss has no encounter ID, so it can't have a raid note line.",
     stale = "This note line was changed elsewhere, such as by a new share. Close the editor and open it again.",
     noteFailed = "The note line could not be saved.",
-    notAdmin = "Only the raid leader or assistants can change the raid note.",
+    reopen = "You can change the raid note now. Close this line and open it again to edit it.",
     noteLineTitle = "Raid note line",
     copyToMine = "Copy to my reminders",
 }
@@ -185,13 +185,19 @@ end
 local function canEditRaid()
     local Notes = CRT.Notes
     if not (Notes and Notes.CanEditRaid) then
-        return false, TEXT.notAdmin
+        return false
     end
     local ok, why = Notes:CanEditRaid()
     if ok then
         return true
     end
-    return false, why or TEXT.notAdmin
+    return false, why
+end
+
+-- The reason Raid note is greyed out, from CRT.Notes:CanEditRaid (empty when you may change it).
+local function notAdminReason()
+    local _, why = canEditRaid()
+    return why or ""
 end
 
 -- A raid note line opened by someone who can't change it: shown, never edited.
@@ -677,6 +683,12 @@ local function refresh(rows)
         return
     end
     local savedMode = ctx ~= nil and ctx.savedMode == true
+    -- a raid note line opened read-only, by someone promoted since: editable as for any leader
+    if ctx ~= nil and ctx.readOnly and canEditRaid() then
+        ctx.readOnly = nil
+        UI.SetFrameTitle(frame, TEXT.title)
+        rows = true
+    end
     frame.forRow:SetShown(draft.saveAs == "note")
     frame.relativeRow:SetShown(not savedMode)
     frame.difficultyRow:SetShown(not savedMode)
@@ -688,6 +700,8 @@ local function refresh(rows)
     frame.exportBtn:SetShown(not savedMode) -- a saved alert has no time to write a note line with
     frame.saveBtn:SetShown(not locked)
     frame.copyBtn:SetShown(locked)
+    -- a copy needs a boss to be saved for
+    frame.copyBtn:SetEnabled(locked and type(ctx.encounterID) == "number")
     -- why Raid note is greyed out (a saved alert may keep Raid note: it changes no note by itself)
     frame.saveAsHelp:SetShown(not savedMode and not canEditRaid())
     for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit, frame.colorSwatch, frame.colorDefault }) do
@@ -881,7 +895,9 @@ function Editor:Save()
         return false
     end
     if ctx.readOnly then
-        return fail(TEXT.notAdmin)
+        -- promoted since it opened, before anything redrew it
+        local allowed, why = canEditRaid()
+        return fail(allowed and TEXT.reopen or why)
     end
     local err = timeError(true)
     if err then
@@ -1374,7 +1390,7 @@ local function build()
             changed(true)
         end,
     }), LEFT, -30)
-    f.saveAsHelp = UI.Help(f, TEXT.asNote, TEXT.notAdmin)
+    f.saveAsHelp = UI.Help(f, TEXT.asNote, notAdminReason)
     f.saveAsHelp:SetPoint("TOPLEFT", LEFT + 56 + 5 + 104, -38)
     f.forRow = row(UI.Dropdown(f, TEXT.forLabel, {
         labelWidth = 30, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable,
@@ -1557,10 +1573,11 @@ local function build()
                 elseif from.noteID then
                     local allowed, why = canEditRaid()
                     if not allowed or from.readOnly then
+                        local message = why or TEXT.reopen
                         if ctx == from then
-                            fail(why or TEXT.notAdmin)
+                            fail(message)
                         elseif CRT.Print then
-                            CRT:Print(why or TEXT.notAdmin)
+                            CRT:Print(message)
                         end
                         return
                     end
@@ -1745,8 +1762,9 @@ function Editor:Open(encounterID, id, prefill)
         elseif trim(draft.text) == "" then
             draft.text = (spellInfo(draft.spellID)) or ""
         end
-        if prefill.saveAs == "note" then
-            draft.saveAs = "note"
+        -- the caller's Save as wins over a saved alert's own (the Personal notes row asks for Only me)
+        if prefill.saveAs == "note" or prefill.saveAs == "mine" then
+            draft.saveAs = prefill.saveAs
         end
         if type(prefill.time) == "number" then
             draft.ph = type(prefill.ph) == "number" and prefill.ph or 1
@@ -1840,7 +1858,7 @@ end
 -- the line's fields (spell, text, colour, displays, speech, sound, glow, Show from, Linger, icon) and
 -- its time as "P<ph> <time>", for any difficulty. Nothing is saved until Save. False when not read-only.
 function Editor:CopyToMine()
-    if not (ctx and draft and ctx.readOnly) then
+    if not (ctx and draft and ctx.readOnly and type(ctx.encounterID) == "number") then
         return false
     end
     local t = parseTime(draft.timeText)
