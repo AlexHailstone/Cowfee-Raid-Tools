@@ -6,6 +6,10 @@ local ADDON, CRT = ...
 --   window = note window settings, alert = personal alert settings, trustedOnly
 -- A note's invite list becomes a Raid Groups layout when it is imported (presetId links them).
 
+local TEXT = {
+    notAdmin = "Only the raid leader or assistants can change the raid note.",
+}
+
 local Parser = CRT.NoteParser
 local Notes = { listeners = {} }
 CRT.Notes = Notes
@@ -57,6 +61,45 @@ end
 
 function Notes:TrustedOnly()
     return ndb().trustedOnly
+end
+
+-- Who may change the raid note ------------------------------------------------------------------
+
+-- A yes/no the game reports (IsInRaid, UnitIsGroupLeader): true or false, or nil when it can't be read
+-- (missing, an error, or a secret value).
+local function groupFlag(fn, ...)
+    if type(fn) ~= "function" then
+        return nil
+    end
+    local ok, value = pcall(fn, ...)
+    if not ok or isSecret(value) then
+        return nil
+    end
+    return value and true or false
+end
+
+-- Whether you may change the raid note (the lines on the Timeline and in the editor): in a raid, the
+-- leader or an assistant, the same check Comm:CanShare makes; in a party, the leader; on your own,
+-- always. A group state that can't be read counts as no. Returns ok, and the reason when not.
+function Notes:CanEditRaid()
+    local raid = groupFlag(IsInRaid)
+    if raid == nil then
+        return false, TEXT.notAdmin
+    end
+    if raid then
+        if groupFlag(UnitIsGroupLeader, "player") or groupFlag(UnitIsGroupAssistant, "player") then
+            return true
+        end
+        return false, TEXT.notAdmin
+    end
+    local party = groupFlag(IsInGroup)
+    if party == nil then
+        return false, TEXT.notAdmin
+    end
+    if not party or groupFlag(UnitIsGroupLeader, "player") then
+        return true
+    end
+    return false, TEXT.notAdmin
 end
 
 function Notes:Set(section, key, value)

@@ -10,6 +10,10 @@ local ADDON, CRT = ...
 -- own ("minetest") that gives them out only to a run started with reason "test". A note line's item is
 -- the note block's own (CRT.NoteEngine.ItemFor) and stays a "note" item, so the note's switches apply.
 -- Export shows the draft as a note line in a copy box.
+-- Only the raid leader or an assistant changes the raid note (CRT.Notes:CanEditRaid): for anyone else
+-- Save as Raid note is greyed out, a new alert set to it opens as Only me, a note line opens read-only
+-- (ctx.readOnly: nothing can be changed, no Save or Delete) with Export and Copy to my reminders, which
+-- turns the draft into a new reminder of your own. Every raid note write asks CanEditRaid again.
 -- Save as saved alert keeps the draft's setup, without its time, as a saved alert (CRT.AlertSaved), and
 -- Open takes prefill.saved to start from one. EditSaved opens a saved alert itself: no Save as saved alert,
 -- Export, Relative to, Time or Difficulty; Save overwrites it (keeping the name its chip gave it, and
@@ -101,6 +105,9 @@ local TEXT = {
     noBoss = "This boss has no encounter ID, so it can't have a raid note line.",
     stale = "This note line was changed elsewhere, such as by a new share. Close the editor and open it again.",
     noteFailed = "The note line could not be saved.",
+    notAdmin = "Only the raid leader or assistants can change the raid note.",
+    noteLineTitle = "Raid note line",
+    copyToMine = "Copy to my reminders",
 }
 
 local Alerts = CRT.Alerts
@@ -133,7 +140,8 @@ local POPUP_NAME = "COWFEE_RAID_TOOLS_SAVED_ALERT_NAME"
 
 local frame, exportFrame
 -- ctx: where the draft came from. { encounterID, id (a reminder) and reminder (its saved copy), or
--- noteID, line, expected (the raw line), timer, noteDifficulty and untagged for a note line; or, for a
+-- noteID, line, expected (the raw line), timer, noteDifficulty, untagged and readOnly (opened by someone
+-- who can't change the raid note) for a note line; or, for a
 -- saved alert itself, savedMode, savedID (nil for a new one) and savedName }
 local ctx
 -- draft: the fields on screen. { saveAs, tag, difficulty, ph, timeText, timeTouched, keptTimes, spellID,
@@ -170,6 +178,29 @@ local function readable(v)
         return T.readable(v)
     end
     return true
+end
+
+-- Whether you may change the raid note now, and the reason when not. Asked again at every write, so
+-- a promotion or demotion while the editor is open counts.
+local function canEditRaid()
+    local Notes = CRT.Notes
+    if not (Notes and Notes.CanEditRaid) then
+        return false, TEXT.notAdmin
+    end
+    local ok, why = Notes:CanEditRaid()
+    if ok then
+        return true
+    end
+    return false, why or TEXT.notAdmin
+end
+
+-- A raid note line opened by someone who can't change it: shown, never edited.
+local function readOnly()
+    return ctx ~= nil and ctx.readOnly == true
+end
+
+local function editable()
+    return not readOnly()
 end
 
 local function validID(v)
@@ -652,8 +683,22 @@ local function refresh(rows)
     frame.timeLabel:SetShown(not savedMode)
     frame.timeEdit:SetShown(not savedMode)
     frame.timeHelp:SetShown(not savedMode)
-    frame.saveSavedBtn:SetShown(not savedMode)
+    local locked = readOnly()
+    frame.saveSavedBtn:SetShown(not savedMode and not locked)
     frame.exportBtn:SetShown(not savedMode) -- a saved alert has no time to write a note line with
+    frame.saveBtn:SetShown(not locked)
+    frame.copyBtn:SetShown(locked)
+    -- why Raid note is greyed out (a saved alert may keep Raid note: it changes no note by itself)
+    frame.saveAsHelp:SetShown(not savedMode and not canEditRaid())
+    for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit, frame.colorSwatch, frame.colorDefault }) do
+        el:SetEnabled(not locked)
+    end
+    for _, k in ipairs(SHOW_KEYS) do
+        frame.checks[k]:SetEnabled(not locked)
+    end
+    for _, check in pairs(frame.also) do
+        check:SetEnabled(not locked)
+    end
     if rows then
         for _, row in ipairs(frame.rows) do
             row.refresh()
@@ -678,7 +723,7 @@ local function refresh(rows)
     frame.savesText:SetText(savesToLine())
     local message = timeError(false) or notice
     frame.messageText:SetText(message and ("|cffff6060" .. message .. "|r") or "")
-    frame.deleteBtn:SetShown(ctx ~= nil and (ctx.id ~= nil or ctx.noteID ~= nil or ctx.savedID ~= nil))
+    frame.deleteBtn:SetShown(not locked and ctx ~= nil and (ctx.id ~= nil or ctx.noteID ~= nil or ctx.savedID ~= nil))
 end
 
 -- A field changed: any message about the last Save is out of date.
@@ -731,6 +776,10 @@ local function lineUnchanged()
 end
 
 local function saveNote()
+    local allowed, why = canEditRaid()
+    if not allowed then
+        return fail(why)
+    end
     local encounterID = ctx.encounterID
     if type(encounterID) ~= "number" then
         return fail(TEXT.noBoss)
@@ -782,6 +831,13 @@ local function saveMine()
     if encounterID == nil then
         return fail(TEXT.noEncounter)
     end
+    -- a note line moving to your reminders is taken out of the raid note
+    if ctx.noteID then
+        local allowed, why = canEditRaid()
+        if not allowed then
+            return fail(why)
+        end
+    end
     if ctx.noteID and not lineUnchanged() then
         return fail(TEXT.stale)
     end
@@ -823,6 +879,9 @@ end
 function Editor:Save()
     if not (ctx and draft) then
         return false
+    end
+    if ctx.readOnly then
+        return fail(TEXT.notAdmin)
     end
     local err = timeError(true)
     if err then
@@ -957,6 +1016,9 @@ local function makeEdit(parent, x, y, width, onChange)
     edit:SetSize(width, 20)
     lay(edit, x, y)
     edit:SetScript("OnTextChanged", function(self, userInput)
+        if readOnly() then
+            return -- the box is disabled, and a read-only draft is filled before its boxes are
+        end
         onChange(self:GetText(), userInput)
     end)
     edit:SetScript("OnEnterPressed", function(self)
@@ -982,10 +1044,15 @@ local function makeCheck(parent, label, x, y, onClick)
     return check
 end
 
--- A setter for a dropdown, slider or checkbox: edits the draft (when there is one) and redraws.
+-- A setter for a dropdown, slider or checkbox: edits the draft (when there is one) and redraws. A
+-- read-only draft is only redrawn, which puts the control back.
 local function setter(fn)
     return function(v)
         if draft then
+            if readOnly() then
+                refresh(true)
+                return
+            end
             fn(v)
             changed(true)
         end
@@ -1191,7 +1258,7 @@ end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
 local function pickColor()
-    if not (draft and ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) then
+    if not (draft and ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) or readOnly() then
         return
     end
     -- the alert open now: a picker left open never writes into the next one
@@ -1280,23 +1347,43 @@ local function build()
     end
 
     -- Save as, For, Difficulty
+    -- Raid note is greyed out for anyone who can't change the raid note, with a (?) saying why
     row(UI.Dropdown(f, TEXT.saveAs, {
-        labelWidth = 56, width = 118,
-        options = { { key = "note", label = TEXT.asNote }, { key = "mine", label = TEXT.asMine } },
+        labelWidth = 56, width = 104, enabledIf = editable,
+        options = function()
+            local locked = not (ctx and ctx.savedMode) and not canEditRaid()
+            return { { key = "note", label = TEXT.asNote, disabled = locked or nil }, { key = "mine", label = TEXT.asMine } }
+        end,
         get = function() return draft and draft.saveAs or "mine" end,
-        set = setter(function(v)
+        set = function(v)
+            if not draft then
+                return
+            end
+            if readOnly() then
+                refresh(true)
+                return
+            end
+            if v == "note" and not ctx.savedMode then
+                local allowed, why = canEditRaid()
+                if not allowed then
+                    return fail(why)
+                end
+            end
             draft.saveAs = v
             applyDefaultDifficulty()
-        end),
+            changed(true)
+        end,
     }), LEFT, -30)
+    f.saveAsHelp = UI.Help(f, TEXT.asNote, TEXT.notAdmin)
+    f.saveAsHelp:SetPoint("TOPLEFT", LEFT + 56 + 5 + 104, -38)
     f.forRow = row(UI.Dropdown(f, TEXT.forLabel, {
-        labelWidth = 30, width = 160, maxHeight = MENU_MAX_HEIGHT,
+        labelWidth = 30, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable,
         options = forOptions,
         get = function() return draft and draft.tag or "" end,
         set = setter(function(v) draft.tag = v end),
     }), 205, -30)
     f.difficultyRow = row(UI.Dropdown(f, TEXT.difficulty, {
-        labelWidth = 60, width = 114,
+        labelWidth = 60, width = 114, enabledIf = editable,
         options = difficultyOptions,
         get = function() return draft and draft.difficulty or ANY end,
         set = setter(function(v)
@@ -1313,7 +1400,7 @@ local function build()
 
     -- Relative to, Time
     f.relativeRow = row(UI.Dropdown(f, TEXT.relativeTo, {
-        labelWidth = 70, width = 120,
+        labelWidth = 70, width = 120, enabledIf = editable,
         options = phaseOptions,
         get = function() return draft and draft.ph or 1 end,
         set = setter(function(v)
@@ -1341,13 +1428,13 @@ local function build()
 
     -- Show from, Linger
     row(UI.Slider(f, TEXT.showFrom, {
-        min = 1, max = 60, step = 1, labelWidth = 70, width = 150,
+        min = 1, max = 60, step = 1, labelWidth = 70, width = 150, enabledIf = editable,
         format = function(v) return string.format(TEXT.seconds, v) end,
         get = function() return draft and draft.warn or 5 end,
         set = setter(function(v) draft.warn = v end),
     }), LEFT, -98 - ROW1_EXTRA)
     row(UI.Slider(f, TEXT.linger, {
-        min = 0, max = 10, step = 1, labelWidth = 50, width = 150,
+        min = 0, max = 10, step = 1, labelWidth = 50, width = 150, enabledIf = editable,
         format = function(v) return string.format(TEXT.seconds, v) end,
         get = function() return draft and draft.linger or 0 end,
         set = setter(function(v) draft.linger = v end),
@@ -1355,11 +1442,13 @@ local function build()
 
     -- Icon: Spell or Icon ID, the ID box and a preview
     row(UI.Dropdown(f, TEXT.icon, {
-        labelWidth = 70, width = 110,
+        labelWidth = 70, width = 110, enabledIf = editable,
         options = { { key = "spell", label = TEXT.iconSpell }, { key = "id", label = TEXT.iconID } },
         get = function() return draft and draft.iconType or "spell" end,
         set = function(v)
-            if draft then
+            if draft and readOnly() then
+                refresh(true)
+            elseif draft then
                 draft.iconType = v
                 local id = v == "id" and draft.iconID or draft.spellID
                 f.idEdit:SetText(id and tostring(id) or "")
@@ -1413,7 +1502,7 @@ local function build()
     f.colorDefault = makeButton(f, TEXT.colorDefault, 80)
     lay(f.colorDefault, FIELD_X + 28, -204 - ROW1_EXTRA)
     f.colorDefault:SetScript("OnClick", function()
-        if draft then
+        if draft and not readOnly() then
             draft.color = nil
             changed()
         end
@@ -1436,7 +1525,7 @@ local function build()
         glow = makeCheck(f, TEXT.glow, 386, -274 - ROW1_EXTRA, setter(function(on) draft.glow = on end)),
     }
     row(UI.Dropdown(f, TEXT.sound, {
-        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT,
+        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable,
         options = soundOptions,
         get = function() return draft and draft.sound or NO_SOUND end,
         set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
@@ -1466,6 +1555,15 @@ local function build()
                         CRT.AlertSaved:Delete(from.savedID)
                     end
                 elseif from.noteID then
+                    local allowed, why = canEditRaid()
+                    if not allowed or from.readOnly then
+                        if ctx == from then
+                            fail(why or TEXT.notAdmin)
+                        elseif CRT.Print then
+                            CRT:Print(why or TEXT.notAdmin)
+                        end
+                        return
+                    end
                     if not CRT.Notes:RemoveLine(from.noteID, from.line, from.expected) then
                         if ctx == from then
                             fail(TEXT.stale)
@@ -1489,6 +1587,13 @@ local function build()
     f.saveSavedBtn = makeButton(f, TEXT.saveAsSaved, 134)
     f.saveSavedBtn:SetPoint("BOTTOMLEFT", LEFT + 176, 14)
     f.saveSavedBtn:SetScript("OnClick", askSavedName)
+    -- in its place on a read-only raid note line
+    f.copyBtn = makeButton(f, TEXT.copyToMine, 134)
+    f.copyBtn:SetPoint("BOTTOMLEFT", LEFT + 176, 14)
+    f.copyBtn:SetScript("OnClick", function()
+        Editor:CopyToMine()
+    end)
+    f.copyBtn:Hide()
     f.saveBtn = makeButton(f, TEXT.save, 80)
     f.saveBtn:SetPoint("BOTTOMRIGHT", -LEFT, 14)
     f.saveBtn:SetScript("OnClick", function()
@@ -1550,7 +1655,9 @@ end
 -- The window's title: Alert, or the saved alert's name (New saved alert for a new one).
 local function setTitle()
     local title = TEXT.title
-    if ctx.savedMode then
+    if ctx.readOnly then
+        title = TEXT.noteLineTitle
+    elseif ctx.savedMode then
         title = ctx.savedName and string.format(TEXT.savedTitle, ctx.savedName) or TEXT.savedTitleNew
     end
     UI.SetFrameTitle(frame, title)
@@ -1652,6 +1759,10 @@ function Editor:Open(encounterID, id, prefill)
     if prefill and prefill.boss and not draft.boss then
         draft.boss = prefill.boss
     end
+    -- a new alert set to Raid note (a Timeline click, a saved alert) is your own when you can't change it
+    if draft.saveAs == "note" and not canEditRaid() then
+        draft.saveAs = "mine"
+    end
     -- a reminder's own difficulty stays; a new one as a note line starts where the pull would read it
     draft.baseDifficulty = draft.difficulty
     applyDefaultDifficulty()
@@ -1717,6 +1828,28 @@ function Editor:OpenNote(noteID, lineNumber)
     end
     local s = Notes:Alert() or {}
     draft.warn = timer.warn or s.seconds or 10
+    -- someone who can't change the raid note only sees it, and may copy it to their reminders
+    if not canEditRaid() then
+        ctx.readOnly = true
+    end
+    show()
+    return true
+end
+
+-- Copy to my reminders, on a read-only raid note line: the draft becomes a new reminder of your own with
+-- the line's fields (spell, text, colour, displays, speech, sound, glow, Show from, Linger, icon) and
+-- its time as "P<ph> <time>", for any difficulty. Nothing is saved until Save. False when not read-only.
+function Editor:CopyToMine()
+    if not (ctx and draft and ctx.readOnly) then
+        return false
+    end
+    local t = parseTime(draft.timeText)
+    ctx = { encounterID = ctx.encounterID }
+    draft.saveAs = "mine"
+    draft.tag = "everyone"
+    draft.difficulty, draft.baseDifficulty, draft.difficultyTouched = nil, nil, nil
+    draft.keptTimes = t and Reminders.FormatTimes({ { ph = draft.ph or 1, t = t } }) or nil
+    draft.timeTouched = false
     show()
     return true
 end

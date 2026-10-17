@@ -38,7 +38,8 @@ local function greyLabel(row, on)
 end
 
 -- A dropdown. opts:
---   options    { { key, label }, ... }, or a function returning that list when the menu opens
+--   options    { { key, label }, ... }, or a function returning that list when the menu opens. An
+--              option with disabled = true is shown greyed out and can't be picked.
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
@@ -70,6 +71,9 @@ function UI.Dropdown(parent, text, opts)
             end, function(key)
                 opts.set(key)
             end, option.key)
+            if option.disabled and radio and radio.SetEnabled then
+                radio:SetEnabled(false)
+            end
             if opts.decorate then
                 radio:AddInitializer(function(button)
                     return opts.decorate(button, option)
