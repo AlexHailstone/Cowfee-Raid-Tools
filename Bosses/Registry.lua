@@ -16,7 +16,8 @@ local ADDON, CRT = ...
 local Bosses = { seasons = {}, bosses = {}, order = {} }
 CRT.Bosses = Bosses
 
--- A season pack's description, from its Season.lua: { key, name, expansion, order, current }.
+-- A season pack's description, from its Season.lua: { key, name, expansion, order, current, raids }
+-- (raids is the route, below).
 function Bosses:Season(def)
     assert(type(def) == "table" and type(def.key) == "string", "a season needs a key")
     self.seasons[def.key] = def
@@ -68,13 +69,109 @@ function Bosses:List(seasonKey)
     return out
 end
 
+-- The route ----------------------------------------------------------------------------------
+-- The order bosses are listed in everywhere: the raid progression route, grouped by raid. It ships in
+-- each season's Season.lua as raids = { { key, name, bosses = { encounterID, ... } }, ... }, in route
+-- order. The Boss order tool on the Development page (Dev/BossOrder.lua) can lay a different order over
+-- it on the dev's own computer (CRTDB.dev.bossRoute[seasonKey], the same shape); it never ships.
+-- Every boss list reads Route or RouteList and keeps their order: none sorts bosses itself. A boss with
+-- a file but missing from the route goes at the end of the last raid, so a new boss file is never lost;
+-- a route ID with no boss file is skipped.
+
+local routeListeners = {}
+local seasonLoaded -- defined below, with LoadMode
+
+function Bosses:OnRouteChange(fn)
+    routeListeners[#routeListeners + 1] = fn
+end
+
+function Bosses:FireRoute()
+    for _, fn in ipairs(routeListeners) do
+        fn()
+    end
+end
+
+-- The raids of a season as written, with the dev's order over the shipped one: { { key, name, bosses } }.
+function Bosses:Raids(seasonKey)
+    local dev = CRT.db and CRT.db.dev and CRT.db.dev.bossRoute
+    if dev and type(dev[seasonKey]) == "table" then
+        return dev[seasonKey], true
+    end
+    local def = self.seasons[seasonKey]
+    return (def and def.raids) or {}, false
+end
+
+-- One season's route: { { raid = { key, name }, bosses = { def, ... } }, ... }.
+local function seasonRoute(self, seasonKey)
+    local out, placed = {}, {}
+    for _, raid in ipairs((self:Raids(seasonKey))) do
+        local group = { raid = { key = raid.key, name = raid.name }, bosses = {} }
+        for _, id in ipairs(raid.bosses or {}) do
+            local def = self.bosses[id]
+            if def and def.season == seasonKey and not placed[id] then
+                placed[id] = true
+                group.bosses[#group.bosses + 1] = def
+            end
+        end
+        out[#out + 1] = group
+    end
+    for _, def in ipairs(self:List(seasonKey)) do
+        if not placed[def.encounterID] then
+            if #out == 0 then
+                local season = self.seasons[seasonKey]
+                out[1] = { raid = { key = seasonKey, name = season and season.name or seasonKey }, bosses = {} }
+            end
+            local last = out[#out].bosses
+            last[#last + 1] = def
+        end
+    end
+    return out
+end
+
+-- The route: one season's (seasonKey), or every loaded season's in season order (nil).
+function Bosses:Route(seasonKey)
+    if seasonKey then
+        return seasonRoute(self, seasonKey)
+    end
+    local out = {}
+    for _, season in ipairs(self:Seasons()) do
+        if seasonLoaded(season.key) then
+            for _, group in ipairs(seasonRoute(self, season.key)) do
+                out[#out + 1] = group
+            end
+        end
+    end
+    return out
+end
+
+-- The route as one list of boss definitions, in order.
+function Bosses:RouteList(seasonKey)
+    local out = {}
+    for _, group in ipairs(self:Route(seasonKey)) do
+        for _, def in ipairs(group.bosses) do
+            out[#out + 1] = def
+        end
+    end
+    return out
+end
+
+-- A boss's place in the route (1 first), or nil when it is not a loaded boss. For callers that order
+-- their own entries by it.
+function Bosses:RouteIndex(encounterID)
+    for i, def in ipairs(self:RouteList()) do
+        if def.encounterID == encounterID then
+            return i
+        end
+    end
+end
+
 -- Which seasons load: "current" (the default) or "all", set in the dev window.
 function Bosses:LoadMode()
     local dev = CRT.db and CRT.db.dev
     return (dev and dev.seasons and dev.seasons.load) == "all" and "all" or "current"
 end
 
-local function seasonLoaded(key)
+seasonLoaded = function(key)
     if Bosses:LoadMode() == "all" then
         return true
     end
