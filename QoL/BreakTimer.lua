@@ -14,8 +14,11 @@ local UI = CRT.UI
 
 local PREFIX = "CRTBreak1"
 local MAX_MINUTES = 60
-local BAR_W, BAR_H = 220, 18
+local BAR_W, BAR_H = 300, 30
 local OVER_SHOWN = 6 -- seconds "Break's over" stays up
+local LAST_MINUTE = 60 -- seconds left when the bar turns red
+local COLOR_BAR = { 0.78, 0.56, 0.36, 1 }
+local COLOR_LAST = { 0.85, 0.27, 0.2, 1 }
 
 local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
 
@@ -23,7 +26,7 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 end
 
-local frame, handle, bar, label, timeText
+local frame, handle, bar, label, timeText, endsText
 local previewOn = false
 
 local function db()
@@ -79,10 +82,9 @@ local function build()
     if frame then
         return
     end
-    frame = CreateFrame("Frame", "CowfeeRaidToolsBreak", UIParent, "BackdropTemplate")
-    frame:SetSize(BAR_W + 16, 46)
-    frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    UI:RegisterThemed(frame, { bg = { 0.05, 0.05, 0.07, 0.85 }, border = { 0.78, 0.63, 0.31 } })
+    -- A big bar with "Break" and the time left inside it, and "Break ends at: 23:00" under it.
+    frame = CreateFrame("Frame", "CowfeeRaidToolsBreak", UIParent)
+    frame:SetSize(BAR_W, BAR_H + 26)
     UI:RegisterLayer("alert", frame)
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
@@ -94,18 +96,27 @@ local function build()
         end
     end)
 
-    label = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    label:SetPoint("TOPLEFT", 8, -6)
-    timeText = frame:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    timeText:SetPoint("TOPRIGHT", -8, -6)
     bar = CreateFrame("StatusBar", nil, frame)
-    bar:SetSize(BAR_W, BAR_H - 6)
-    bar:SetPoint("BOTTOMLEFT", 8, 8)
+    bar:SetSize(BAR_W, BAR_H)
+    bar:SetPoint("TOP")
     bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-    bar:SetStatusBarColor(0.78, 0.56, 0.36, 1)
+    bar:SetStatusBarColor(unpack(COLOR_BAR))
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.6)
+    bg:SetColorTexture(0, 0, 0, 0.75)
+
+    label = bar:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    label:SetPoint("LEFT", 6, 0)
+    label:SetTextColor(1, 1, 1)
+    label:SetShadowOffset(1, -1)
+    timeText = bar:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    timeText:SetPoint("RIGHT", -6, 0)
+    timeText:SetTextColor(1, 1, 1)
+    timeText:SetShadowOffset(1, -1)
+    endsText = frame:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
+    endsText:SetPoint("TOP", bar, "BOTTOM", 0, -4)
+    endsText:SetTextColor(1, 1, 1)
+    endsText:SetShadowOffset(1, -1)
 
     handle = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     handle:SetHeight(20)
@@ -164,6 +175,7 @@ onUpdate = function(_, dt)
         overAt = GetTime()
         label:SetText("Break's over")
         timeText:SetText("0:00")
+        endsText:SetText("")
         bar:SetValue(0)
         CRT:PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959)
         CRT:Print("The break is over.")
@@ -171,6 +183,12 @@ onUpdate = function(_, dt)
     end
     bar:SetMinMaxValues(0, math.max(1, s.total or left))
     bar:SetValue(left)
+    -- The last minute turns the bar red, so raiders know to get back.
+    if left <= LAST_MINUTE then
+        bar:SetStatusBarColor(unpack(COLOR_LAST))
+    else
+        bar:SetStatusBarColor(unpack(COLOR_BAR))
+    end
     timeText:SetText(clock(left))
 end
 
@@ -178,7 +196,9 @@ local function show()
     build()
     local s = db()
     overAt = nil
-    label:SetText("Break" .. (s.from and (" (" .. Ambiguate(s.from, "short") .. ")") or ""))
+    label:SetText("Break" .. (s.from and (" - " .. Ambiguate(s.from, "short")) or ""))
+    -- The clock time it ends, for raiders who missed the raid warning.
+    endsText:SetText(s.endsAt and ("Break ends at: " .. date("%H:%M", s.endsAt)) or "")
     elapsed = 1
     frame:SetScript("OnUpdate", onUpdate)
     frame:Show()
@@ -268,6 +288,8 @@ UI:RegisterPreview("break", function(on)
     if previewOn then
         label:SetText("Break")
         timeText:SetText("7:30")
+        endsText:SetText("Break ends at: 20:10")
+        bar:SetStatusBarColor(unpack(COLOR_BAR))
         bar:SetMinMaxValues(0, 600)
         bar:SetValue(450)
         frame:Show()
