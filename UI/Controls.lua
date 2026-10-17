@@ -183,3 +183,71 @@ function UI.Slider(parent, text, opts)
     end
     return row
 end
+
+-- Text that must stay inside a box it doesn't wrap in, such as a name in a Raid Groups slot.
+-- UI.ClipText(parent, font) makes a clipping frame and a one-line font string inside it; anchor the
+-- frame (frame.clip) where the text goes. UI.FitText(fs) then fits the text: up to FIT_STEPS points
+-- smaller than its font object, and if it is still too long, it stays clipped at the edge and slides
+-- sideways while the mouse is over hoverFrame, so the whole text can be read, then slides back.
+local FIT_STEPS = 2
+local SLIDE_SPEED = 40 -- pixels a second
+local SLIDE_PAUSE = 0.6 -- seconds at each end
+
+function UI.ClipText(parent, font, hoverFrame)
+    local clip = CreateFrame("Frame", nil, parent)
+    clip:SetClipsChildren(true)
+    local fs = clip:CreateFontString(nil, "OVERLAY", font)
+    fs:SetPoint("LEFT", clip, "LEFT", 0, 0)
+    fs:SetWordWrap(false)
+    fs:SetJustifyH("LEFT")
+    fs.clip = clip
+    -- kept here: once FitText sets a size on fs, its own font object is not a reliable base
+    fs.fontObject = _G[font]
+    fs.slide, fs.over = 0, 0
+    hoverFrame = hoverFrame or parent
+    hoverFrame:HookScript("OnEnter", function()
+        fs.hover, fs.wait = true, SLIDE_PAUSE
+    end)
+    hoverFrame:HookScript("OnLeave", function()
+        fs.hover, fs.wait = false, 0
+    end)
+    clip:SetScript("OnUpdate", function(_, dt)
+        if fs.over <= 0 then
+            return
+        end
+        local target = fs.hover and fs.over or 0
+        if fs.slide == target then
+            return
+        end
+        if fs.wait > 0 then
+            fs.wait = fs.wait - dt
+            return
+        end
+        local step = SLIDE_SPEED * dt
+        fs.slide = fs.slide < target and math.min(target, fs.slide + step) or math.max(target, fs.slide - step)
+        fs:SetPoint("LEFT", clip, "LEFT", -fs.slide, 0)
+    end)
+    return fs
+end
+
+-- Call after every SetText (and after a font change): shrinks the text to fit its clip frame, up to
+-- FIT_STEPS points, and notes how far it still overruns for the hover slide.
+function UI.FitText(fs)
+    local path, size, flags
+    if fs.fontObject then
+        -- not "a and a:GetFont()": an and keeps only the first of GetFont's values
+        path, size, flags = fs.fontObject:GetFont()
+    end
+    local width = fs.clip:GetWidth() or 0
+    if path and size then
+        for step = 0, FIT_STEPS do
+            fs:SetFont(path, size - step, flags or "")
+            if (fs:GetUnboundedStringWidth() or 0) <= width then
+                break
+            end
+        end
+    end
+    fs.over = math.max(0, math.ceil((fs:GetUnboundedStringWidth() or 0) - width))
+    fs.slide = 0
+    fs:SetPoint("LEFT", fs.clip, "LEFT", 0, 0)
+end

@@ -607,10 +607,12 @@ refresh = function()
         local b, key = slotButtons[i], working[i]
         if key == "" then
             b.text:SetText("")
+            UI.FitText(b.text)
             b.role:Hide()
             b.baseBorder = GRAY
         else
             b.text:SetText(Groups.Display(key))
+            UI.FitText(b.text)
             local member = lookup(key)
             local role = (member and member.role) or Groups.CachedRole(key)
             if member then
@@ -769,10 +771,11 @@ local function buildPage(pf)
             b.role:SetPoint("LEFT", 4, 0)
             b.role:SetTexture(ROLE_TEXTURE)
             b.role:Hide()
-            b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-            b.text:SetPoint("LEFT", 25, 0)
-            b.text:SetPoint("RIGHT", -6, 0)
-            b.text:SetJustifyH("LEFT")
+            -- the name never leaves the slot: it shrinks up to two sizes, then slides on hover
+            b.text = UI.ClipText(b, "CRTFontSmall")
+            b.text.clip:SetPoint("LEFT", 25, 0)
+            b.text.clip:SetPoint("RIGHT", -6, 0)
+            b.text.clip:SetHeight(SLOT_H)
             b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             b:RegisterForDrag("LeftButton")
             b:SetScript("OnEnter", function(self)
