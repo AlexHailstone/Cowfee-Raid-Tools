@@ -619,17 +619,17 @@ local function createWindow(key, defaultPosition, build)
         local text, heading, hasContent = build()
         -- a stamp waits for this draw, so a window the new note just made visible shows it too; and a
         -- note with nothing for this window (an empty note, or a boss with no timers or text) keeps it
-        -- up, blank, for the stamp
+        -- up, blank, at least for the stamp
         local stampNow = self.flashPending
         self.flashPending = nil
         local stamping = stampNow or self.stamp:IsPlaying()
-        local cleared = stamping and not hasContent and not previewOn
-        local visible = previewOn or (s().shown and (hasContent or stamping))
+        -- Keep up when empty: a window with nothing to show stays up, blank at its own transparency
+        local visible = previewOn or (s().shown and (hasContent or stamping or s().keepEmpty))
         frame:SetShown(visible and true or false)
         if not visible then
             return
         end
-        if cleared then
+        if not hasContent and not previewOn then
             text, heading = "", ""
         end
         if stampNow then
