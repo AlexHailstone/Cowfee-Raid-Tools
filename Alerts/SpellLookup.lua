@@ -14,6 +14,8 @@ local ADDON, CRT = ...
 --   onClose()      the list closed without a pick (put the box's ID back)
 --   levelFrame     the frame the list sits over (its strata, and a level above it); default the box's parent
 --   alignRight     true to line the list's right edge up with the box's, for a box near the right edge
+--   onCommit()     optional: the box is done with (Enter without a pick, or the focus left), so the owner
+--                  can save a number typed in it
 -- It sets the box's OnEnterPressed, OnEscapePressed and OnEditFocusLost. The owner calls
 -- lookup:Text(text) from OnTextChanged: true means the text was a name (the list is handled), false a
 -- number or nothing for the owner to read. lookup.list is the list frame, lookup:Hide() and :Close()
@@ -433,6 +435,8 @@ function SpellLookup.Attach(edit, opts)
         local top = list:IsShown() and lookup.matches[1]
         if top then
             lookup:Pick(top)
+        elseif opts.onCommit then
+            opts.onCommit()
         end
         self:ClearFocus()
     end)
@@ -444,6 +448,9 @@ function SpellLookup.Attach(edit, opts)
         -- a click on the list takes the focus first: the click itself closes the list then
         if not (list:IsShown() and list:IsMouseOver()) then
             lookup:Close()
+        end
+        if opts.onCommit then
+            opts.onCommit()
         end
     end)
     return lookup

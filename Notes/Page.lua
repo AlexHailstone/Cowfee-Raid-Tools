@@ -515,8 +515,9 @@ end
 UI:RegisterPage("notes", "Raid Notes", build)
 
 -- Opens the Raid Notes page on a tab: "notes", "reminders" (Mech Alerts), "alerts" (Alert Settings) or
--- "settings".
+-- "settings". TAB_H is a tab's height under the tabs, for the tabs that size themselves from it.
 CRT.NotesPage = {
+    TAB_H = TAB_H,
     Open = function(tab)
         currentTab = tab
         UI:Show("notes")
