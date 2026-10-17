@@ -80,6 +80,7 @@ Pace\Comm.lua
 Pace\Page.lua
 QoL\LowHealth.lua
 QoL\LowHealthSound.lua
+QoL\BreakTimer.lua
 QoL\Page.lua
 UI\Minimap.lua
 UI\SettingsPage.lua

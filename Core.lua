@@ -157,6 +157,9 @@ local defaults = {
         -- (off: it repeats). customSounds lists file names in the addon's Sounds folder that the player
         -- added. A soundLength key from a 0.14.0 test build may remain and is ignored.
         lowHealth = { enabled = false, threshold = 35, sound = false, soundVolume = 100, soundChoice = "pulse", soundChannel = "game", soundOnce = true, customSounds = {} },
+        -- The break timer (QoL/BreakTimer.lua): endsAt (a time() value), total seconds and who started it
+        -- while a break runs; position once the window is moved.
+        breakTimer = {},
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout
