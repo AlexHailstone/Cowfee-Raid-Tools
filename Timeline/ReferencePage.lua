@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- The Timeline page's References tab. On the left, a box to paste or write a reference timeline
--- (the text format of Timeline/Reference.lua) with Save, and a status line that says "Saved" or
+-- (the text format of Timeline/Reference.lua) with Save, and a status line that says "Saved for ..." or
 -- the first errors. On the right, the selected boss's references: yours with Edit and Delete, the
 -- shipped ones with Copy, which puts their text in the box to change and save as your own. The
 -- Timeline page builds it with Build(parent, ctx) and calls tab:Refresh() when anything changes;
@@ -19,15 +19,15 @@ local UI = CRT.UI
 local ReferencePage = {}
 CRT.TimelineReferencePage = ReferencePage
 
-local ROW_H = 24
+local ROW_H = 46 -- a reference row: name and kind above, its buttons below
 local BOX_W = 340
 local LIST_X = 364
-local LIST_W = 430
+local LIST_W = 310
 local MAX_ERRORS = 3
-local REF_ROWS = 4 -- references listed before the Journal abilities start
+local REF_ROWS = 3 -- references listed before the Journal abilities start
 local ABILITY_H = 20
 
-local GROUP_NAMES = { nh = "Normal/Heroic", mythic = "Mythic" }
+local GROUP_NAMES = CRT.Timeline.GROUP_NAMES
 local OTHER_GROUP = { nh = "mythic", mythic = "nh" }
 
 local GRAY = { 0.35, 0.35, 0.35 }
@@ -232,8 +232,8 @@ function ReferencePage.Build(f, ctx)
                 here = here or entry.key == editing
             end
             local sameName = saved and ctx.bossName() and saved.boss:lower() == ctx.bossName():lower()
-            local where = (here or sameName or not saved) and GROUP_NAMES[ctx.difficulty()] or saved.boss
-            status:SetText(saved and ("Saved for " .. where) or "Saved")
+            local where = (here or sameName) and GROUP_NAMES[ctx.difficulty()] or saved.boss
+            status:SetText("Saved for " .. where)
             status:SetTextColor(0.4, 1, 0.4)
         else
             local shown = {}
@@ -319,19 +319,19 @@ function ReferencePage.Build(f, ctx)
         l:SetSize(LIST_W, ROW_H)
         l:SetPoint("TOPLEFT", f, "TOPLEFT", LIST_X, -30 - (i - 1) * ROW_H)
         l.name = label(l, "", "CRTFontSmall")
-        l.name:SetPoint("LEFT", 0, 0)
-        l.name:SetWidth(130)
+        l.name:SetPoint("TOPLEFT", 0, -2)
+        l.name:SetWidth(150)
         l.name:SetJustifyH("LEFT")
         l.name:SetWordWrap(false)
         l.kind = label(l, "", "CRTFontSmall")
-        l.kind:SetPoint("LEFT", 134, 0)
+        l.kind:SetPoint("TOPLEFT", 154, -2)
         l.kind:SetTextColor(0.6, 0.6, 0.6)
         l.delete = button(l, "Delete", 52)
-        l.delete:SetPoint("RIGHT", 0, 0)
+        l.delete:SetPoint("BOTTOMRIGHT", 0, 2)
         l.edit = button(l, "Edit", 44)
         l.edit:SetPoint("RIGHT", l.delete, "LEFT", -4, 0)
         l.copy = button(l, "Copy", 52)
-        l.copy:SetPoint("RIGHT", 0, 0)
+        l.copy:SetPoint("BOTTOMRIGHT", 0, 2)
         l.copyTo = button(l, "", 128)
         l.copyTo:SetPoint("RIGHT", l.edit, "LEFT", -4, 0)
         l.copyTo:SetScript("OnClick", function(self)

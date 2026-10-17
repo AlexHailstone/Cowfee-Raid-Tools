@@ -42,6 +42,9 @@ end
 
 -- The difficulty group a difficultyID belongs to: Mythic (16) is "mythic", every other
 -- difficulty (or none) is "nh" (Normal/Heroic).
+-- The name of each group, as the dropdowns and messages show it.
+Timeline.GROUP_NAMES = { nh = "Normal/Heroic", mythic = "Mythic" }
+
 function Timeline.DifficultyGroup(difficultyID)
     return difficultyID == 16 and "mythic" or "nh"
 end

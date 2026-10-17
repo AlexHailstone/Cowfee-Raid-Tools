@@ -61,29 +61,29 @@ function ReviewTab.Build(f, ctx)
             { key = "nh", label = ctx.groups.nh },
             { key = "mythic", label = ctx.groups.mythic },
         },
-        labelWidth = 56,
-        width = 120,
+        labelWidth = 52,
+        width = 110,
         get = ctx.group,
         set = ctx.selectGroup,
     }), 8, -4)
-    UI.Help(f, "Difficulty", "Normal and Heroic share one schedule, so they are one view, and Mythic is the other. The boss list, the pulls, the references and the recent pulls show only the difficulty picked here. The page starts on Normal/Heroic each time.\n\nRows and abilities that are Mythic-only never show on Normal/Heroic."):SetPoint("TOPLEFT", f, "TOPLEFT", 196, -8)
+    UI.Help(f, "Difficulty", "Normal and Heroic share one schedule, so they are one view, and Mythic is the other. The boss list, the pulls, the references and the recent pulls show only the difficulty picked here. The page starts on Normal/Heroic each time.\n\nRows and abilities that are Mythic-only never show on Normal/Heroic."):SetPoint("TOPLEFT", f, "TOPLEFT", 172, -8)
     place(UI.Dropdown(f, "Boss", {
         options = ctx.bossOptions,
         labelWidth = 40,
-        width = 200,
+        width = 170,
         get = ctx.boss,
         set = ctx.selectBoss,
-    }), 216, -4)
+    }), 200, -4)
     place(UI.Dropdown(f, "Pull", {
         options = ctx.pullOptions,
         labelWidth = 36,
-        width = 220,
+        width = 190,
         get = ctx.pull,
         set = ctx.selectPull,
         enabledIf = function()
             return ctx.pull() ~= nil
         end,
-    }), 476, -4)
+    }), 424, -4)
 
     checkbox(8, -38, "Record every pull", function()
         return settings().record

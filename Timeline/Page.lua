@@ -40,7 +40,7 @@ local BACKDROP = {
     edgeSize = 1,
 }
 
-local GROUPS = { nh = "Normal/Heroic", mythic = "Mythic" }
+local GROUPS = Timeline.GROUP_NAMES
 
 local TABS = {
     { key = "review", label = "Review" },
@@ -109,7 +109,7 @@ local function buildBossList()
     for _, boss in ipairs(Timeline:Bosses(selectedGroup)) do
         seen[boss.encounterID] = true
         local name = boss.name ~= "" and boss.name or tostring(boss.encounterID)
-        list[#list + 1] = { key = boss.encounterID, name = name, label = name .. " (" .. boss.count .. ")" }
+        list[#list + 1] = { key = boss.encounterID, name = name, label = boss.count > 0 and (name .. " (" .. boss.count .. ")") or name }
     end
     for _, boss in ipairs(Journal:RaidBosses()) do
         if not seen[boss.encounterID] then
