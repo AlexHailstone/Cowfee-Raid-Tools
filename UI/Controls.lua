@@ -203,19 +203,19 @@ function UI.ClipText(parent, font, hoverFrame)
     fs.clip = clip
     -- kept here: once FitText sets a size on fs, its own font object is not a reliable base
     fs.fontObject = _G[font]
-    fs.slide, fs.over = 0, 0
+    fs.slide, fs.over, fs.wait = 0, 0, 0
     hoverFrame = hoverFrame or parent
-    hoverFrame:HookScript("OnEnter", function()
-        fs.hover, fs.wait = true, SLIDE_PAUSE
-    end)
-    hoverFrame:HookScript("OnLeave", function()
-        fs.hover, fs.wait = false, 0
-    end)
+    -- Hover is read each frame, not hooked: the owner may set its own OnEnter and OnLeave later,
+    -- which would replace a hook.
     clip:SetScript("OnUpdate", function(_, dt)
         if fs.over <= 0 then
             return
         end
-        local target = fs.hover and fs.over or 0
+        local hover = hoverFrame:IsMouseOver() and true or false
+        if hover ~= fs.hover then
+            fs.hover, fs.wait = hover, hover and SLIDE_PAUSE or 0
+        end
+        local target = hover and fs.over or 0
         if fs.slide == target then
             return
         end
@@ -250,4 +250,55 @@ function UI.FitText(fs)
     fs.over = math.max(0, math.ceil((fs:GetUnboundedStringWidth() or 0) - width))
     fs.slide = 0
     fs:SetPoint("LEFT", fs.clip, "LEFT", 0, 0)
+end
+
+-- The raid's 8 groups as a grid of 5-slot columns, as on Raid Groups and the Late Tracker's Tonight
+-- tab. opts: cols (groups across), x and top (where the grid starts in parent), width (the whole grid),
+-- colGap, rightW (room for a short text on the right of each slot, 0 for none) and skin(button).
+-- Returns { slots = { 40 buttons, by index }, labels = { 8 }, slotW, blockH }. Each slot has .index,
+-- .icon (a 16 x 16 texture on the left, hidden), .text (UI.ClipText: call UI.FitText after SetText) and
+-- .right (when rightW > 0). The owner adds its own scripts.
+local SLOT_H, SLOT_GAP, GROUP_LABEL_H = 22, 1, 20
+
+function UI.SlotGrid(parent, opts)
+    local cols, colGap, rightW = opts.cols or 4, opts.colGap or 10, opts.rightW or 0
+    local slotW = math.floor((opts.width - (cols - 1) * colGap) / cols)
+    local blockH = GROUP_LABEL_H + 5 * (SLOT_H + SLOT_GAP) + 8
+    local grid = { slots = {}, labels = {}, slotW = slotW, blockH = blockH }
+    for g = 1, 8 do
+        local col, row = (g - 1) % cols, math.floor((g - 1) / cols)
+        local x = (opts.x or 8) + col * (slotW + colGap)
+        local y = opts.top - row * blockH
+        local label = parent:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+        label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+        label:SetText("Group " .. g)
+        grid.labels[g] = label
+        for pos = 0, 4 do
+            local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            b:SetSize(slotW, SLOT_H)
+            b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y - GROUP_LABEL_H - pos * (SLOT_H + SLOT_GAP))
+            if opts.skin then
+                opts.skin(b)
+            end
+            b.index = (g - 1) * 5 + pos + 1
+            b.icon = b:CreateTexture(nil, "OVERLAY")
+            b.icon:SetSize(16, 16)
+            b.icon:SetPoint("LEFT", 4, 0)
+            b.icon:Hide()
+            -- the name never leaves the slot: it shrinks up to two sizes, then slides on hover
+            b.text = UI.ClipText(b, "CRTFontSmall")
+            b.text.clip:SetPoint("LEFT", 25, 0)
+            b.text.clip:SetPoint("RIGHT", -(6 + rightW), 0)
+            b.text.clip:SetHeight(SLOT_H)
+            if rightW > 0 then
+                b.right = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+                b.right:SetPoint("RIGHT", -6, 0)
+                b.right:SetWidth(rightW)
+                b.right:SetJustifyH("RIGHT")
+                b.right:SetWordWrap(false)
+            end
+            grid.slots[b.index] = b
+        end
+    end
+    return grid
 end

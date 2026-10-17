@@ -433,10 +433,27 @@ end
 
 -- Your references first (in the order you saved them), then the shipped ones. A shipped text that
 -- does not read is skipped without a word.
+-- Parsed references, by their text: List is called for every boss lookup (the Mech Alerts list calls
+-- it per row as it scrolls), so a text is parsed once and again only when it changes. Keyed by the
+-- text itself, an edited, added or deleted reference needs no clearing; each List keeps only the
+-- texts it still has. A cached ref is shared, so it is read-only: nothing may change it (the view's
+-- phase-line drag works on a copy).
+local parsedCache = {}
+
+local function parseCached(text, keep)
+    local ref = parsedCache[text]
+    if ref == nil then
+        ref = Reference.Parse(text) or false
+    end
+    keep[text] = ref
+    return ref or nil
+end
+
 function Reference:List()
     local list = {}
+    local keep = {}
     for _, r in ipairs(saved()) do
-        local ref = Reference.Parse(r.text)
+        local ref = parseCached(r.text, keep)
         if ref then
             list[#list + 1] = { key = "own:" .. r.id, ref = ref, own = true, text = r.text }
         end
@@ -444,12 +461,13 @@ function Reference:List()
     local shipped = CRT.TimelineDB and CRT.TimelineDB.references
     if shipped then
         for i, text in ipairs(shipped) do
-            local ref = Reference.Parse(text)
+            local ref = parseCached(text, keep)
             if ref then
                 list[#list + 1] = { key = "ship:" .. i, ref = ref, own = false, text = text }
             end
         end
     end
+    parsedCache = keep
     return list
 end
 

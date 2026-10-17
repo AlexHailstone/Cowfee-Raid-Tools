@@ -10,12 +10,11 @@ local GRID_COLS = 4
 local COL_GAP = 10
 local RIGHT_W = 220
 local SLOT_W = math.floor((UI.PAGE_W - 8 - RIGHT_W - 16 - (GRID_COLS - 1) * COL_GAP) / GRID_COLS)
-local SLOT_H, SLOT_GAP = 22, 1
-local GROUP_LABEL_H = 20
-local BLOCK_H = GROUP_LABEL_H + 5 * (SLOT_H + SLOT_GAP) + 8
+local SLOT_H = 22 -- the slot height in UI.SlotGrid, for the drag ghost
 local GRID_TOP = -52
 local PICK_ROWS = 10
 local ROW_H = 22
+local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local GREEN = { 0.3, 1, 0.3 }
@@ -562,20 +561,22 @@ local function refreshPresets()
     for i, preset in ipairs(presets) do
         local b = presetButtons[i]
         if not b then
-            b = CreateFrame("Button", nil, listChild)
-            b:SetHeight(ROW_H)
-            b:SetPoint("TOPLEFT", listChild, "TOPLEFT", 0, -(i - 1) * ROW_H)
-            b:SetPoint("TOPRIGHT", listChild, "TOPRIGHT", 0, -(i - 1) * ROW_H)
-            b.sel = b:CreateTexture(nil, "BACKGROUND")
-            b.sel:SetAllPoints()
-            b.sel:SetColorTexture(1, 0.82, 0, 0.2)
+            b = CreateFrame("Button", nil, listChild, "BackdropTemplate")
+            b:SetHeight(LIST_ROW_H - 2)
+            b:SetPoint("TOPLEFT", listChild, "TOPLEFT", 0, -(i - 1) * LIST_ROW_H)
+            b:SetPoint("TOPRIGHT", listChild, "TOPRIGHT", 0, -(i - 1) * LIST_ROW_H)
+            skin(b, 0.45)
             b.hl = b:CreateTexture(nil, "HIGHLIGHT")
             b.hl:SetAllPoints()
             b.hl:SetColorTexture(1, 1, 1, 0.08)
-            b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
+            b.active = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+            b.active:SetPoint("RIGHT", -6, 0)
+            b.active:SetText("|cff40ff40active|r")
+            b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
             b.text:SetPoint("LEFT", 6, 0)
-            b.text:SetPoint("RIGHT", -4, 0)
+            b.text:SetPoint("RIGHT", -52, 0)
             b.text:SetJustifyH("LEFT")
+            b.text:SetWordWrap(false)
             b:SetScript("OnClick", function(self)
                 Groups:Select(self.presetId)
             end)
@@ -583,13 +584,14 @@ local function refreshPresets()
         end
         b.presetId = preset.id
         b.text:SetText(preset.name)
-        b.sel:SetShown(preset.id == g.selected)
+        b.active:SetShown(preset.id == Groups:Active())
+        setBorder(b, preset.id == g.selected and GOLD or GRAY)
         b:Show()
     end
     for i = #presets + 1, #presetButtons do
         presetButtons[i]:Hide()
     end
-    listChild:SetHeight(math.max(1, #presets * ROW_H))
+    listChild:SetHeight(math.max(1, #presets * LIST_ROW_H))
     emptyText:SetShown(#presets == 0)
 end
 
@@ -749,59 +751,37 @@ local function buildPage(pf)
     editingLabel:Hide()
     nameEdit:Hide()
 
-    -- Group grid
-    for g = 1, 8 do
-        local col, row = (g - 1) % GRID_COLS, math.floor((g - 1) / GRID_COLS)
-        local x = 8 + col * (SLOT_W + COL_GAP)
-        local y = GRID_TOP - row * BLOCK_H
-        local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        label:SetPoint("TOPLEFT", pf, "TOPLEFT", x, y)
-        label:SetText("Group " .. g)
-
-        for pos = 0, 4 do
-            local index = (g - 1) * 5 + pos + 1
-            local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-            b:SetSize(SLOT_W, SLOT_H)
-            b:SetPoint("TOPLEFT", pf, "TOPLEFT", x, y - GROUP_LABEL_H - pos * (SLOT_H + SLOT_GAP))
-            skin(b)
-            b.index = index
-            b.baseBorder = GRAY
-            b.role = b:CreateTexture(nil, "OVERLAY")
-            b.role:SetSize(16, 16)
-            b.role:SetPoint("LEFT", 4, 0)
-            b.role:SetTexture(ROLE_TEXTURE)
-            b.role:Hide()
-            -- the name never leaves the slot: it shrinks up to two sizes, then slides on hover
-            b.text = UI.ClipText(b, "CRTFontSmall")
-            b.text.clip:SetPoint("LEFT", 25, 0)
-            b.text.clip:SetPoint("RIGHT", -6, 0)
-            b.text.clip:SetHeight(SLOT_H)
-            b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-            b:RegisterForDrag("LeftButton")
-            b:SetScript("OnEnter", function(self)
-                if not drag.from then
-                    setBorder(self, GOLD)
-                end
-            end)
-            b:SetScript("OnLeave", function(self)
-                if not drag.from then
-                    setBorder(self, self.baseBorder)
-                end
-            end)
-            b:SetScript("OnClick", function(self, button)
-                if button == "RightButton" then
-                    Groups:SetSlot(self.index, "")
-                else
-                    openPicker(self)
-                end
-            end)
-            b:SetScript("OnDragStart", onDragStart)
-            b:SetScript("OnDragStop", onDragStop)
-            slotButtons[index] = b
-        end
+    -- Group grid (UI.SlotGrid, shared with the Late Tracker's Tonight tab); the slot's icon is its role
+    local grid = UI.SlotGrid(pf, { cols = GRID_COLS, x = 8, top = GRID_TOP, width = GRID_COLS * SLOT_W + (GRID_COLS - 1) * COL_GAP, colGap = COL_GAP, skin = skin })
+    for index, b in ipairs(grid.slots) do
+        b.baseBorder = GRAY
+        b.role = b.icon
+        b.role:SetTexture(ROLE_TEXTURE)
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        b:RegisterForDrag("LeftButton")
+        b:SetScript("OnEnter", function(self)
+            if not drag.from then
+                setBorder(self, GOLD)
+            end
+        end)
+        b:SetScript("OnLeave", function(self)
+            if not drag.from then
+                setBorder(self, self.baseBorder)
+            end
+        end)
+        b:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                Groups:SetSlot(self.index, "")
+            else
+                openPicker(self)
+            end
+        end)
+        b:SetScript("OnDragStart", onDragStart)
+        b:SetScript("OnDragStop", onDragStop)
+        slotButtons[index] = b
     end
 
-    UI.Help(pf, "Editing the groups", "Click a slot to choose a name, drag to move or swap, right-click to clear."):SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 4, 84)
+    local editHelp = UI.Help(pf, "Editing the groups", "Click a slot to choose a name, drag to move or swap, right-click to clear.")
 
     -- Bottom left buttons
     local setRoster = makeButton(pf, "Set current roster", SLOT_W)
@@ -856,7 +836,24 @@ local function buildPage(pf)
         Groups:ReplaceWorking({})
     end)
 
-    local apply = makeButton(pf, "Apply groups", 2 * SLOT_W + COL_GAP, 32)
+    editHelp:SetPoint("LEFT", clear, "RIGHT", 6, 0)
+
+    -- Use This Group: the open layout becomes the raid's active roster (tagged active in Quick Load),
+    -- which the Late Tracker expects.
+    local useGroup = makeButton(pf, "Use This Group", 2 * SLOT_W + COL_GAP, 32)
+    useGroup:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 84)
+    useGroup:SetScript("OnClick", function()
+        local preset = gdb().selected and Groups:Find(gdb().selected)
+        if preset then
+            Groups:SetActive(preset.id)
+            CRT:Print(preset.name .. " is now the active group. The Late Tracker expects it.")
+        else
+            CRT:Print("Pick a saved layout in Quick Load first.")
+        end
+    end)
+    UI.Help(pf, "Use This Group", "Makes the layout you have open the raid's active roster, marked active in Quick Load. The Late Tracker expects the people in it, in their groups. During a raid night, using another layout, or changing this one, updates tonight's list straight away; everyone's clock keeps running."):SetPoint("LEFT", useGroup, "RIGHT", 6, 0)
+
+    local apply = makeButton(pf, "Arrange Groups", 2 * SLOT_W + COL_GAP, 32)
     apply:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 8)
     apply:SetScript("OnClick", function()
         CRT.Apply:Start(Groups:Working())

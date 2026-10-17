@@ -372,6 +372,29 @@ function Groups:Delete(id)
         g.selected = nil
         self.dirty = false
     end
+    if g.active == id then
+        g.active = nil
+    end
+    self:Fire()
+end
+
+-- The active layout: the roster the raid is running with, marked "active" in Quick Load. The Late
+-- Tracker expects the people in it, in their groups. Its id, or nil when none is set or it was deleted.
+-- Before 0.19.0 the Late Tracker kept its own pick (CRTDB.late.layoutId); that becomes the active
+-- layout the first time this is asked.
+function Groups:Active()
+    local g = gdb()
+    if g.active == nil and CRT.db.late and CRT.db.late.layoutId then
+        g.active = CRT.db.late.layoutId
+    end
+    if g.active and self:Find(g.active) then
+        return g.active
+    end
+    return nil
+end
+
+function Groups:SetActive(id)
+    gdb().active = id
     self:Fire()
 end
 

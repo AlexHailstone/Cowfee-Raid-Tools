@@ -150,6 +150,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.WindowLog then
             CRT.WindowLog:Toggle()
         end
+    elseif msg == "dev late" then
+        if CRT.LateTest then
+            CRT.LateTest:Toggle()
+        end
     elseif msg == "dev layout" then
         if CRT.LayoutCheck then
             CRT.LayoutCheck:Run()

@@ -83,10 +83,9 @@ end
 
 -- Lowercased, de-duplicated names from the expected layout, or nil and a reason.
 local function expectedKeys()
-    local s = ldb()
-    local preset = s.layoutId and CRT.Groups:Find(s.layoutId)
+    local preset = CRT.Groups:Find(CRT.Groups:Active())
     if not preset then
-        return nil, "Pick the expected roster on the Late Tracker page first."
+        return nil, "Make a layout active on Raid Groups (or pick it on the Late Tracker's Settings tab) first."
     end
     local keys, seen = {}, {}
     for i = 1, CRT.Groups.NUM_SLOTS do
@@ -402,11 +401,12 @@ local function onRosterUpdate()
     end)
 end
 
--- When the expected roster layout is saved with changes during a raid night, tonight's list
--- follows it straight away (Raid Groups saves edits to the layout when Keep changes is ticked).
+-- During a raid night, tonight's list follows the active layout straight away: when another layout
+-- is made active, and when the active one is saved with changes (Raid Groups saves edits to the
+-- layout when Keep changes is ticked). Clocks and join times are kept.
 CRT.Groups:OnChange(function()
     local night = ldb().current
-    if not night or not ldb().layoutId or ldb().layoutId ~= CRT.db.groups.selected then
+    if not night or not CRT.Groups:Active() then
         return
     end
     local added, removed = Late:SyncLayout()

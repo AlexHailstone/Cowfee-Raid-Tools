@@ -149,11 +149,7 @@ local function tonightLines(night, now)
             lines[#lines + 1] = l
         end
     end
-    local ok = onTimeLine(onTime)
-    if ok then
-        lines[#lines + 1] = ""
-        lines[#lines + 1] = ok
-    end
+    -- Who is here on time shows in the grid above, as a ready check.
     return table.concat(lines, "\n")
 end
 
@@ -331,20 +327,27 @@ local function showTotals()
         w = 370
     end
     local list = Late:Totals()
+    -- The player's name takes 40% of the width, and the three numbers share the rest evenly, each
+    -- centred under its heading, so the columns spread out as the box grows.
+    local nameW = math.floor(w * 0.4)
+    local colW = math.floor((w - nameW - 4) / 3)
+    local function col(k)
+        return nameW + 4 + (k - 1) * colW
+    end
     for i = 0, #list do
         local row = totalRow(i + 1)
         local y = -24 - i * TOTAL_ROW_H
         if i == 0 then
-            place(row.name, 2, y, w - 214, "LEFT", "|cff999999Player|r")
-            place(row.late, w - 208, y, 64, "RIGHT", "|cff999999Late|r")
-            place(row.time, w - 140, y, 84, "RIGHT", "|cff999999Time late|r")
-            place(row.never, w - 62, y, 60, "RIGHT", "|cff999999No-Show|r")
+            place(row.name, 2, y, nameW - 2, "LEFT", "|cff999999Player|r")
+            place(row.late, col(1), y, colW, "CENTER", "|cff999999Late|r")
+            place(row.time, col(2), y, colW, "CENTER", "|cff999999Time late|r")
+            place(row.never, col(3), y, colW, "CENTER", "|cff999999No-Show|r")
         else
             local t = list[i]
-            place(row.name, 2, y, w - 214, "LEFT", name(t.key))
-            place(row.late, w - 208, y, 64, "RIGHT", t.late .. " of " .. t.nights)
-            place(row.time, w - 140, y, 84, "RIGHT", t.late > 0 and minutes(t.seconds) or "-")
-            place(row.never, w - 62, y, 60, "RIGHT", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
+            place(row.name, 2, y, nameW - 2, "LEFT", name(t.key))
+            place(row.late, col(1), y, colW, "CENTER", t.late .. " of " .. t.nights)
+            place(row.time, col(2), y, colW, "CENTER", t.late > 0 and minutes(t.seconds) or "-")
+            place(row.never, col(3), y, colW, "CENTER", t.never > 0 and ("|cffff6060" .. t.never .. "|r") or "-")
         end
     end
     detailChild:SetHeight(24 + (#list + 1) * TOTAL_ROW_H + 8)
@@ -422,10 +425,9 @@ local function rosterOptions()
     return out
 end
 
--- The picked layout's id, or NONE when nothing is picked or the layout was deleted.
+-- The active Raid Groups layout's id, or NONE when there is none.
 local function rosterKey()
-    local id = Late:Settings().layoutId
-    return (id and Groups:Find(id)) and id or NONE
+    return Groups:Active() or NONE
 end
 
 -- History list -----------------------------------------------------------
@@ -487,12 +489,108 @@ local function refreshList()
     listChild:SetHeight(#entries * ROW_H)
 end
 
+-- Tonight's grid -----------------------------------------------------------
+-- The expected roster as its 8 groups (UI.SlotGrid, the same grid as Raid Groups), each player with a
+-- ready check icon: ready once they are in your group, a ? while they are not. A late arrival shows how
+-- late on the right, and someone not here yet their running time. Players added by hand fill the empty
+-- slots after the layout's. Clicking a ? counts that player as here on time (Late:SetOnTime).
+
+local READY_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
+local WAITING_ICON = "Interface\\RaidFrame\\ReadyCheck-Waiting"
+local GRID_RIGHT_W = 60 -- room for "+12 min" or "1:04:30"
+local tonightGrid
+
+-- The player at each grid slot: the layout's slots, then players added by hand in the empty ones.
+-- Without a running night, the layout's names with no status.
+local function gridPlayers(night)
+    local preset = CRT.Groups:Find(CRT.Groups:Active())
+    local bySlot, placed = {}, {}
+    local byKey = {}
+    if night then
+        for _, p in ipairs(night.players) do
+            byKey[p.key:lower()] = p
+        end
+    end
+    for i = 1, CRT.Groups.NUM_SLOTS do
+        local key = preset and preset.slots[i]
+        if key and key ~= "" then
+            if not night then
+                bySlot[i] = { key = key, idle = true }
+            elseif byKey[key:lower()] and not placed[key:lower()] then
+                bySlot[i] = byKey[key:lower()]
+                placed[key:lower()] = true
+            end
+        end
+    end
+    if night then
+        local free = 1
+        for _, p in ipairs(night.players) do
+            if not placed[p.key:lower()] then
+                while bySlot[free] and free <= CRT.Groups.NUM_SLOTS do
+                    free = free + 1
+                end
+                if free > CRT.Groups.NUM_SLOTS then
+                    break
+                end
+                bySlot[free] = p
+                placed[p.key:lower()] = true
+            end
+        end
+    end
+    return bySlot
+end
+
+local function paintGrid(night, now)
+    if not tonightGrid then
+        return
+    end
+    local bySlot = gridPlayers(night)
+    for i, b in ipairs(tonightGrid.slots) do
+        local p = bySlot[i]
+        b.player = p
+        if not p then
+            b.text:SetText("")
+            b.icon:Hide()
+            b.right:SetText("")
+        else
+            b.text:SetText(Groups.ReportName(p.key))
+            if p.idle then
+                b.text:SetTextColor(0.6, 0.6, 0.6)
+                b.icon:Hide()
+                b.right:SetText("")
+            elseif p.joinedAt then
+                b.text:SetTextColor(Groups.ClassColor(p.key))
+                b.icon:SetTexture(READY_ICON)
+                b.icon:Show()
+                if Late.IsLate(night, p) then
+                    b.right:SetText("|cffffd100+" .. minutes(Late.Seconds(night, p)) .. "|r")
+                else
+                    b.right:SetText("")
+                end
+            else
+                b.text:SetTextColor(0.6, 0.6, 0.6)
+                b.icon:SetTexture(WAITING_ICON)
+                b.icon:Show()
+                b.right:SetText("|cffff6060" .. running(Late.Seconds(night, p, now)) .. "|r")
+            end
+        end
+        UI.FitText(b.text)
+    end
+end
+
 -- Refresh ----------------------------------------------------------------
 
+-- A sample night shown instead of the real one, set by /crt dev late (Dev/LateTest.lua). Display only:
+-- it is never saved, and the buttons still act on the real night.
+local previewNight
+
 local function refreshTonight()
-    local night = Late:Current()
+    local night = previewNight or Late:Current()
     local now = time()
-    if night then
+    paintGrid(night, now)
+    if previewNight then
+        setText(tonightText, tonightChild, "|cff5aa9ffSample night from /crt dev late (not saved; type it again to go back).|r\n" .. tonightLines(night, now))
+    elseif night then
         setText(tonightText, tonightChild, tonightLines(night, now))
         startButton:SetText("Restart from now")
         endButton:Enable()
@@ -800,9 +898,37 @@ local function buildTonight(f)
     end)
     tooltip(editButton, "Edit roster", "Change tonight's list while the raid runs: add someone from your group or by name, count a player as on time, or take someone off the list. Only tonight changes, not the expected roster layout.")
 
+    -- The expected roster as a grid, then who is missing and who came late in a wide box under it.
+    local GRID_TOP = -44
+    tonightGrid = UI.SlotGrid(f, { cols = 4, x = 8, top = GRID_TOP, width = UI.PAGE_W - 16, rightW = GRID_RIGHT_W, skin = skin })
+    for _, b in ipairs(tonightGrid.slots) do
+        b:SetScript("OnEnter", function(self)
+            local p = self.player
+            if not p or p.idle then
+                return
+            end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(Groups.ReportName(p.key), 1, 1, 1)
+            if p.joinedAt then
+                GameTooltip:AddLine("In the group since " .. clock(p.joinedAt) .. ".", 0.8, 0.8, 0.8, true)
+            else
+                GameTooltip:AddLine("Not in the group yet. Click to count them as here on time, such as for someone on another character or excused.", 0.8, 0.8, 0.8, true)
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        b:SetScript("OnClick", function(self)
+            local p = self.player
+            if p and not p.idle and not p.joinedAt then
+                Late:SetOnTime(p.key)
+            end
+        end)
+    end
     local tonightBox
     tonightBox, tonightText, tonightChild = textBox(f, "CowfeeRaidToolsLateTonightScroll")
-    tonightBox:SetPoint("TOPLEFT", 8, -40)
+    tonightBox:SetPoint("TOPLEFT", 8, GRID_TOP - 2 * tonightGrid.blockH - 6)
     tonightBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
 end
 
@@ -924,12 +1050,12 @@ local function buildSettings(f)
         width = 200,
         get = rosterKey,
         set = function(key)
-            Late:Set("layoutId", key ~= NONE and key or nil)
+            Groups:SetActive(key ~= NONE and key or nil)
         end,
     })
     layoutButton:SetPoint("TOPLEFT", 8, -62)
     controls[#controls + 1] = layoutButton
-    UI.Help(f, "Expected roster", "The saved Raid Groups layout of who should be there. Everyone in it is expected. A night already running keeps the roster it started with. Save a layout on the Raid Groups page to add it here."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
+    UI.Help(f, "Expected roster", "The active Raid Groups layout: who should be there, in their groups. It is the same as Make active on Raid Groups, where it is marked active. During a raid night, tonight's list follows it: make another layout active, or change this one, and tonight updates, with everyone's clock kept."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
 end
 
 local function build(pf)
@@ -978,7 +1104,7 @@ local function build(pf)
         elapsed = elapsed + dt
         if elapsed >= 1 then
             elapsed = 0
-            if Late:Current() then
+            if Late:Current() or previewNight then
                 refreshTonight()
             end
         end
@@ -995,6 +1121,13 @@ UI:RegisterPage("late", "Late Tracker", build)
 
 -- For /crt late export: the totals, ready to paste into Discord.
 CRT.LatePage = {
+    -- For /crt dev late: shows night (or the real one again, for nil) on the Tonight tab.
+    Preview = function(night)
+        previewNight = night
+        UI:Show("late")
+        selectTab("tonight")
+        refresh()
+    end,
     ExportTotals = function()
         CRT.ConsumablesTools:ShowText("Late tracker totals for Discord (Ctrl+C to copy)", totalsExport())
     end,

@@ -723,6 +723,17 @@ function Methods:PhaseMouseDown(button)
     end
     local phase = self.pull.reference.phases[i]
     if button == "LeftButton" and IsShiftKeyDown() then
+        -- the drag moves the line on a copy of the phases: parsed references are shared (Reference
+        -- caches them by text) and must never change; the move is written into the text at the end
+        local ref, copy = self.pull.reference, {}
+        for k, v in pairs(ref) do
+            copy[k] = v
+        end
+        copy.phases = {}
+        for j, p in ipairs(ref.phases) do
+            copy.phases[j] = { t = p.t, planned = p.planned, label = p.label }
+        end
+        self.pull = { reference = copy }
         self.phaseDrag = { index = i, from = phase.t }
         return true
     end
