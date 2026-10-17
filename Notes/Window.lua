@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 --   window       the timers of the note in use. Before the pull it lists every timer by phase. During the
 --                fight each line counts down and disappears once its time has passed.
 --   assignments  the note's text that is not a timer, such as "Kick order" and the names under it.
---   personal     your own personal note, typed on the Raid Notes page. Only you see it.
+--   personal     your own personal note, typed on the Raid Notes page, under your personal reminders
+--                for the current boss. Only you see it.
 -- Each window has its own font, size, transparency, position and size, saved per player in CRTDB.notes.
 -- Unlocked, a window can be dragged to move it and resized from its bottom-right corner. Locked, it lets
 -- clicks through. Names are class colored, and a line for you (your name or your role) is marked.
@@ -24,9 +25,10 @@ NoteWindow.FONTS = CRT.FONTS
 local previewOn = false
 
 -- The windows' text is rebuilt only when something it shows may have changed: the note, the settings,
--- the group, your role, or previews. contentVersion goes up on each of those, and a window rebuilds
--- when it has not drawn the current version. The timers window also rebuilds every refresh while a
--- note is running, for the countdown. A rebuild every few seconds anyway catches anything missed.
+-- the group, your role, your reminders, the alerts run, or previews. contentVersion goes up on each of
+-- those, and a window rebuilds when it has not drawn the current version. The timers window also
+-- rebuilds every refresh while a note is running, and the personal window while any run goes, for the
+-- countdown. A rebuild every few seconds anyway catches anything missed.
 local contentVersion = 1
 local SAFETY_SECONDS = 5
 local function changed()
@@ -219,10 +221,209 @@ local function assignmentsText()
     return "", "Assignments", false
 end
 
+-- Your reminders in the personal window ------------------------------------------------------
+-- The current boss's personal reminders (CRT.AlertReminders, "Only me"), above the free text: a heading
+-- with the boss's name, then each time of each reminder by phase. During a run of that boss they come
+-- from the run itself (the alerts engine's "mine" items, so the difficulty and phase starts are the
+-- run's), counting down like the timers window, the next one marked and passed ones hidden with the
+-- timers window's "Hide lines once passed". The current boss is the running encounter, else the boss
+-- of the note in use, else none (then only the free text). An editor Test run is not a boss.
+
+local TEXT = {
+    phase = "Phase %s",
+    waiting = "Phase %s starts on Next phase",
+    boss = "Boss %s",
+    reminder = "Reminder",
+}
+
+-- False for a secret value (CRT.Timeline.readable, loaded later than this file).
+local function readable(v)
+    local T = CRT.Timeline
+    if T and T.readable then
+        return T.readable(v)
+    end
+    return not (issecretvalue and issecretvalue(v))
+end
+
+local function bossID(v)
+    if readable(v) and type(v) == "number" and v > 0 then
+        return v
+    end
+    return nil
+end
+
+-- encounterID, the run when it is that boss's, and the note record when the boss comes from the note.
+local function currentBoss()
+    local Alerts = CRT.Alerts
+    local run = Alerts and Alerts.running and Alerts.run
+    if run and (run.reason ~= "test" or Engine.running) then
+        local id = bossID(run.encounterID)
+        if id then
+            return id, run
+        end
+    end
+    local _, record = Notes:Active()
+    local id = record and bossID(record.encounterID)
+    if id then
+        return id, nil, record
+    end
+    return nil
+end
+
+-- The boss library's name, else the name saved on one of its reminders, else the note's.
+local function bossName(encounterID, list, record)
+    local def = CRT.Bosses and CRT.Bosses:Get(encounterID)
+    if def and type(def.name) == "string" and def.name ~= "" then
+        return def.name
+    end
+    for _, e in ipairs(list) do
+        if type(e.r.boss) == "string" and e.r.boss ~= "" then
+            return e.r.boss
+        end
+    end
+    if record and type(record.name) == "string" and record.name ~= "" then
+        return record.name
+    end
+    return format(TEXT.boss, tostring(encounterID))
+end
+
+local function reminderLine(item, seconds, isNext)
+    local icon = item.icon and ("|T" .. tostring(item.icon) .. ":0|t ") or ""
+    local text = icon .. tostring(item.text or TEXT.reminder)
+    if isNext then
+        return "|cffffd100> " .. fmtTime(seconds) .. "|r  " .. text
+    end
+    return "|cffaaaaaa" .. fmtTime(seconds) .. "|r  " .. text
+end
+
+local function phaseHeading(ph)
+    return "|cffffd100" .. format(TEXT.phase, tostring(ph)) .. "|r"
+end
+
+-- Out of a run: every time of every turned-on reminder (of the note's difficulty, or any), by phase.
+local function plannedLines(encounterID, list, record)
+    local R = CRT.AlertReminders
+    local difficulty = record and type(record.difficulty) == "string" and record.difficulty:lower() or nil
+    local items = {}
+    for _, e in ipairs(list) do
+        local r = R:Effective("mine", e.id, e.r)
+        local diff = type(r.difficulty) == "string" and r.difficulty:lower() or nil
+        if r.enabled ~= false and not (diff and difficulty and diff ~= difficulty) then
+            for _, it in ipairs(R:Items(encounterID, e.id, r)) do
+                items[#items + 1] = it
+            end
+        end
+    end
+    table.sort(items, function(a, b)
+        if a.ph ~= b.ph then
+            return a.ph < b.ph
+        end
+        if a.time ~= b.time then
+            return a.time < b.time
+        end
+        return a.id < b.id
+    end)
+    local lines, lastPhase = {}, nil
+    for _, it in ipairs(items) do
+        if it.ph ~= lastPhase then
+            lines[#lines + 1] = phaseHeading(it.ph)
+            lastPhase = it.ph
+        end
+        lines[#lines + 1] = reminderLine(it, it.time)
+    end
+    return lines
+end
+
+-- During a run: the run's own reminder items, counting down from each phase's start.
+local function runLines()
+    local Alerts = CRT.Alerts
+    local now = GetTime()
+    local hidePassed = Notes:WindowSettings("window").hidePassed
+    local byPhase, phases, waiting = {}, {}, {}
+    local nextRow
+    for _, it in ipairs(Alerts.items or {}) do
+        if it.block == "mine" then
+            local start = Alerts:PhaseStart(it.ph)
+            if start then
+                local remaining = start + it.time - now
+                if not (hidePassed and remaining < -(it.hold or 0)) then
+                    if not byPhase[it.ph] then
+                        byPhase[it.ph] = {}
+                        phases[#phases + 1] = it.ph
+                    end
+                    local row = { it = it, remaining = remaining }
+                    table.insert(byPhase[it.ph], row)
+                    if remaining >= 0 and (not nextRow or remaining < nextRow.remaining) then
+                        nextRow = row
+                    end
+                end
+            elseif not Alerts:Skipped(it.ph) and not waiting[it.ph] then
+                waiting[it.ph] = true
+                phases[#phases + 1] = it.ph
+            end
+        end
+    end
+    table.sort(phases)
+    local lines = {}
+    for _, ph in ipairs(phases) do
+        local rows = byPhase[ph]
+        if rows then
+            table.sort(rows, function(a, b)
+                if a.remaining ~= b.remaining then
+                    return a.remaining < b.remaining
+                end
+                return a.it.id < b.it.id
+            end)
+            lines[#lines + 1] = phaseHeading(ph)
+            for _, row in ipairs(rows) do
+                lines[#lines + 1] = reminderLine(row.it, row.remaining, row == nextRow)
+            end
+        else
+            lines[#lines + 1] = "|cff777777" .. format(TEXT.waiting, tostring(ph)) .. "|r"
+        end
+    end
+    return lines
+end
+
+-- The reminders block (heading and lines), or nil when there is no current boss or it has none.
+local function remindersBlock()
+    local R = CRT.AlertReminders
+    if not R then
+        return nil
+    end
+    local encounterID, run, record = currentBoss()
+    if not encounterID then
+        return nil
+    end
+    local list = R:List(encounterID)
+    if #list == 0 then
+        return nil
+    end
+    local lines = run and runLines() or plannedLines(encounterID, list, record)
+    if #lines == 0 then
+        return nil
+    end
+    table.insert(lines, 1, "|cffffd100" .. bossName(encounterID, list, record) .. "|r")
+    return table.concat(lines, "\n")
+end
+
 local function personalText()
     local lines = splitLines(Notes:Personal())
+    local ok, reminders = pcall(remindersBlock)
+    if not ok then
+        -- a failure must never take the free text with it
+        if geterrorhandler then
+            geterrorhandler()(reminders)
+        end
+        reminders = nil
+    end
+    local parts = {}
+    parts[#parts + 1] = reminders
     if #lines > 0 then
-        return textBlock(lines), "Personal note", true
+        parts[#parts + 1] = textBlock(lines)
+    end
+    if #parts > 0 then
+        return table.concat(parts, "\n\n"), "Personal note", true
     end
     if previewOn then
         return "Your personal note shows here.\nWrite it on the Raid Notes page.", "Personal note (sample)", true
@@ -353,7 +554,9 @@ local function createWindow(key, defaultPosition, build)
     end
 
     function w:Refresh()
-        local live = key == "window" and Engine.running or false
+        -- the timers window counts down while a note runs, the personal window (your reminders) while
+        -- any run goes
+        local live = (key == "window" and Engine.running) or (key == "personal" and CRT.Alerts and CRT.Alerts.running) or false
         if not live and not self.wasLive and self.drawnVersion == contentVersion and GetTime() - (self.drawnAt or 0) < SAFETY_SECONDS then
             return
         end
@@ -453,6 +656,12 @@ Notes:OnChange(function()
         styleAll()
     end
 end)
+
+-- Your reminders (saved, deleted, turned off) and runs starting, stopping or changing phase: the alerts
+-- engine tells its listeners. The personal window shows the reminders.
+if CRT.Alerts then
+    CRT.Alerts:OnChange(changed)
+end
 
 CRT.UI:RegisterPreview("note", function(on)
     build()
