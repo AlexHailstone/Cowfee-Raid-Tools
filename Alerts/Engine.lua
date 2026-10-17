@@ -243,6 +243,29 @@ function Alerts:Skipped(ph)
     return self.skipped and self.skipped[ph] and true or false
 end
 
+-- The phase mask: once a later phase has started, an earlier phase's items timed at or after its start
+-- never come (the boss moved on). Returns the earliest start among the later phases that have started,
+-- or nil while none has. Nothing is deleted: the next pull starts clean.
+function Alerts:PhaseCut(ph)
+    local cut
+    for p, at in pairs(self.starts or {}) do
+        if p > ph and (not cut or at < cut) then
+            cut = at
+        end
+    end
+    return cut
+end
+
+-- Whether an item of phase ph at `time` seconds into it is masked by a later phase.
+function Alerts:IsCut(ph, time)
+    local start = self.starts and self.starts[ph]
+    if not start or type(time) ~= "number" then
+        return false
+    end
+    local cut = self:PhaseCut(ph)
+    return cut ~= nil and start + time >= cut
+end
+
 -- The started phase with the latest start.
 function Alerts:CurrentPhase()
     local best, bestAt
@@ -269,7 +292,8 @@ local function hasOutput(it)
     return type(o) == "table" and (o.alert or o.bar or o.speech or o.text or o.icon or o.circle) and true or false
 end
 
--- The timed lines of the run: items of started phases that show anywhere, through the conflict rules.
+-- The timed lines of the run: items of started phases that show anywhere and are not masked by a later
+-- phase (IsCut), through the conflict rules.
 -- The lines do not depend on `now`, so they are built once per change (see `version`) and the same table
 -- is handed to every caller until then. Callers only read it.
 function Alerts:Lines(now)
@@ -282,7 +306,7 @@ function Alerts:Lines(now)
     local entries = {}
     for _, it in ipairs(self.items) do
         local start = self.starts[it.ph]
-        if start and not self.skipped[it.ph] and hasOutput(it) then
+        if start and not self.skipped[it.ph] and hasOutput(it) and not self:IsCut(it.ph, it.time) then
             local e = {}
             for k, v in pairs(it) do e[k] = v end
             e.at = start + it.time

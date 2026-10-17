@@ -740,7 +740,8 @@ local function rowFor(lanes, spellID, text)
 end
 
 -- The boss's saved alerts that have a time on what is shown: every timed line of its raid notes (each
--- difficulty's note) and every time of your reminders. On a recorded pull only phase 1 can be placed.
+-- difficulty's note) and every time of your reminders, except those at or after a later phase's line
+-- (Reminders.PhaseCut, the phase mask). On a recorded pull only phase 1 can be placed.
 -- Each gets the lane it goes on: a note line its spell's row, else a Notes lane added at the bottom of
 -- lanes; your reminders only the Personal notes lane, added last whenever a boss is shown (with or
 -- without reminders). Returns { { t, ph, time, row, text, tags, kind, encounterID, ... } }: a
@@ -771,6 +772,11 @@ function Methods:NoteAndReminderMarks(lanes, length)
         m.spellID, m.iconID = spellID, iconID
         m.t = Reminders.AbsoluteTime(ref, m.ph, m.time)
         if not (m.t and m.t >= 0 and m.t <= length) then
+            return
+        end
+        -- the phase mask: hidden once a later phase line comes first (kept in the note or reminder)
+        local cut = Reminders.PhaseCut(ref, m.ph)
+        if cut and m.t >= cut then
             return
         end
         m.text = (type(text) == "string" and text ~= "" and text) or Reminders.SpellName(spellID)

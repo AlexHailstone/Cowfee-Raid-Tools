@@ -175,6 +175,8 @@ local function timersText()
             local remaining = Engine:Remaining(item)
             if remaining == nil then
                 waiting[item.ph] = true
+            elseif Engine.IsCut and Engine:IsCut(item) then
+                -- A later phase started first: this line never comes.
             elseif shown(item) and not (Notes:WindowSettings("window").hidePassed and remaining < -(item.dur or 0)) then
                 lines[#lines + 1] = timerLine(item, remaining)
             end
@@ -344,7 +346,9 @@ local function runLines()
     for _, it in ipairs(Alerts.items or {}) do
         if it.block == "mine" then
             local start = Alerts:PhaseStart(it.ph)
-            if start then
+            if start and Alerts:IsCut(it.ph, it.time) then
+                -- A later phase started first: this reminder never comes.
+            elseif start then
                 local remaining = start + it.time - now
                 if not (hidePassed and remaining < -(it.hold or 0)) then
                     if not byPhase[it.ph] then

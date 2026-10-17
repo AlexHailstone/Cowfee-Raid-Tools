@@ -83,6 +83,23 @@ function Reminders.AbsoluteTime(ref, ph, seconds)
     return nil
 end
 
+-- The phase mask on a reference: the earliest phase line of a later phase than ph (a higher number,
+-- "P1.5" counts as later than 1), or nil. Whatever phase ph has timed at or after it never comes, as the
+-- engine's Alerts:PhaseCut does in a pull.
+function Reminders.PhaseCut(ref, ph)
+    if type(ph) ~= "number" then
+        return nil
+    end
+    local cut
+    for _, p in ipairs(ref and ref.phases or {}) do
+        local n = Reminders.PhaseNumber(p.label)
+        if n and n > ph and type(p.t) == "number" and (not cut or p.t < cut) then
+            cut = p.t
+        end
+    end
+    return cut
+end
+
 -- The casts of a reference row as { ph, t }, each through PhaseAt.
 function Reminders.FromReference(ref, row)
     local out = {}

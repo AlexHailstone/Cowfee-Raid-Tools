@@ -255,6 +255,11 @@ function Engine:Elapsed()
 end
 
 -- Seconds until a timer, or nil if its phase has not started. Negative once it has passed.
+-- Whether a later phase has started before this line's time (the phase mask, Alerts:IsCut).
+function Engine:IsCut(item)
+    return Alerts:IsCut(item.ph, item.time)
+end
+
 function Engine:Remaining(item)
     local start = Alerts:PhaseStart(item.ph)
     if not start then
