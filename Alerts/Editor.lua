@@ -1,9 +1,9 @@
 local ADDON, CRT = ...
 
 -- The alert editor: one popout window for every alert, a line of the boss's raid note or one of your
--- own reminders. It opens from Edit on the Reminders tab and from a double-click on the Timeline, edits
--- a draft, and saves it as a note line (Notes:AddLine or ReplaceLine, through Parser.FormatLine) or as
--- a reminder (CRT.AlertReminders). Switching Save as on a saved alert moves it: the new place is written
+-- own reminders. It opens from a double-click on the Timeline and from the Timeline's chips, edits a
+-- draft (Alerts/Draft.lua), and saves it as a note line (Notes:AddLine or ReplaceLine, through
+-- Parser.FormatLine) or as a reminder (CRT.AlertReminders). Switching Save as on a saved alert moves it: the new place is written
 -- first, then the old one removed. A note line is only ever written back over the raw line it was
 -- opened from, so a note changed elsewhere (a new share) is never overwritten blind.
 -- Test runs the draft as it stands on screen without saving anything: its items go to a block of their
@@ -61,10 +61,6 @@ local TEXT = {
         .. "Icon ID: type an icon's file ID to show that icon instead.\n\n"
         .. "Or type a spell name (3 letters or more) to search this boss's abilities and your own "
         .. "spells (a close spelling works too), then click one or press Enter for the top match.",
-    lookupBoss = "Boss",
-    lookupTimeline = "Timeline",
-    lookupYours = "Yours",
-    lookupNone = "No spells match",
     text = "Text",
     color = "Color",
     colorDefault = "Default",
@@ -102,14 +98,7 @@ local TEXT = {
     testInPull = "Test is off during a pull.",
     testTrigger = "Nothing to test: this alert starts in phase %s, which waits for its trigger.",
     testBlock = "Alert test",
-    saveFailed = "The reminder could not be saved.",
-    noEncounter = "Pick a boss first: this alert has no boss to be saved for.",
-    keptBad = "The saved times don't read (%s). Type a time to replace them.",
-    nothing = "Tick a Show as box, Speak the text or Count down: a sound alone shows nothing.",
-    noTime = "Type a time.",
-    badTime = "bad time '%s'",
     noBoss = "This boss has no encounter ID, so it can't have a raid note line.",
-    stale = "This note line was changed elsewhere, such as by a new share. Close the editor and open it again.",
     noteFailed = "The note line could not be saved.",
     reopen = "You can change the raid note now. Close this line and open it again to edit it.",
     noteLineTitle = "Raid note line",
@@ -118,6 +107,8 @@ local TEXT = {
 
 local Alerts = CRT.Alerts
 local Reminders = CRT.AlertReminders
+local Draft = CRT.AlertDraft
+local DTEXT = Draft.TEXT
 local UI = CRT.UI
 
 local Editor = {}
@@ -126,11 +117,11 @@ CRT.AlertEditor = Editor
 local TEST_BLOCK = "minetest"
 local TEST_LEAD = 10 -- a test starts this many seconds before the alert's first time
 local ANY = "any"    -- the difficulty dropdown's key for "any difficulty" (saved as nil)
-local NO_SOUND = "none"
+local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
 local EXPORT_NAME = "CowfeeRaidToolsAlertExport"
 local WIDTH, HEIGHT = 600, 480
-local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle" }
+local SHOW_KEYS = Draft.SHOW_KEYS
 local LEFT = 16
 local MENU_MAX_HEIGHT = 400 -- the For and Sound menus scroll past this (a full raid is taller than the screen)
 local FIELD_X = 91 -- where the boxes and checkboxes of the labelled rows start
@@ -143,11 +134,6 @@ local EXPORT_TEXT_WIDTH = EXPORT_WIDTH - 2 * EXPORT_PAD
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
 local ID_WIDTH = 140 -- the Spell / Icon ID box, wide enough for a spell name being looked up
 local ID_SHIFT = ID_WIDTH - 80 -- the (?), preview and name sit this much right of where an 80 px box put them
-local LOOKUP_MIN = 3 -- letters before a name lookup opens
-local LOOKUP_ROWS = 8
-local LOOKUP_ROW_HEIGHT = 20
-local LOOKUP_WIDTH = 320
-local LOOKUP_LEVEL = 50 -- the match list's frame level over the editor's, so it covers the rows below
 
 local POPUP_NAME = "COWFEE_RAID_TOOLS_SAVED_ALERT_NAME"
 
@@ -166,45 +152,14 @@ local testItems
 local inCorner -- Previews put the editor in the corner, so closing it puts it back
 local previewDraft -- the empty draft Previews opened, so Previews only ever closes that one
 
-local function trim(s)
-    return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
-end
+-- The draft itself and how it becomes a reminder are in Alerts/Draft.lua, shared with the Mech Alerts
+-- panel; the name lookup of the Spell / Icon ID box is Alerts/SpellLookup.lua.
+local trim, copy, readable = Draft.trim, Draft.copy, Draft.readable
+local validID, parseTime, words = Draft.validID, Draft.parseTime, Draft.words
+local canEditRaid = Draft.CanEditRaid
 
 local function lower(s)
     return trim(s):lower()
-end
-
-local function copy(v)
-    if type(v) ~= "table" then
-        return v
-    end
-    local out = {}
-    for k, x in pairs(v) do
-        out[k] = copy(x)
-    end
-    return out
-end
-
-local function readable(v)
-    local T = CRT.Timeline
-    if T and T.readable then
-        return T.readable(v)
-    end
-    return true
-end
-
--- Whether you may change the raid note now, and the reason when not. Asked again at every write, so
--- a promotion or demotion while the editor is open counts.
-local function canEditRaid()
-    local Notes = CRT.Notes
-    if not (Notes and Notes.CanEditRaid) then
-        return false
-    end
-    local ok, why = Notes:CanEditRaid()
-    if ok then
-        return true
-    end
-    return false, why
 end
 
 -- The reason Raid note is greyed out, from CRT.Notes:CanEditRaid (empty when you may change it).
@@ -222,10 +177,6 @@ local function editable()
     return not readOnly()
 end
 
-local function validID(v)
-    return type(v) == "number" and v > 0 and v or nil
-end
-
 -- "m:ss" for whole seconds; a note line's time with a fraction stays plain seconds.
 local function clock(t, exact)
     if exact and t ~= math.floor(t) then
@@ -233,24 +184,6 @@ local function clock(t, exact)
     end
     t = math.floor(t + 0.5)
     return string.format("%d:%02d", math.floor(t / 60), t % 60)
-end
-
--- The time rule of Reminders.ParseTimes ("1:30" or "90"), plus plain seconds with a fraction.
-local function parseTime(text)
-    text = trim(text)
-    local t = CRT.TimelineReference.ParseTime(text)
-    if not t and text:match("^%d+%.%d+$") then
-        t = tonumber(text)
-    end
-    return t
-end
-
-local function words(s)
-    local out = {}
-    for word in tostring(s or ""):gmatch("%S+") do
-        out[#out + 1] = word
-    end
-    return out
 end
 
 -- Text fit for a note line: no ";" (it ends a field) and no line ends.
@@ -276,8 +209,7 @@ end
 
 -- The draft as reminder text fields, for Reminders:Times.
 local function timesProbe()
-    return { times = draft.keptTimes, spellID = draft.spellID, text = draft.text, boss = draft.boss,
-        difficulty = draft.difficulty }
+    return Draft.TimesProbe(draft)
 end
 
 -- The time the box shows for times kept from Stage 1: the first of the lowest phase.
@@ -291,45 +223,16 @@ local function firstTime(list)
     return ph, t
 end
 
--- Whether the draft still uses a saved reminder's own times: one being kept, or one moving to the raid
--- note with Relative to and Time untouched (it then becomes one note line per time).
 local function keepsTimes()
-    if ctx and ctx.savedMode then
-        return false
-    end
-    return not draft.timeTouched and (draft.saveAs == "mine" or (ctx ~= nil and ctx.id ~= nil))
+    return Draft.KeepsTimes(ctx, draft)
 end
 
--- The message for a time that does not read; `strict` (Save and Test) also asks a note line for one.
--- A reminder's kept times text is checked while Relative to and Time are untouched.
 local function timeError(strict)
-    if ctx and ctx.savedMode then
-        return nil -- a saved alert has no time
-    end
-    if keepsTimes() and draft.keptTimes then
-        local list, err = Reminders.ParseTimes(draft.keptTimes)
-        if not list then
-            return string.format(TEXT.keptBad, tostring(err))
-        end
-        return nil
-    end
-    local text = trim(draft.timeText)
-    if text == "" then
-        return (strict and draft.saveAs == "note") and TEXT.noTime or nil
-    end
-    if not parseTime(text) then
-        return string.format(TEXT.badTime, text)
-    end
-    return nil
+    return Draft.TimeError(ctx, draft, strict)
 end
 
 local function anyOutput()
-    for _, k in ipairs(SHOW_KEYS) do
-        if draft.show[k] then
-            return true
-        end
-    end
-    return draft.speak or draft.count
+    return Draft.AnyOutput(draft)
 end
 
 -- The draft as a note line's timer (Parser.FormatLine writes it). A line keeps its dur:.
@@ -394,60 +297,8 @@ local function noteTimers()
     return { base }
 end
 
--- The reminder's times text: the one it was saved with until Relative to or Time is touched.
-local function reminderTimes()
-    if not draft.timeTouched then
-        return draft.keptTimes
-    end
-    local t = parseTime(draft.timeText)
-    if not t then
-        return nil
-    end
-    return Reminders.FormatTimes({ { ph = draft.ph or 1, t = t } })
-end
-
--- A draft's Show as boxes and Read out choices as a reminder's outputs and speech (nil when neither
--- read out choice is ticked).
-local function draftOutputs(d)
-    local outputs = {}
-    for _, k in ipairs(SHOW_KEYS) do
-        outputs[k] = d.show[k] and true or false
-    end
-    outputs.speech = (d.speak or d.count) and true or false
-    local speech
-    if d.speak and d.count then
-        speech = "textcount"
-    elseif d.speak then
-        speech = "text"
-    elseif d.count then
-        speech = "count"
-    end
-    return outputs, speech
-end
-
--- The draft as a reminder, laid over the saved one so its other fields (priority, enabled) stay.
 local function buildReminder()
-    local r = copy(ctx and ctx.reminder or {})
-    r.boss = draft.boss
-    r.spellID = validID(draft.spellID)
-    r.text = trim(draft.text)
-    r.difficulty = draft.difficulty
-    r.times = reminderTimes()
-    r.outputs = r.outputs or {}
-    local outputs, speech = draftOutputs(draft)
-    for k, on in pairs(outputs) do
-        r.outputs[k] = on
-    end
-    if speech then
-        r.speech = speech
-    end
-    r.warn = draft.warn
-    r.linger = draft.linger > 0 and draft.linger or nil
-    r.sound = draft.sound
-    r.glow = draft.glow or nil
-    r.iconID = draft.iconType == "id" and validID(draft.iconID) or nil
-    r.color = copy(draft.color)
-    return r
+    return Draft.BuildReminder(ctx, draft)
 end
 
 -- Choices -----------------------------------------------------------------------------------------
@@ -662,11 +513,7 @@ local function phaseOptions()
 end
 
 local function soundOptions()
-    local out = { { key = NO_SOUND, label = TEXT.none } }
-    for _, s in ipairs(CRT.AlertSpeech and CRT.AlertSpeech.SOUNDS or {}) do
-        out[#out + 1] = { key = s.key, label = s.label }
-    end
-    return out
+    return Draft.SoundOptions(TEXT.none)
 end
 
 -- Showing the draft -------------------------------------------------------------------------------
@@ -736,7 +583,7 @@ local function refresh(rows)
         el:SetEnabled(not locked)
     end
     if locked then
-        frame.lookup:Hide()
+        frame.lookupCtl:Hide()
     end
     for _, k in ipairs(SHOW_KEYS) do
         frame.checks[k]:SetEnabled(not locked)
@@ -784,228 +631,14 @@ local function fail(message)
 end
 
 -- Spell lookup --------------------------------------------------------------------------------------
--- The Spell / Icon ID box takes a name too: 3 letters or more list the matching spells of the boss's
--- Journal abilities, its reference rows and your spellbook (first source wins a spell), and a pick puts
--- the spell (or, in Icon ID mode, its icon) in the box. Letters never change the draft by themselves.
+-- The Spell / Icon ID box takes a name too (CRT.AlertSpellLookup): a pick puts the spell (or, in Icon ID
+-- mode, its icon) in the box. Letters never change the draft by themselves.
 
-local SOURCE_ORDER = { boss = 1, timeline = 2, yours = 3 }
-local SOURCE_TAG = { boss = TEXT.lookupBoss, timeline = TEXT.lookupTimeline, yours = TEXT.lookupYours }
-local yours -- your spellbook's spells, read once per open the first time a name is looked up
-local matches = {} -- the matches the list shows, best first
 local lookupFrom -- the spell when the box took the focus: text naming it is refilled by a pick
 
-local function readableString(v)
-    return readable(v) and type(v) == "string" and v ~= ""
-end
-
-local function readableID(v)
-    return readable(v) and validID(v) or nil
-end
-
-local function readableIcon(v)
-    if readable(v) and v ~= nil and (type(v) == "number" or type(v) == "string") then
-        return v
-    end
-end
-
--- Your spellbook's spells, { spellID, name, icon }: spells only (no future spells, flyouts or pet
--- actions), anything missing or secret skipped.
-local function spellbook()
-    if yours then
-        return yours
-    end
-    yours = {}
-    local SB = C_SpellBook
-    if not (SB and SB.GetNumSpellBookSkillLines and SB.GetSpellBookSkillLineInfo and SB.GetSpellBookItemInfo) then
-        return yours
-    end
-    local E = Enum
-    local bank = E and E.SpellBookSpellBank and E.SpellBookSpellBank.Player or 0
-    local spellType = E and E.SpellBookItemType and E.SpellBookItemType.Spell or 1
-    local ok, count = pcall(SB.GetNumSpellBookSkillLines)
-    if not (ok and readable(count) and type(count) == "number") then
-        return yours
-    end
-    for i = 1, count do
-        local okLine, line = pcall(SB.GetSpellBookSkillLineInfo, i)
-        if okLine and type(line) == "table" then
-            local offset, num = line.itemIndexOffset, line.numSpellBookItems
-            if readable(offset) and readable(num) and type(offset) == "number" and type(num) == "number" then
-                for index = offset + 1, offset + num do
-                    local okItem, item = pcall(SB.GetSpellBookItemInfo, index, bank)
-                    if okItem and type(item) == "table" then
-                        local id, name, kind = readableID(item.spellID), item.name, item.itemType
-                        local passive = item.isPassive
-                        passive = readable(passive) and passive == true
-                        if id and not passive and readableString(name) and readable(kind) and kind == spellType then
-                            yours[#yours + 1] = { spellID = id, name = name, icon = readableIcon(item.iconID) }
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return yours
-end
-
--- Every spell the lookup can offer, in source order, each spell once: { spellID, name, icon, source }.
-local function lookupCandidates()
-    local out, seen = {}, {}
-    local function add(id, name, icon, source)
-        id = readableID(id)
-        if id and not seen[id] and readableString(name) then
-            seen[id] = true
-            out[#out + 1] = { spellID = id, name = name, icon = readableIcon(icon), source = source }
-        end
-    end
-    local encounterID = ctx and ctx.encounterID
-    if type(encounterID) == "number" then
-        local journal = {}
-        local J = CRT.TimelineJournal
-        if J and J.Rows then
-            local ok, rows = pcall(J.Rows, J, encounterID)
-            if ok and type(rows) == "table" then
-                journal = rows
-            end
-        end
-        for _, row in ipairs(journal) do
-            if type(row) == "table" then
-                -- your own rows added to the boss's list are not its abilities
-                add(row.spellID, row.name, row.icon, row.own and "timeline" or "boss")
-            end
-        end
-        local Ref, Lanes = CRT.TimelineReference, CRT.TimelineLanes
-        if Ref and Lanes and Lanes.RowSpell then
-            local okRefs, entries = pcall(Ref.ForBoss, Ref, encounterID, draft and draft.boss)
-            for _, entry in ipairs(okRefs and type(entries) == "table" and entries or {}) do
-                for _, row in ipairs(entry.ref and entry.ref.rows or {}) do
-                    local okSpell, id = pcall(Lanes.RowSpell, row, encounterID, journal)
-                    id = okSpell and readableID(id)
-                    if id and not seen[id] then
-                        add(id, Reminders.SpellName(id) or row.name, nil, "timeline")
-                    end
-                end
-            end
-        end
-    end
-    for _, s in ipairs(spellbook()) do
-        add(s.spellID, s.name, s.icon, "yours")
-    end
-    return out
-end
-
--- Optimal string alignment distance (Levenshtein plus swapping two neighbours) between q and the len
--- characters of s from position from, both already lower case. Three rows, reused.
-local osaRows = { {}, {}, {} }
-local function nearDistance(q, s, from, len)
-    local back2, back1, row = osaRows[1], osaRows[2], osaRows[3]
-    for j = 0, len do
-        back1[j] = j
-    end
-    local qPrev
-    for i = 1, #q do
-        local qc = q:byte(i)
-        row[0] = i
-        local sPrev
-        for j = 1, len do
-            local sc = s:byte(from + j - 1)
-            local v = back1[j - 1] + (qc == sc and 0 or 1)
-            if back1[j] + 1 < v then
-                v = back1[j] + 1
-            end
-            if row[j - 1] + 1 < v then
-                v = row[j - 1] + 1
-            end
-            if i > 1 and j > 1 and qc == sPrev and qPrev == sc and back2[j - 2] + 1 < v then
-                v = back2[j - 2] + 1
-            end
-            row[j] = v
-            sPrev = sc
-        end
-        qPrev = qc
-        back2, back1, row = back1, row, back2
-    end
-    return back1[len]
-end
-
--- The most typos a near match may have: more for a longer query, none under 4 letters (too many hits).
-local function nearLimit(n)
-    if n >= 10 then
-        return 3
-    elseif n >= 6 then
-        return 2
-    elseif n >= 4 then
-        return 1
-    end
-    return -1
-end
-
-local function isWordByte(c)
-    return (c >= 48 and c <= 57) or (c >= 97 and c <= 122) or c >= 128
-end
-
--- The best distance of q to the name's start, or to the same length from any word start in it.
-local function nameDistance(q, name)
-    local n, total = #q, #name
-    local best = nearDistance(q, name, 1, math.min(n, total))
-    for at = 2, total do
-        if best == 0 then
-            break
-        end
-        if isWordByte(name:byte(at)) and not isWordByte(name:byte(at - 1)) then
-            local d = nearDistance(q, name, at, math.min(n, total - at + 1))
-            if d < best then
-                best = d
-            end
-        end
-    end
-    return best
-end
-
--- The spells for a query, in any case: names holding it (those starting with it first), then near
--- matches, close spellings of the name's start or of a word in it, by distance. Each group by source,
--- then by name.
-local function findMatches(query)
-    local q = query:lower()
-    local limit = nearLimit(#q)
-    local found = {}
-    for _, c in ipairs(lookupCandidates()) do
-        local key = c.name:lower()
-        c.key = key
-        local at = key:find(q, 1, true)
-        if at then
-            c.rank, c.dist = at == 1 and 0 or 1, 0
-            found[#found + 1] = c
-        else
-            local d = nameDistance(q, key)
-            if d <= limit then
-                c.rank, c.dist = 2, d
-                found[#found + 1] = c
-            end
-        end
-    end
-    table.sort(found, function(a, b)
-        if a.rank ~= b.rank then
-            return a.rank < b.rank
-        end
-        if a.dist ~= b.dist then
-            return a.dist < b.dist
-        end
-        if a.source ~= b.source then
-            return SOURCE_ORDER[a.source] < SOURCE_ORDER[b.source]
-        end
-        if a.key ~= b.key then
-            return a.key < b.key
-        end
-        return a.spellID < b.spellID
-    end)
-    return found
-end
-
 local function hideLookup()
-    wipe(matches)
-    if frame and frame.lookup then
-        frame.lookup:Hide()
+    if frame and frame.lookupCtl then
+        frame.lookupCtl:Hide()
     end
 end
 
@@ -1018,49 +651,16 @@ local function putIDBack()
     frame.idEdit:SetText(tostring(id or ""))
 end
 
-local function closeLookup()
-    hideLookup()
-    putIDBack()
-end
-
--- The icon a pick in Icon ID mode takes: the source's, else the game's when it reads as a number.
-local function matchIcon(m)
-    if type(m.icon) == "number" and m.icon > 0 then
-        return m.icon
-    end
-    if C_Spell and C_Spell.GetSpellTexture then
-        local ok, tex = pcall(C_Spell.GetSpellTexture, m.spellID)
-        if ok and readable(tex) then
-            return validID(tex)
-        end
-    end
-end
-
 -- A match picked: the spell (or its icon) goes in the draft and the box, and text that was empty or only
 -- named the previous spell becomes the new spell's name. Typed text stays.
 local function pickMatch(m)
-    hideLookup()
     if not (draft and m) or readOnly() then
         return
     end
-    local before = validID(lookupFrom) or validID(draft.spellID)
+    local id, text = Draft.ApplyPick(draft, m, lookupFrom)
     lookupFrom = nil
-    local beforeName = before and Reminders.SpellName(before)
-    local text = trim(draft.text)
-    local id
-    if draft.iconType == "id" then
-        id = matchIcon(m)
-        if id then
-            draft.iconID = id
-        end
-    else
-        id = m.spellID
-        draft.spellID = id
-    end
-    -- an icon alone leaves the text: it still names the alert's spell
-    if draft.iconType ~= "id" and (text == "" or (beforeName and text == trim(beforeName))) then
-        draft.text = m.name
-        frame.textEdit:SetText(m.name)
+    if text then
+        frame.textEdit:SetText(text)
     end
     if id then
         frame.idEdit:SetText(tostring(id))
@@ -1068,68 +668,15 @@ local function pickMatch(m)
     changed()
 end
 
-local function showLookup(query)
-    local list = frame.lookup
-    if not (draft and editable()) then
-        return hideLookup()
-    end
-    wipe(matches)
-    for i, m in ipairs(findMatches(query)) do
-        if i > LOOKUP_ROWS then
-            break
-        end
-        matches[i] = m
-    end
-    for i, row in ipairs(list.rows) do
-        local m = matches[i]
-        row.match = m or false
-        if m then
-            row.icon:SetTexture(m.icon or select(2, spellInfo(m.spellID)))
-            row.icon:Show()
-            row.nameText:SetText(m.name)
-            row.nameText:SetTextColor(1, 1, 1)
-            row.idText:SetText(tostring(m.spellID))
-            row.tagText:SetText(SOURCE_TAG[m.source] or "")
-            row:SetEnabled(true)
-            row:Show()
-        elseif i == 1 then
-            row.icon:Hide()
-            row.nameText:SetText(TEXT.lookupNone)
-            row.nameText:SetTextColor(0.6, 0.6, 0.6)
-            row.idText:SetText("")
-            row.tagText:SetText("")
-            row:Show()
-        else
-            row:Hide()
-        end
-    end
-    list:SetHeight(math.max(1, #matches) * LOOKUP_ROW_HEIGHT + 4)
-    list:SetFrameStrata(frame:GetFrameStrata())
-    list:SetFrameLevel((frame:GetFrameLevel() or 1) + LOOKUP_LEVEL)
-    list:Show()
-end
-
 -- The box's text changed: letters look a name up (leaving the draft alone), a number is the ID.
 local function idTextChanged(text)
     if not draft then
         return
     end
-    local s = trim(text)
-    if s:find("%a") then
-        if #s >= LOOKUP_MIN then
-            showLookup(s)
-        else
-            hideLookup()
-        end
+    if frame.lookupCtl:Text(text) then
         return
     end
-    hideLookup()
-    local id = validID(tonumber(s))
-    if draft.iconType == "id" then
-        draft.iconID = id
-    else
-        draft.spellID = id
-    end
+    Draft.SetID(draft, tonumber(trim(text)))
     changed()
 end
 
@@ -1166,8 +713,7 @@ end
 
 -- Whether the note line is still the one the editor opened.
 local function lineUnchanged()
-    local _, raw = CRT.Notes:TimerAt(ctx.noteID, ctx.line)
-    return raw ~= nil and raw == ctx.expected
+    return Draft.LineUnchanged(ctx)
 end
 
 local function saveNote()
@@ -1188,12 +734,12 @@ local function saveNote()
     local difficulty = draft.difficulty and trim(draft.difficulty) or nil
     if ctx.noteID then
         if not lineUnchanged() then
-            return fail(TEXT.stale)
+            return fail(DTEXT.stale)
         end
         -- still going to its own note: the line is replaced where it is
         if targetNote() == ctx.noteID then
             if not Notes:ReplaceLine(ctx.noteID, ctx.line, lines[1], ctx.expected) then
-                return fail(TEXT.stale)
+                return fail(DTEXT.stale)
             end
             Editor:Close()
             return true
@@ -1222,25 +768,9 @@ local function saveNote()
 end
 
 local function saveMine()
-    local encounterID = ctx.encounterID
-    if encounterID == nil then
-        return fail(TEXT.noEncounter)
-    end
-    -- a note line moving to your reminders is taken out of the raid note
-    if ctx.noteID then
-        local allowed, why = canEditRaid()
-        if not allowed then
-            return fail(why)
-        end
-    end
-    if ctx.noteID and not lineUnchanged() then
-        return fail(TEXT.stale)
-    end
-    if not Reminders:Save(encounterID, ctx.id, buildReminder()) then
-        return fail(TEXT.saveFailed)
-    end
-    if ctx.noteID then
-        CRT.Notes:RemoveLine(ctx.noteID, ctx.line, ctx.expected)
+    local ok, err = Draft.SaveMine(ctx, draft)
+    if not ok then
+        return fail(err)
     end
     Editor:Close()
     return true
@@ -1285,7 +815,7 @@ function Editor:Save()
         return fail(err)
     end
     if not anyOutput() then
-        return fail(TEXT.nothing)
+        return fail(DTEXT.nothing)
     end
     if ctx.savedMode then
         return saveSaved()
@@ -1296,28 +826,24 @@ function Editor:Save()
     return saveMine()
 end
 
--- Runs the draft alone as a test, starting TEST_LEAD seconds before its first time. Saves nothing.
-function Editor:Test()
-    if not (ctx and (ctx.encounterID or ctx.savedMode) and draft) then
-        return false
-    end
+-- Runs a draft alone as a test, starting TEST_LEAD seconds before its first time. Saves nothing. True, or
+-- false and the message (none when the draft simply has no times). Only the editor's own draft is ever a
+-- raid note line (noteTimers reads it).
+local function runTest(c, d)
     -- A real pull is never cut short by a test.
     if Alerts.running and Alerts.run and Alerts.run.reason == "encounter" then
-        return fail(TEXT.testInPull)
+        return false, TEXT.testInPull
     end
-    local err = timeError(true)
+    local err = Draft.Problem(c, d)
     if err then
-        return fail(err)
-    end
-    if not anyOutput() then
-        return fail(TEXT.nothing)
+        return false, err
     end
     local items, lowest, first
-    if draft.saveAs == "note" then
+    if d.saveAs == "note" then
         local list = {}
         items = {}
         for i, t in ipairs(noteTimers()) do
-            if ctx.savedMode then
+            if c.savedMode then
                 t.ph, t.time = 1, TEST_LEAD -- a saved alert has no time: ten seconds from the start
             end
             local item = CRT.NoteEngine.ItemFor(t, i, true)
@@ -1328,20 +854,19 @@ function Editor:Test()
         end
         lowest, first = firstTime(list)
     else
-        local r = buildReminder()
-        if ctx.savedMode then
+        local r = Draft.BuildReminder(c, d)
+        if c.savedMode then
             r.times = Reminders.FormatTimes({ { ph = 1, t = TEST_LEAD } })
         end
-        local list = Reminders:Times(ctx.encounterID, r)
+        local list = Reminders:Times(c.encounterID, r)
         if #list == 0 then
-            refresh()
             return false
         end
         lowest, first = firstTime(list)
-        items = Reminders:Items(ctx.encounterID, "test", r)
+        items = Reminders:Items(c.encounterID, "test", r)
     end
     testItems = items
-    Alerts:Start(ctx.encounterID or 0, nil, "test", {
+    Alerts:Start(c.encounterID or 0, nil, "test", {
         blocks = { [TEST_BLOCK] = true },
         filter = function(_, item)
             return type(item.id) == "string" and (item.id:find("^mine:test:") or item.id:find("^note:test:")) ~= nil
@@ -1352,9 +877,34 @@ function Editor:Test()
     -- A lowest phase with an event trigger waits for its event, so the test would show nothing.
     if Alerts.running and Alerts.run and Alerts.run.reason == "test" and not Alerts:PhaseStart(lowest) then
         Alerts:Stop()
-        return fail(string.format(TEXT.testTrigger, tostring(lowest)))
+        return false, string.format(TEXT.testTrigger, tostring(lowest))
     end
     return true
+end
+
+-- Tests the draft on screen.
+function Editor:Test()
+    if not (ctx and (ctx.encounterID or ctx.savedMode) and draft) then
+        return false
+    end
+    local ok, err = runTest(ctx, draft)
+    if not ok then
+        if err then
+            return fail(err)
+        end
+        refresh()
+        return false
+    end
+    return true
+end
+
+-- Tests an Only me draft from elsewhere (the Mech Alerts panel) the same way: ctx is { encounterID, id,
+-- reminder }. True, or false and the message.
+function Editor:TestDraft(c, d)
+    if not (c and c.encounterID and d) or d.saveAs == "note" then
+        return false
+    end
+    return runTest(c, d)
 end
 
 -- The draft's items, given out once and only to a test run. A note line's item keeps block "note".
@@ -1537,7 +1087,7 @@ function Editor:Export()
     end
     -- a note line needs a time that reads, as Save does
     local err = timeError(true) or (not ctx.savedMode and not keptTimeList() and parseTime(draft.timeText) == nil
-        and TEXT.noTime or nil)
+        and DTEXT.noTime or nil)
     if err then
         fail(err)
         return nil
@@ -1579,8 +1129,8 @@ local function acceptName(edit, data)
     fields.name = trim(edit:GetText())
     local id = CRT.AlertSaved:Save(nil, fields)
     if not id then
-        if draft then
-            fail(TEXT.savedFailed)
+        if data.onFail then
+            data.onFail(TEXT.savedFailed)
         end
         return
     end
@@ -1630,19 +1180,15 @@ local function ensureNamePopup()
     return true
 end
 
--- Asks for a name for the draft as a saved alert, over the editor; Accept makes it (an empty name takes
--- the default), Cancel leaves the draft as it was.
-local function askSavedName()
-    if not (draft and CRT.AlertSaved and ensureNamePopup()) then
+-- Asks for a name for a saved alert's fields, over every window; Accept makes it (an empty name takes
+-- the default), Cancel makes nothing. onFail(message) hears when it could not be saved.
+local function askName(fields, onFail)
+    if not (CRT.AlertSaved and ensureNamePopup()) then
         return
     end
-    if not anyOutput() then
-        return fail(TEXT.nothing)
-    end
-    local fields = savedFields()
     fields.name = nil
-    local data = { fields = fields, default = CRT.AlertSaved.DefaultName(fields) }
-    -- already asking: the open popup is reused, taking the draft as it is now
+    local data = { fields = fields, default = CRT.AlertSaved.DefaultName(fields), onFail = onFail }
+    -- already asking: the open popup is reused, taking the alert as it is now
     local openName = StaticPopup_Visible and StaticPopup_Visible(POPUP_NAME)
     local open = openName and _G[openName]
     if open and open.IsShown and open:IsShown() then
@@ -1651,6 +1197,34 @@ local function askSavedName()
         return
     end
     UI.LiftOver(UI.ShownPopup(StaticPopup_Show(POPUP_NAME, nil, nil, data), POPUP_NAME))
+end
+
+-- Save as saved alert on the editor: the draft as it is now.
+local function askSavedName()
+    if not (draft and CRT.AlertSaved and ensureNamePopup()) then
+        return
+    end
+    if not anyOutput() then
+        return fail(DTEXT.nothing)
+    end
+    askName(savedFields(), function(message)
+        if draft then
+            fail(message)
+        end
+    end)
+end
+
+-- Save as template for an Only me draft from elsewhere (the Mech Alerts panel), by the same name popup.
+-- False and the message when the draft shows nothing.
+function Editor:AskTemplateName(c, d, onFail)
+    if not Draft.AnyOutput(d) then
+        return false, DTEXT.nothing
+    end
+    local fields = Draft.BuildReminder(c, d)
+    fields.saveAs = d.saveAs
+    fields.tags = words(d.tag)
+    askName(fields, onFail)
+    return true
 end
 
 -- The game's color picker on the draft's color; Cancel puts the old one back.
@@ -1855,26 +1429,8 @@ local function build()
         end,
     }), LEFT, -132 - ROW1_EXTRA)
     f.idEdit = makeEdit(f, 212, -138 - ROW1_EXTRA, ID_WIDTH, idTextChanged)
-    -- Enter picks the top match of a name lookup; Escape or leaving the box closes the list
-    f.idEdit:SetScript("OnEnterPressed", function(self)
-        local top = f.lookup:IsShown() and matches[1]
-        if top then
-            pickMatch(top)
-        end
-        self:ClearFocus()
-    end)
-    f.idEdit:SetScript("OnEscapePressed", function(self)
-        closeLookup()
-        self:ClearFocus()
-    end)
     f.idEdit:SetScript("OnEditFocusGained", function()
         lookupFrom = draft and validID(draft.spellID)
-    end)
-    f.idEdit:SetScript("OnEditFocusLost", function()
-        -- a click on the list takes the focus first: the click itself closes the list then
-        if not (f.lookup:IsShown() and f.lookup:IsMouseOver()) then
-            closeLookup()
-        end
     end)
     lay(UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp), 296 + ID_SHIFT, -140 - ROW1_EXTRA)
     f.iconPreview = f:CreateTexture(nil, "ARTWORK")
@@ -1885,60 +1441,15 @@ local function build()
     lay(f.spellName, 358 + ID_SHIFT, -142 - ROW1_EXTRA)
     f.spellName:SetWidth(WIDTH - 358 - ID_SHIFT - LEFT)
     -- the match list of a name lookup, under the box and over the rows below it
-    local list = CreateFrame("Frame", nil, f)
-    f.lookup = list
-    list:SetSize(LOOKUP_WIDTH, LOOKUP_ROW_HEIGHT + 4)
-    list:SetPoint("TOPLEFT", f.idEdit, "BOTTOMLEFT", -4, -2)
-    list:SetFrameStrata(f:GetFrameStrata())
-    list:SetFrameLevel((f:GetFrameLevel() or 1) + LOOKUP_LEVEL)
-    list:EnableMouse(true)
-    -- a click on the list between rows closes it too, so it is never left open without the focus
-    list:SetScript("OnMouseDown", closeLookup)
-    local M = CRT.MOCHA
-    list.edge = list:CreateTexture(nil, "BACKGROUND")
-    list.edge:SetAllPoints()
-    list.edge:SetColorTexture(M.edge[1], M.edge[2], M.edge[3], 1)
-    list.bg = list:CreateTexture(nil, "BORDER")
-    list.bg:SetPoint("TOPLEFT", 1, -1)
-    list.bg:SetPoint("BOTTOMRIGHT", -1, 1)
-    list.bg:SetColorTexture(M.espresso[1], M.espresso[2], M.espresso[3], 1)
-    list.rows = {}
-    for i = 1, LOOKUP_ROWS do
-        local r = CreateFrame("Button", nil, list)
-        r:SetSize(LOOKUP_WIDTH - 4, LOOKUP_ROW_HEIGHT)
-        r:SetPoint("TOPLEFT", 2, -2 - (i - 1) * LOOKUP_ROW_HEIGHT)
-        r.highlight = r:CreateTexture(nil, "HIGHLIGHT")
-        r.highlight:SetAllPoints()
-        r.highlight:SetColorTexture(M.mocha[1], M.mocha[2], M.mocha[3], 0.5)
-        r.icon = r:CreateTexture(nil, "ARTWORK")
-        r.icon:SetSize(LOOKUP_ROW_HEIGHT - 4, LOOKUP_ROW_HEIGHT - 4)
-        r.icon:SetPoint("LEFT", 2, 0)
-        r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-        r.tagText = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        r.tagText:SetPoint("RIGHT", -4, 0)
-        r.tagText:SetWidth(56)
-        r.tagText:SetJustifyH("RIGHT")
-        r.tagText:SetTextColor(0.6, 0.6, 0.6)
-        r.idText = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        r.idText:SetPoint("RIGHT", r.tagText, "LEFT", -6, 0)
-        r.idText:SetWidth(56)
-        r.idText:SetJustifyH("RIGHT")
-        r.nameText = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        r.nameText:SetPoint("LEFT", LOOKUP_ROW_HEIGHT + 2, 0)
-        r.nameText:SetPoint("RIGHT", r.idText, "LEFT", -6, 0)
-        r.nameText:SetJustifyH("LEFT")
-        r.nameText:SetWordWrap(false)
-        -- a match is picked; the grey "No spells match" row closes the list
-        r:SetScript("OnClick", function(self)
-            if self.match then
-                pickMatch(self.match)
-            else
-                closeLookup()
-            end
-        end)
-        list.rows[i] = r
-    end
-    list:Hide()
+    f.lookupCtl = CRT.AlertSpellLookup.Attach(f.idEdit, {
+        encounterID = function() return ctx and ctx.encounterID end,
+        boss = function() return draft and draft.boss end,
+        enabled = function() return draft ~= nil and editable() end,
+        onPick = pickMatch,
+        onClose = putIDBack,
+        levelFrame = f,
+    })
+    f.lookup = f.lookupCtl.list
     f.spellName:SetJustifyH("LEFT")
     f.spellName:SetWordWrap(false)
 
@@ -2031,7 +1542,7 @@ local function build()
                     end
                     if not CRT.Notes:RemoveLine(from.noteID, from.line, from.expected) then
                         if ctx == from then
-                            fail(TEXT.stale)
+                            fail(DTEXT.stale)
                         end
                         return
                     end
@@ -2080,40 +1591,13 @@ end
 
 -- Opening -------------------------------------------------------------------------------------------
 
-local function newDraft()
-    return { saveAs = "mine", tag = "everyone", ph = 1, timeText = "", timeTouched = false, iconType = "spell",
-        text = "", show = { alert = true, bar = true }, speak = true, count = false, glow = false, warn = 5,
-        linger = 0 }
-end
+local newDraft = Draft.New
 
--- What a new alert starts with, as a template's fields (CRT.AlertSaved:Save): its Save as, For, outputs,
--- speech and warning time. A fresh table each call, from the same draft a new alert opens with.
-function Editor.NewDefaults()
-    local d = newDraft()
-    local outputs, speech = draftOutputs(d)
-    return { saveAs = d.saveAs, tags = d.tag, outputs = outputs, speech = speech, warn = d.warn }
-end
+-- What a new alert starts with, as a template's fields (Alerts/Draft.lua keeps the one copy).
+Editor.NewDefaults = Draft.NewDefaults
 
--- A saved reminder into the draft. Its times text is kept until Relative to or Time is touched.
 local function fromReminder(r)
-    draft.spellID, draft.boss, draft.difficulty = r.spellID, r.boss, r.difficulty
-    draft.text = r.text or ""
-    draft.keptTimes = r.times
-    local o = r.outputs or {}
-    for _, k in ipairs(SHOW_KEYS) do
-        draft.show[k] = o[k] and true or false
-    end
-    local speaks = o.speech ~= false
-    local mode = r.speech or "text"
-    draft.speak = speaks and mode ~= "count"
-    draft.count = speaks and (mode == "textcount" or mode == "count")
-    draft.glow = r.glow and true or false
-    draft.sound = r.sound
-    draft.warn = r.warn or 5
-    draft.linger = type(r.linger) == "number" and r.linger or 0
-    draft.iconID = validID(r.iconID)
-    draft.iconType = draft.iconID and "id" or "spell"
-    draft.color = copy(r.color)
+    Draft.FromReminder(draft, r)
 end
 
 -- A saved alert into the draft: a reminder's fields, and its For choice and Save as.
@@ -2163,7 +1647,7 @@ end
 -- Fills the boxes from the draft and shows the window on top.
 local function show()
     notice = nil
-    yours = nil -- the spellbook is read again, on the first lookup of this open
+    CRT.AlertSpellLookup.Forget() -- the spellbook is read again, on the first lookup of this open
     lookupFrom = nil
     hideLookup()
     setTitle()

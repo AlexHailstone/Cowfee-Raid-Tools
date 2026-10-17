@@ -73,6 +73,8 @@ Alerts\Bars.lua
 Alerts\Texts.lua
 Alerts\Icons.lua
 Alerts\Circles.lua
+Alerts\Draft.lua
+Alerts\SpellLookup.lua
 Alerts\Editor.lua
 Alerts\Saved.lua
 Markers\Database.lua
