@@ -69,7 +69,9 @@ end
 -- the group (your own first, else the shipped one) has no Order line, or the chosen order is the
 -- written one. Otherwise a function(spellID, text, t) giving t moved as Reference.PartMover moves a
 -- cast of the part row the line belongs to: found by spellID, else by a row name in the text. A line
--- of no part row keeps t; a line that would run past its new window gives false.
+-- of no part row keeps t; a line that would run past its new window gives false. The second result,
+-- unshift(spellID, text, t), is the reverse, for a time picked on the drawn timeline: back to the
+-- written order, or false when t is outside the part's chosen window.
 function Timeline:OrderShift(encounterID, group)
     local Reference = CRT.TimelineReference
     local ref
@@ -86,8 +88,8 @@ function Timeline:OrderShift(encounterID, group)
     if Reference.OrderKey(chosen) == Reference.OrderKey(ref.order.parts) then
         return nil
     end
-    local move = Reference.PartMover(ref, chosen)
-    return function(spellID, text, t)
+    local move, _, unmove = Reference.PartMover(ref, chosen)
+    local function partRow(spellID, text)
         local found
         for _, row in ipairs(ref.rows) do
             if row.part and spellID and spellID ~= 0 and CRT.TimelineLanes.RowSpell(row, encounterID) == spellID then
@@ -104,10 +106,20 @@ function Timeline:OrderShift(encounterID, group)
                 end
             end
         end
-        if not found then
+        return found
+    end
+    return function(spellID, text, t)
+        local row = partRow(spellID, text)
+        if not row then
             return t
         end
-        return move(found, t)
+        return move(row, t)
+    end, function(spellID, text, t)
+        local row = partRow(spellID, text)
+        if not row then
+            return t
+        end
+        return unmove(row, t)
     end
 end
 
