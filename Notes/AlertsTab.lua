@@ -6,8 +6,9 @@ local ADDON, CRT = ...
 --          CRTDB.notes.alert (enabled, tts), the bars in alerts.bars.noteLines, the rest in
 --          alerts.noteLines. A note line with its own show: keeps its displays (see Notes/Engine.lua).
 --          Under it, Previews and a test of every area.
---   Right  Configuration: a dropdown of the four alert areas and the chosen one's settings, drawn by
---          Alerts/Areas.lua's panel from each area's def.settings. The choice is kept for the session.
+--   Right  Configuration, from half the page: a dropdown of the four alert areas and the chosen one's
+--          settings, drawn by Alerts/Areas.lua's panel from each area's def.settings. The choice is kept
+--          for the session.
 -- The ⚙ on each area's drag box opens this tab on that area (CRT.NoteAlertsTab.Select).
 -- The areas load after this file, so they are only looked up once the tab is built.
 
@@ -52,7 +53,10 @@ local KINDS = {
     { key = "circles", label = TEXT.circles },
 }
 local DEFAULT_KIND = "icons"
-local RIGHT_X = 330 -- the right column; the tab is 686 wide
+-- Two columns, each half of the page (UI.PAGE_W): where your note lines go on the left, Configuration
+-- on the right. The tab is UI.PAGE_H - 66 high under the tabs; the tallest area's rows end well above it.
+local COLUMN_GAP = 16
+local RIGHT_X = math.floor(UI.PAGE_W / 2) + COLUMN_GAP / 2
 local TEST_ICONS = { 136243, 135808, 136116 }
 local TEST_TIMES = { 8, 12, 16 } -- seconds until each test alert reaches 0
 local TEST_HOLD = 1
