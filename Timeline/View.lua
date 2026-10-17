@@ -509,7 +509,8 @@ end
 
 -- Lights the row of a spell (by its ID, else by the row's name) in a foamy off-white and scrolls it
 -- into the middle of the view, for "Show on the Timeline". Returns true when such a row is shown.
--- The light stays until other data is shown.
+-- The light stays until other data is shown or ClearHighlight (the page calls it when the pop-out
+-- closes); a second Highlight moves it to the new row.
 local HIGHLIGHT = { 0.96, 0.94, 0.86 }
 function Methods:Highlight(spellID, name)
     self.highlight = { spellID = spellID, name = type(name) == "string" and name:lower() or nil }
@@ -526,6 +527,13 @@ function Methods:Highlight(spellID, name)
     local top = (row - 1) * ROW_H - ((v:GetHeight() or 0) - ROW_H) / 2
     v:SetVerticalScroll(math.max(0, math.min(range, top)))
     return true
+end
+
+function Methods:ClearHighlight()
+    if self.highlight then
+        self.highlight = nil
+        self:Refresh()
+    end
 end
 
 -- The lit row's band over the labels and the track, or nothing.
