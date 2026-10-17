@@ -37,6 +37,9 @@ local TEXT = {
     linger = "Linger",
     seconds = "%d s",
     noTimes = "No times on the reference for this mechanic.",
+    times = "Times",
+    timesHelp = "This alert has no times on the boss's reference, so type its own: the phase, then minutes:seconds from the start of that phase, as in P1 0:30, 1:15; P2 0:20. A time with no phase is in phase 1.\n\nSaved when you press Enter, leave the box or stop typing.",
+    badTimes = "The times don't read: %s",
     showOnTimeline = "Show on the Timeline",
     notOnTimeline = "That mechanic isn't on the Timeline for this boss yet.",
     showAs = "Show as",
@@ -115,6 +118,7 @@ local ID_X = COL2_X + LABEL_W + DROP_GAP + ICON_DROP_W + 8
 local ID_W = COL2_X + COL_W - ID_X - HELP_ROOM
 local SOUND_W = 160
 local BUTTON_H = 22
+local TYPING_PAUSE = 0.5 -- seconds after the last key before a typed box saves
 local ANY = "any"
 
 local WHITE = { 1, 1, 1 }
@@ -207,6 +211,8 @@ local filling = false -- the panel is setting its own boxes
 local followID -- after a save, the row holding this reminder becomes the selected one
 local reveal = false -- scroll the selected row into view on the next refresh
 local lookupFrom -- the spell when the Icon box took the focus
+local typed = false -- a box was typed in and is not saved yet
+local typedGen = 0 -- counts typing and loads, so only the last pause saves
 
 local function pickBoss(bosses)
     if not selected or not bossName(bosses, selected) then
@@ -383,6 +389,15 @@ local function idText(d)
     return id and tostring(id) or ""
 end
 
+-- Whether the reference has times for the draft's spell or name, leaving out times it typed itself.
+-- Without them the panel takes typed times in a box.
+local function referenceTimes(r)
+    local probe = copy(r)
+    probe.times = nil
+    probe.boss = probe.boss or cur.bossName
+    return select(2, timesFor(cur.enc, probe))
+end
+
 -- Everything on the panel from the draft, except a box being typed in.
 local function drawPanel()
     if not panel.frame then
@@ -412,8 +427,17 @@ local function drawPanel()
     panel.colorSwatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
     local r = CRT.AlertDraft.BuildReminder(cur.ctx, d)
     r.boss = r.boss or cur.bossName
-    local text = timesFor(cur.enc, r)
+    local text = timesFor(cur.enc, copy(r))
     panel.times:SetText(text and text:gsub("; ", " · ") or TEXT.noTimes)
+    -- typed times over the reference stay read only, as the list shows them
+    local own = not referenceTimes(r)
+    panel.times:SetShown(not own)
+    panel.timesLabel:SetShown(own)
+    panel.timesEdit:SetShown(own)
+    panel.timesHelp:SetShown(own)
+    if own then
+        setBox(panel.timesEdit, d.keptTimes)
+    end
     panel.message:SetText(notice and RED:format(notice) or "")
 end
 
@@ -428,23 +452,25 @@ local function loadPanel(item, enc, name)
     local Draft = CRT.AlertDraft
     local same = cur.key == key and cur.enc == enc
     cur.item, cur.bossName = item, name
-    if same and not item.r then
-        return
+    if same and (not item.r or typed) then
+        return -- no saved reminder to read again, or typing not saved yet
     end
     if item.r then
         cur.ctx = { encounterID = enc, id = item.id, reminder = Draft.copy(item.r) }
         cur.draft = Draft.ForReminder(item.r)
         cur.draft.boss = cur.draft.boss or name
     elseif item.pending then
-        cur.ctx = { encounterID = enc }
+        -- a change in the panel never turns a reminder on: one it makes starts off, like its tick
+        cur.ctx = { encounterID = enc, reminder = { enabled = false } }
         cur.draft = Draft.New()
         cur.draft.boss = name
     else
-        cur.ctx = { encounterID = enc }
+        cur.ctx = { encounterID = enc, reminder = { enabled = false } }
         cur.draft = Draft.ForSpell(item.spellID, itemName(item), name)
     end
     if not same then
         notice = nil
+        typedGen = typedGen + 1
         if panel.lookupCtl then
             panel.lookupCtl:Hide()
         end
@@ -452,6 +478,7 @@ local function loadPanel(item, enc, name)
     cur.key, cur.enc = key, enc
     setBox(panel.textEdit, cur.draft.text)
     setBox(panel.idEdit, idText(cur.draft))
+    setBox(panel.timesEdit, cur.draft.keptTimes)
 end
 
 local function refresh(keepDraft)
@@ -560,7 +587,30 @@ local function scrollBy(n)
     refresh()
 end
 
+local commit
+
+-- Saves what was typed, if anything waits (Enter, leaving the box, a pause, another row picked).
+local function saveTyped()
+    if typed and cur.draft then
+        commit()
+    end
+    typed = false
+end
+
+-- A box was typed in: it saves once the typing pauses, not on every key.
+local function typing()
+    typed = true
+    typedGen = typedGen + 1
+    local gen = typedGen
+    C_Timer.After(TYPING_PAUSE, function()
+        if gen == typedGen then
+            saveTyped()
+        end
+    end)
+end
+
 local function selectItem(item)
+    saveTyped()
     local enc = pickBoss(bossList())
     if enc and item then
         picked[enc] = itemKey(item)
@@ -570,13 +620,21 @@ end
 
 -- Saves the panel's draft as its row's reminder, or shows why it can't be. The first change on an
 -- ability or a new reminder of your own makes the reminder.
-local function commit()
+commit = function()
     local d, ctx = cur.draft, cur.ctx
+    typed = false -- the whole draft is saved, typing included
     if not d then
         return false
     end
     local Draft = CRT.AlertDraft
-    local problem = Draft.Problem(ctx, d)
+    local problem
+    if d.keptTimes then
+        local found, err = CRT.AlertReminders.ParseTimes(d.keptTimes)
+        if not found then
+            problem = string.format(TEXT.badTimes, tostring(err))
+        end
+    end
+    problem = problem or Draft.Problem(ctx, d)
     if problem then
         notice = problem
         drawPanel()
@@ -629,6 +687,9 @@ local function setEnabled(item, on)
         local r = Reminders:Get(enc, item.id)
         if r then
             r.enabled = on
+            if cur.ctx and cur.ctx.id == item.id and cur.ctx.reminder then
+                cur.ctx.reminder.enabled = on -- the panel's next save keeps the tick
+            end
             Reminders:Save(enc, item.id, r)
         end
     elseif on then
@@ -749,8 +810,10 @@ local function makeEdit(parent, x, y, width, onChange)
         end
     end)
     edit:SetScript("OnEnterPressed", function(self)
+        saveTyped()
         self:ClearFocus()
     end)
+    edit:SetScript("OnEditFocusLost", saveTyped)
     edit:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
@@ -873,6 +936,20 @@ local function buildPanel(f)
     panel.times:SetJustifyH("LEFT")
     panel.times:SetWordWrap(false)
     panel.times:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
+    -- in its place, for an alert the reference has no times for: its own typed times
+    panel.timesLabel = label(p, TEXT.times, INSET, -104)
+    panel.timesEdit = makeEdit(p, INSET + LABEL_W + 4, -100, PANEL_W - 2 * INSET - LABEL_W - 4 - HELP_ROOM, function(text)
+        if not cur.draft then
+            return
+        end
+        local times = Draft.trim(text) ~= "" and text or nil
+        if times ~= cur.draft.keptTimes then
+            cur.draft.keptTimes = times
+            typing()
+        end
+    end)
+    panel.timesHelp = UI.Help(p, TEXT.times, TEXT.timesHelp)
+    panel.timesHelp:SetPoint("LEFT", panel.timesEdit, "RIGHT", 2, 0)
     panel.timelineBtn = makeButton(p, TEXT.showOnTimeline, 170)
     panel.timelineBtn:SetPoint("TOPLEFT", INSET, -124)
     panel.timelineBtn:SetScript("OnClick", showOnTimeline)
@@ -901,7 +978,7 @@ local function buildPanel(f)
     panel.textEdit = makeEdit(p, COL2_X + LABEL_W + 4, COL_Y - 22, COL_W - LABEL_W - 8, function(text)
         if cur.draft and text ~= cur.draft.text then
             cur.draft.text = text
-            commit()
+            typing()
         end
     end)
     panel.iconType = row(UI.Dropdown(p, TEXT.icon, {
