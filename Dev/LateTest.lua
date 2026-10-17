@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 -- command again goes back to the real night. This file never ships: its .toc line is inside the
 -- do-not-package block.
 --
--- The sample uses the expected roster picked on the Late Tracker, or sample names when none is. It
+-- The sample uses the active Raid Groups layout, or sample names when there is none. It
 -- started 25 minutes ago with the picked grace minutes; in a repeating pattern, players are here on
 -- time, joined late (3 to 12 minutes), or not here yet.
 
@@ -26,7 +26,7 @@ local function sampleNight()
     local s = CRT.Late:Settings()
     local now = time()
     local night = { startedAt = now - STARTED_AGO, how = "button", grace = s.grace or 0, players = {} }
-    local preset = CRT.Groups:Find(s.layoutId)
+    local preset = CRT.Groups:Find(CRT.Groups:Active())
     local keys = {}
     if preset then
         night.layout = preset.name

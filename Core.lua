@@ -21,6 +21,8 @@ local defaults = {
     classCache = {},
     roleCache = {},
     groups = {
+        -- active is the id of the layout the raid runs with (Groups:Active), which the Late Tracker
+        -- expects; selected is the layout being edited.
         presets = {},
         nextId = 1,
         keepChanges = true,
@@ -167,8 +169,9 @@ local defaults = {
         breakTimer = {},
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
-    -- hour and minute are the start on this computer's clock. layoutId is the Raid Groups layout
-    -- that lists who is expected. current is the running night, history the finished ones.
+    -- hour and minute are the start on this computer's clock. Who is expected is the active Raid
+    -- Groups layout (Groups:Active); layoutId, its old pick, is read once to set that. current is the
+    -- running night, history the finished ones.
     late = {
         days = {},
         hour = 20,

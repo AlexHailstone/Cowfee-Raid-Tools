@@ -580,7 +580,7 @@ local function refreshPresets()
             presetButtons[i] = b
         end
         b.presetId = preset.id
-        b.text:SetText(preset.name)
+        b.text:SetText(preset.id == Groups:Active() and (preset.name .. "  |cff40ff40active|r") or preset.name)
         b.sel:SetShown(preset.id == g.selected)
         b:Show()
     end
@@ -842,6 +842,18 @@ local function buildPage(pf)
     local quick = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     quick:SetPoint("TOPLEFT", pf, "TOPRIGHT", -8 - RIGHT_W, -12)
     quick:SetText("Quick Load:")
+    -- The active layout: the roster the raid runs with, which the Late Tracker expects.
+    local makeActive = makeButton(pf, "Make active", 110, 22)
+    makeActive:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -8)
+    makeActive:SetScript("OnClick", function()
+        local id = gdb().selected
+        if id then
+            Groups:SetActive(id)
+        else
+            CRT:Print("Pick a saved layout in Quick Load first.")
+        end
+    end)
+    UI.Help(pf, "Make active", "Marks the layout you have open as the raid's active roster. The Late Tracker expects the people in it, in their groups. During a raid night, making another layout active, or changing this one, updates tonight's list straight away; everyone's clock keeps running."):SetPoint("RIGHT", makeActive, "LEFT", -4, 0)
 
     local listBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
     listBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -32)

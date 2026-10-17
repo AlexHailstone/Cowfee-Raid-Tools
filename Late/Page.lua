@@ -425,10 +425,9 @@ local function rosterOptions()
     return out
 end
 
--- The picked layout's id, or NONE when nothing is picked or the layout was deleted.
+-- The active Raid Groups layout's id, or NONE when there is none.
 local function rosterKey()
-    local id = Late:Settings().layoutId
-    return (id and Groups:Find(id)) and id or NONE
+    return Groups:Active() or NONE
 end
 
 -- History list -----------------------------------------------------------
@@ -504,7 +503,7 @@ local tonightGrid
 -- The player at each grid slot: the layout's slots, then players added by hand in the empty ones.
 -- Without a running night, the layout's names with no status.
 local function gridPlayers(night)
-    local preset = CRT.Groups:Find(Late:Settings().layoutId)
+    local preset = CRT.Groups:Find(CRT.Groups:Active())
     local bySlot, placed = {}, {}
     local byKey = {}
     if night then
@@ -1051,12 +1050,12 @@ local function buildSettings(f)
         width = 200,
         get = rosterKey,
         set = function(key)
-            Late:Set("layoutId", key ~= NONE and key or nil)
+            Groups:SetActive(key ~= NONE and key or nil)
         end,
     })
     layoutButton:SetPoint("TOPLEFT", 8, -62)
     controls[#controls + 1] = layoutButton
-    UI.Help(f, "Expected roster", "The saved Raid Groups layout of who should be there. Everyone in it is expected. A night already running keeps the roster it started with. Save a layout on the Raid Groups page to add it here."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
+    UI.Help(f, "Expected roster", "The active Raid Groups layout: who should be there, in their groups. It is the same as Make active on Raid Groups, where it is marked active. During a raid night, tonight's list follows it: make another layout active, or change this one, and tonight updates, with everyone's clock kept."):SetPoint("LEFT", layoutButton, "RIGHT", 6, 0)
 end
 
 local function build(pf)
