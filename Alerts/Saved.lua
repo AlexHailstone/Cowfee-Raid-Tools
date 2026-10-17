@@ -10,7 +10,7 @@ local ADDON, CRT = ...
 -- name. Every change tells the alerts windows (CRT.Alerts:Fire) and this store's own listeners.
 
 local TEXT = {
-    unnamed = "Saved alert",
+    unnamed = "Template",
 }
 
 local Alerts = CRT.Alerts

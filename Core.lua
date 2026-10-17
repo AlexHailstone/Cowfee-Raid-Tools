@@ -251,6 +251,8 @@ local defaults = {
         -- Saved alerts (Alerts/Saved.lua): one alert's setup without its time, numbered by nextSavedId.
         saved = {},
         nextSavedId = 1,
+        -- The Timeline's Cooldowns row (Alerts/Cooldowns.lua): which cooldowns it lists.
+        cooldownFilter = "mine",
     },
 }
 

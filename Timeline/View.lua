@@ -18,10 +18,13 @@ local ADDON, CRT = ...
 -- with the row's spell and the clicked time as phase + seconds. Every saved note line and reminder of
 -- the boss is drawn as a small flag on its spell's row, or on a "Notes" row added at the bottom for
 -- the ones with no row; a double-click on a flag opens it in the editor.
--- Along the bottom, a strip holds a chip for each saved alert (CRT.AlertSaved) and a "+" chip that makes
+-- Along the bottom, a strip holds a chip for each template (CRT.AlertSaved) and a "+" chip that makes
 -- one. Dragging a chip onto the track opens the editor on a new alert from it at that time (taking the
--- spell of a cast icon it is dropped on); right-clicking a chip edits, renames or deletes it. A right
--- click on the track that doesn't move opens a menu there: New alert here, or Place a saved alert.
+-- spell of a cast icon it is dropped on); right-clicking a chip edits, renames or deletes it. Under it a
+-- Cooldowns row lists healer cooldowns and raid defensives (CRT.AlertCooldowns, filtered by its
+-- dropdown): dragged the same way, one opens a new alert of your own with its spell; right-clicked, it
+-- can be saved as a template. A right click on the track that doesn't move opens a menu there: New
+-- alert here, or Place a template or a cooldown.
 
 local View = {}
 CRT.TimelineView = View
@@ -54,7 +57,8 @@ local FLAG_W, FLAG_HEAD = 12, 14 -- a marker's flag, drawn on a pole as tall as 
 local FLAG_BTN_W = 20 -- the clickable marker: a square at the row top, the flag centred in it
 local DOUBLE_TIME, DOUBLE_DIST = 0.3, 6 -- two clicks on the track this close make a double-click
 local MOVE_DIST = 4 -- a flag held and moved less than this many pixels is a click, not a drag
-local STRIP_H = 26 -- the saved alerts strip under the scroll bar
+local STRIP_ROW = 26 -- one row of the strip under the scroll bar: the templates, then the cooldowns
+local STRIP_H = STRIP_ROW * 2
 local CHIP_H, CHIP_ICON, CHIP_EDGE, CHIP_GAP = 20, 16, 3, 4
 local CHIP_NAME_MAX = 160 -- a longer name is cut short on its chip
 local PLUS_W = 22
@@ -62,12 +66,16 @@ local CHIP_WHEEL = 40 -- pixels the chips scroll per mouse wheel notch
 local MENU_DIST, MENU_TIME = 6, 0.3 -- a right click that moves less and lets go sooner opens the menu
 local DASH, DASH_GAP = 6, 4 -- the dashed line where a dragged chip would land
 local RENAME_POPUP = "COWFEE_RAID_TOOLS_SAVED_ALERT_RENAME"
+local CD_DROP_W = 120 -- the Cooldowns row's filter dropdown
+local CD_LEFT = LABEL_W + 64 -- where the cooldown chips start, after the label, its (?) and the dropdown
+-- what a template made from a cooldown shows: what a new alert in the editor starts with
+local NEW_OUTPUTS = { alert = true, bar = true, speech = true }
 
 local TEXT = {
     notes = "Notes",
     personal = "Personal notes",
     personalHelp = "Your personal reminders (Save as: Only me). These are only yours: they stay on your PC and are "
-        .. "never shared with the raid.\n\nDouble-click this row, or drop a saved alert on it, to make one. Drag one "
+        .. "never shared with the raid.\n\nDouble-click this row, or drop a template on it, to make one. Drag one "
         .. "to change its time; Alt+drag adds a time.",
     view = "View",
     everyone = "Everyone",
@@ -82,12 +90,12 @@ local TEXT = {
     moveTo = "Move to %s",
     addTime = "Alt \194\183 add a time %s",
     moveRefused = "That alert changed since you grabbed it; nothing was moved.",
-    savedAlerts = "Saved alerts",
-    savedHelp = "Your saved alerts: an alert's setup without its time. Drag one onto the timeline to make an "
+    savedAlerts = "Templates",
+    savedHelp = "Your templates: an alert's setup without its time. Drag one onto the timeline to make an "
         .. "alert there (dropped on a boss spell's icon it takes that spell). Right-click one to edit, rename or "
-        .. "delete it; + makes a new one. \"Save as saved alert\" in the alert editor makes one too.\n\n"
-        .. "Right-click the timeline (without dragging) for New alert here, or Place a saved alert at that time.",
-    newSaved = "New saved alert",
+        .. "delete it; + makes a new one. \"Save As Template\" in the alert editor makes one too.\n\n"
+        .. "Right-click the timeline (without dragging) for New alert here, or Place a template at that time.",
+    newSaved = "New template",
     savedHint = "Drag onto the timeline to place it. Right-click to edit, rename or delete.",
     shows = "Shows: %s",
     showsNothing = "Shows nothing",
@@ -100,17 +108,25 @@ local TEXT = {
     delete = DELETE or "Delete",
     cancel = CANCEL or "Cancel",
     accept = ACCEPT or "Accept",
-    renamePrompt = "Rename this saved alert:",
-    deleteConfirm = "Delete the saved alert \"%s\"?",
+    renamePrompt = "Rename this template:",
+    deleteConfirm = "Delete the template \"%s\"?",
     newHere = "New alert here",
     place = "Place",
-    noSaved = "No saved alerts yet",
-    unnamed = "Saved alert",
+    noSaved = "No templates yet",
+    unnamed = "Template",
     noMenu = "This game version has no right-click menus for this.",
     deleteRefused = "That alert changed since you opened its menu; nothing was deleted.",
     deleteNote = "Delete this raid note line?\n\n%s",
     deleteTime = "Delete this time of \"%s\"? Its other times stay.",
     deleteReminder = "Delete your reminder \"%s\"?",
+    cooldowns = "Cooldowns",
+    cooldownsHelp = "Healer cooldowns and raid defensives. Drag one onto the timeline to make an alert with its "
+        .. "spell there (your own, Only me). Right-click one to save it as a template.\n\n"
+        .. "The dropdown picks which ones are listed: your class (healer cooldowns when your class has none), "
+        .. "all of them, the healer cooldowns, the raid defensives, or one class.",
+    cooldownHint = "Drag onto the timeline to make an alert",
+    saveTemplate = "Save as template",
+    noCooldowns = "No cooldowns",
 }
 
 local function settings()
@@ -341,7 +357,7 @@ function View.Create(parent)
     local view = setmetatable({
         icons = {}, labels = {}, lines = {}, ticks = {}, texts = {}, lanes = {}, unknown = {}, trackW = 1,
         bars = {}, leads = {}, phaseLines = {}, phaseTexts = {}, pullTicks = {}, extra = { phases = {}, length = 0 },
-        flags = {}, marks = {}, chips = {}, dashes = {},
+        flags = {}, marks = {}, chips = {}, dashes = {}, cdChips = {},
     }, Methods)
     local f = CreateFrame("Frame", nil, parent)
     f:SetAllPoints(parent)
@@ -1373,6 +1389,34 @@ function Methods:PlaceSaved(id, t, spellID, lane)
     end
 end
 
+-- Opens the editor on a new alert from cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from
+-- the pull (phase + seconds as OpenAt gives them): its spell, its name as the text, and your own (Only
+-- me), wherever it is dropped.
+function Methods:PlaceCooldown(e, t, lane)
+    local encounterID = self:EncounterNumber()
+    if not encounterID then
+        CRT:Print(TEXT.needPull)
+        return
+    end
+    if not (e and e.spellID) then
+        return
+    end
+    t = self:WrittenTime(e.spellID, e.name, t)
+    local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
+    local prefill = {
+        spellID = e.spellID,
+        text = e.name,
+        ph = ph,
+        time = tenth(seconds),
+        boss = self.bossName,
+        saveAs = "mine",
+    }
+    if lane and lane.kind == "personal" then
+        prefill.saveAs = "mine" -- the Personal notes lane is always your own
+    end
+    CRT.AlertEditor:Open(encounterID, nil, prefill)
+end
+
 -- A context menu at the cursor, built by build(root) with the game's menu; without one, a chat line.
 local function contextMenu(owner, build)
     if MenuUtil and MenuUtil.CreateContextMenu then
@@ -1528,7 +1572,7 @@ local function chipIcon(s)
     return nil
 end
 
--- A chip's edge color: the saved alert's color, else caramel.
+-- A chip's edge color: the template's color, else caramel.
 local function chipColor(s)
     local c = s.color
     if type(c) == "table" and readable(c[1]) and type(c[1]) == "number" and type(c[2]) == "number"
@@ -1547,7 +1591,7 @@ local function textWidth(fs)
     return type(w) == "number" and w or 0
 end
 
--- A saved alert's hover: its name and text, how it shows, who it is for.
+-- A template's hover: its name and text, how it shows, who it is for.
 local function chipEnter(c)
     local s = CRT.AlertSaved and CRT.AlertSaved:Get(c.savedID)
     if not s then
@@ -1583,6 +1627,20 @@ local function chipEnter(c)
     GameTooltip:Show()
 end
 
+-- A cooldown's hover: the game's name for its spell, its class, and what dragging it does.
+local function cooldownEnter(c)
+    local e = c.cooldown
+    if not e then
+        return
+    end
+    local Cooldowns = CRT.AlertCooldowns
+    GameTooltip:SetOwner(c, "ANCHOR_TOP")
+    GameTooltip:SetText(e.name, 1, 0.82, 0)
+    GameTooltip:AddLine(Cooldowns and Cooldowns.ClassName(e.class) or e.class, 1, 1, 1)
+    GameTooltip:AddLine(TEXT.cooldownHint, 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+end
+
 -- A faint light over a button while the mouse is on it (the HIGHLIGHT layer shows only then).
 local function hoverLight(b)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
@@ -1608,19 +1666,20 @@ local function chipParts(c)
     c.name:SetTextColor(mocha("cream"))
 end
 
--- Fills a chip (or the ghost) for saved alert s; returns its width.
-local function fillChip(c, s)
-    local tex = chipIcon(s)
-    local x = CHIP_EDGE + 6
+-- Paints a chip (or the ghost): its name, the icon tex untinted, or with none the Personal notes icon
+-- tinted by tint ({ r, g, b }); the edge in edge ({ r, g, b, a }). Returns its width.
+local function paintChip(c, name, tex, tint, edge)
     if tex then
         c.icon:SetTexture(tex)
-        c.icon:Show()
-        x = CHIP_EDGE + 4 + CHIP_ICON + 4
+        c.icon:SetVertexColor(1, 1, 1)
     else
-        c.icon:Hide()
+        c.icon:SetTexture(PERSONAL_ICON)
+        c.icon:SetVertexColor(tint[1], tint[2], tint[3])
     end
-    c.edge:SetColorTexture(chipColor(s))
-    c.name:SetText(s.name or TEXT.unnamed)
+    c.icon:Show()
+    local x = CHIP_EDGE + 4 + CHIP_ICON + 4
+    c.edge:SetColorTexture(edge[1], edge[2], edge[3], edge[4] or 1)
+    c.name:SetText(name)
     local w = math.ceil(math.min(CHIP_NAME_MAX, textWidth(c.name)))
     c.name:SetWidth(w)
     c.name:ClearAllPoints()
@@ -1630,7 +1689,25 @@ local function fillChip(c, s)
     return width
 end
 
--- The strip along the bottom: its label (with help), and the chips in a sideways scroll frame.
+-- Fills a chip (or the ghost) for template s; returns its width. Without an icon it shows the note icon
+-- in the template's color.
+local function fillChip(c, s)
+    local color = { chipColor(s) }
+    return paintChip(c, s.name or TEXT.unnamed, chipIcon(s), color, color)
+end
+
+-- Fills a chip (or the ghost) for cooldown e (as CRT.AlertCooldowns:List gives it); returns its width.
+local function fillCooldownChip(c, e)
+    local tex = e.icon
+    if not (tex ~= nil and readable(tex) and (type(tex) == "number" or type(tex) == "string")) then
+        tex = nil
+    end
+    return paintChip(c, e.name, tex, { mocha("caramel") }, { mocha("latte", 0.6) })
+end
+
+-- The strip along the bottom: two rows. The templates: their label (with help) and the chips in a
+-- sideways scroll frame. Under them the cooldowns: a label (with help), the filter dropdown and their
+-- chips, scrolling the same way.
 function Methods:BuildStrip()
     local f = self.frame
     local strip = CreateFrame("Frame", nil, f)
@@ -1643,7 +1720,7 @@ function Methods:BuildStrip()
     line:SetHeight(1)
     line:SetColorTexture(mocha("caramel", 0.4))
     strip.label = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    strip.label:SetPoint("LEFT", strip, "LEFT", 4, 0)
+    strip.label:SetPoint("LEFT", strip, "TOPLEFT", 4, -STRIP_ROW / 2)
     strip.label:SetTextColor(mocha("latte"))
     strip.label:SetText(TEXT.savedAlerts)
     if CRT.UI and CRT.UI.Help then
@@ -1652,17 +1729,65 @@ function Methods:BuildStrip()
     strip:Hide()
     self.strip = strip
 
-    local scroll = CreateFrame("ScrollFrame", nil, strip)
-    scroll:SetPoint("TOPLEFT", strip, "TOPLEFT", LABEL_W, -3)
-    scroll:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", 0, 3)
-    local row = CreateFrame("Frame", nil, scroll)
-    row:SetSize(1, CHIP_H)
-    scroll:SetScrollChild(row)
-    scroll:EnableMouseWheel(true)
+    local function chipScroll(left, top)
+        local scroll = CreateFrame("ScrollFrame", nil, strip)
+        scroll:SetPoint("TOPLEFT", strip, "TOPLEFT", left, top - 3)
+        scroll:SetPoint("BOTTOMRIGHT", strip, "TOPRIGHT", 0, top - STRIP_ROW + 3)
+        local row = CreateFrame("Frame", nil, scroll)
+        row:SetSize(1, CHIP_H)
+        scroll:SetScrollChild(row)
+        scroll:EnableMouseWheel(true)
+        return scroll, row
+    end
+    local scroll, row = chipScroll(LABEL_W, 0)
     scroll:SetScript("OnMouseWheel", function(_, delta)
         self:ScrollChips(-delta * CHIP_WHEEL)
     end)
     self.chipScroll, self.chipRow = scroll, row
+
+    -- the Cooldowns row: label, (?), the filter dropdown, then the chips
+    local cdLabel = strip:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    cdLabel:SetPoint("LEFT", strip, "TOPLEFT", 4, -STRIP_ROW - STRIP_ROW / 2)
+    cdLabel:SetTextColor(mocha("latte"))
+    cdLabel:SetText(TEXT.cooldowns)
+    self.cdLabel = cdLabel
+    local after = cdLabel
+    if CRT.UI and CRT.UI.Help then
+        after = CRT.UI.Help(strip, TEXT.cooldowns, TEXT.cooldownsHelp)
+        after:SetPoint("LEFT", cdLabel, "RIGHT", 2, 0)
+    end
+    local Cooldowns = CRT.AlertCooldowns
+    if Cooldowns and CRT.UI and CRT.UI.Dropdown then
+        local drop = CRT.UI.Dropdown(strip, "", {
+            labelWidth = 1,
+            width = CD_DROP_W,
+            maxHeight = 300,
+            options = function()
+                return Cooldowns:Filters()
+            end,
+            get = function()
+                return Cooldowns:Filter()
+            end,
+            set = function(key)
+                Cooldowns:SetFilter(key)
+                self.cdScroll:SetHorizontalScroll(0) -- a new list starts at its first chip
+                self:DrawCooldowns()
+            end,
+        })
+        drop:SetHeight(STRIP_ROW)
+        drop:SetPoint("LEFT", after, "RIGHT", 0, 0)
+        self.cdFilter = drop
+    end
+    local cdScroll, cdRow = chipScroll(CD_LEFT, -STRIP_ROW)
+    cdScroll:SetScript("OnMouseWheel", function(_, delta)
+        self:ScrollCooldowns(-delta * CHIP_WHEEL)
+    end)
+    self.cdScroll, self.cdRow = cdScroll, cdRow
+    self.cdEmpty = cdRow:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    self.cdEmpty:SetPoint("LEFT", cdRow, "LEFT", 4, 0)
+    self.cdEmpty:SetTextColor(mocha("latte", 0.7))
+    self.cdEmpty:SetText(TEXT.noCooldowns)
+    self.cdEmpty:Hide()
 
     local plus = CreateFrame("Button", nil, row)
     plus:SetSize(PLUS_W, CHIP_H)
@@ -1688,21 +1813,30 @@ function Methods:BuildStrip()
     self.plus = plus
 end
 
--- Scrolls the chips sideways by dx pixels, within their row.
-function Methods:ScrollChips(dx)
-    local scroll = self.chipScroll
-    local most = math.max(0, (self.chipRowW or 0) - (scroll:GetWidth() or 0))
+-- Scrolls a row of chips sideways by dx pixels, within its width.
+local function scrollRow(scroll, rowW, dx)
+    local most = math.max(0, (rowW or 0) - (scroll:GetWidth() or 0))
     scroll:SetHorizontalScroll(math.max(0, math.min(most, (scroll:GetHorizontalScroll() or 0) + dx)))
 end
 
--- One chip from the pool. Left-drag places it; a right click opens its menu.
-function Methods:Chip(n)
-    return pooled(self.chips, n, function()
-        local c = CreateFrame("Button", nil, self.chipRow)
+function Methods:ScrollChips(dx)
+    scrollRow(self.chipScroll, self.chipRowW, dx)
+end
+
+function Methods:ScrollCooldowns(dx)
+    scrollRow(self.cdScroll, self.cdRowW, dx)
+end
+
+-- A chip from pool list on row: left-drag places it, a right click opens its menu. kind is "saved" (a
+-- template) or "cooldown"; enter is its hover.
+function Methods:MakeChip(list, n, row, kind, enter)
+    return pooled(list, n, function()
+        local c = CreateFrame("Button", nil, row)
+        c.chipKind = kind
         c:EnableMouse(true)
         chipParts(c)
         hoverLight(c)
-        c:SetScript("OnEnter", chipEnter)
+        c:SetScript("OnEnter", enter)
         c:SetScript("OnLeave", hideTip)
         c:SetScript("OnMouseDown", function(_, button)
             if button == "LeftButton" then
@@ -1720,7 +1854,18 @@ function Methods:Chip(n)
     end)
 end
 
--- Draws a chip for each saved alert, by name, then the + chip. Hidden while no boss is shown.
+-- One template chip from the pool.
+function Methods:Chip(n)
+    return self:MakeChip(self.chips, n, self.chipRow, "saved", chipEnter)
+end
+
+-- One cooldown chip from the pool.
+function Methods:CooldownChip(n)
+    return self:MakeChip(self.cdChips, n, self.cdRow, "cooldown", cooldownEnter)
+end
+
+-- Draws a chip for each template, by name, then the + chip, and the Cooldowns row. Hidden while no boss
+-- is shown.
 function Methods:DrawStrip()
     local shown = self.pull ~= nil and self.encounterID ~= nil
     self.strip:SetShown(shown)
@@ -1744,6 +1889,35 @@ function Methods:DrawStrip()
     self.chipRowW = x + PLUS_W
     self.chipRow:SetSize(self.chipRowW, CHIP_H)
     self:ScrollChips(0)
+    self:DrawCooldowns()
+end
+
+-- The cooldowns the row lists now (its filter), in list order.
+function Methods:CooldownList()
+    local Cooldowns = CRT.AlertCooldowns
+    return Cooldowns and Cooldowns:List(Cooldowns:Filter()) or {}
+end
+
+-- Draws the Cooldowns row: a chip for each cooldown of the chosen filter.
+function Methods:DrawCooldowns()
+    if self.cdFilter and self.cdFilter.refresh then
+        self.cdFilter.refresh()
+    end
+    local list = self:CooldownList()
+    local x = 0
+    for n, e in ipairs(list) do
+        local c = self:CooldownChip(n)
+        c.cooldown = e
+        local w = fillCooldownChip(c, e)
+        c:ClearAllPoints()
+        c:SetPoint("LEFT", self.cdRow, "LEFT", x, 0)
+        x = x + w + CHIP_GAP
+    end
+    hideFrom(self.cdChips, #list + 1)
+    self.cdEmpty:SetShown(#list == 0)
+    self.cdRowW = math.max(1, x - CHIP_GAP)
+    self.cdRow:SetSize(self.cdRowW, CHIP_H)
+    self:ScrollCooldowns(0)
 end
 
 -- The ghost chip that follows the cursor while a chip is dragged; above everything, taking no clicks.
@@ -1814,11 +1988,14 @@ function Methods:DrawDropLine(t, y)
     d:Show()
 end
 
--- A left button pressed on a chip: remember where, so the release can tell a click from a drag.
+-- A left button pressed on a chip: remember where, so the release can tell a click from a drag. A
+-- template chip carries kind "saved" and its id; a cooldown chip kind "cooldown" and its cooldown.
 function Methods:StartChipMove(c)
-    if c.savedID then
-        local x, y = GetCursorPosition()
-        self.chipMove = { id = c.savedID, chip = c, x0 = x, y0 = y }
+    local x, y = GetCursorPosition()
+    if c.chipKind == "saved" and c.savedID then
+        self.chipMove = { kind = "saved", id = c.savedID, chip = c, x0 = x, y0 = y }
+    elseif c.chipKind == "cooldown" and c.cooldown then
+        self.chipMove = { kind = "cooldown", cooldown = c.cooldown, chip = c, x0 = x, y0 = y }
     end
 end
 
@@ -1837,6 +2014,18 @@ local function chipMoved(cm)
     return cm.moved or math.abs(x - cm.x0) >= MOVE_DIST or math.abs(y - cm.y0) >= MOVE_DIST
 end
 
+-- Fills the ghost for the chip held in cm, by its kind.
+local function fillGhost(g, cm)
+    if cm.kind == "cooldown" then
+        fillCooldownChip(g, cm.cooldown)
+    else
+        local s = CRT.AlertSaved and CRT.AlertSaved:Get(cm.id)
+        if s then
+            fillChip(g, s)
+        end
+    end
+end
+
 -- While a chip is held: once moved MOVE_DIST pixels a ghost of it follows the cursor, and over the track
 -- the dashed line shows where it would land.
 function Methods:UpdateChipMove()
@@ -1852,10 +2041,7 @@ function Methods:UpdateChipMove()
     if not cm.moved then
         -- filled once, as the drag starts; after that it only follows the cursor
         cm.moved = true
-        local s = CRT.AlertSaved and CRT.AlertSaved:Get(cm.id)
-        if s then
-            fillChip(g, s)
-        end
+        fillGhost(g, cm)
     end
     local scale = UIParent:GetEffectiveScale() or 1
     local x, y = GetCursorPosition()
@@ -1871,7 +2057,7 @@ function Methods:UpdateChipMove()
 end
 
 -- The left button let go of a chip. Not moved, it was a click and does nothing; released over the track,
--- the saved alert is placed there; anywhere else (or over the open alert editor), nothing.
+-- the template or cooldown is placed there; anywhere else (or over the open alert editor), nothing.
 function Methods:FinishChipMove()
     local cm = self.chipMove
     self:CancelChipMove()
@@ -1879,11 +2065,45 @@ function Methods:FinishChipMove()
         return
     end
     local x, y = cursorOnTrack(self)
-    self:PlaceSaved(cm.id, self:TimeAtX(x), self:IconSpellAt(x, y), self:LaneAtY(y))
+    if cm.kind == "cooldown" then
+        self:PlaceCooldown(cm.cooldown, self:TimeAtX(x), self:LaneAtY(y))
+    else
+        self:PlaceSaved(cm.id, self:TimeAtX(x), self:IconSpellAt(x, y), self:LaneAtY(y))
+    end
 end
 
--- A chip's menu: Edit, Rename, Delete.
+-- Makes a template from cooldown e: its name, spell and text, in caramel, showing what a new alert does.
+function Methods:SaveCooldown(e)
+    local Saved = CRT.AlertSaved
+    if not (Saved and e) then
+        return nil
+    end
+    local r, g, b = mocha("caramel")
+    return Saved:Save(nil, {
+        name = e.name,
+        spellID = e.spellID,
+        text = e.name,
+        color = { r, g, b, 1 },
+        saveAs = "mine",
+        tags = "everyone",
+        outputs = NEW_OUTPUTS,
+        speech = "text",
+        warn = 5,
+    })
+end
+
+-- A chip's menu. A template: Edit, Rename, Delete. A cooldown: Save as template.
 function Methods:ChipMenu(c)
+    if c.chipKind == "cooldown" then
+        local e = c.cooldown
+        contextMenu(c, function(root)
+            root:CreateTitle(e.name)
+            root:CreateButton(TEXT.saveTemplate, function()
+                self:SaveCooldown(e)
+            end)
+        end)
+        return
+    end
     local id = c.savedID
     local s = id and CRT.AlertSaved and CRT.AlertSaved:Get(id)
     if not s then
@@ -1959,8 +2179,8 @@ function Methods:FlagMenu(m, owner)
 end
 
 -- The track's menu at x, y on the track: its time and row as the title, New alert here (the double-click;
--- on a cast icon with that icon's spell), and Place, each saved alert at that time (with the spell of a
--- cast icon there).
+-- on a cast icon with that icon's spell), and Place, each template at that time (with the spell of a
+-- cast icon there), then a Cooldowns submenu with the Cooldowns row's cooldowns.
 function Methods:TrackMenu(x, y)
     local t = self:TimeAtX(x)
     local lane = self:LaneAtY(y)
@@ -1982,6 +2202,17 @@ function Methods:TrackMenu(x, y)
         for _, e in ipairs(list) do
             place:CreateButton(e.s.name or TEXT.unnamed, function()
                 self:PlaceSaved(e.id, t, spellID, lane)
+            end)
+        end
+        -- the cooldowns the Cooldowns row lists now, placed as a drop there would be
+        local cooldowns = place:CreateButton(TEXT.cooldowns)
+        local cds = self:CooldownList()
+        if #cds == 0 then
+            cooldowns:CreateTitle(TEXT.noCooldowns)
+        end
+        for _, e in ipairs(cds) do
+            cooldowns:CreateButton(e.name, function()
+                self:PlaceCooldown(e, t, lane)
             end)
         end
     end)
