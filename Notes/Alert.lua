@@ -23,7 +23,7 @@ local function settings()
     return Notes:Alert()
 end
 
--- Text to speech is the alerts speech queue; the Settings tab's Test speech button speaks through here.
+-- Text to speech is the alerts speech queue; the Notes Settings tab's Test speech button speaks through here.
 function Alert:Speak(text)
     CRT.AlertSpeech:SpeakNow(text)
 end
@@ -42,7 +42,7 @@ local function measureHandle()
 end
 
 -- Lays the alert out: the name and the countdown centered under each other, and the icon, two text
--- lines tall, on the side chosen on the Raid Notes Settings tab. The alert is kept centered on its
+-- lines tall, on the side chosen on the Raid Notes page's Notes Settings tab. The alert is kept centered on its
 -- saved position, so it grows evenly as the name changes.
 local function layout()
     local nameHeight = select(2, label:GetFont()) or 18

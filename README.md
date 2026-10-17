@@ -164,7 +164,7 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 | `/crt check food` (or `flask`, `rune`, `vantus`, `buffs`, `all`) | Checks the group and shows it to you. Add `chat` to post it, such as `/crt check all chat` |
 | `/crt rc` | Shows your ready check bar for 20 seconds, for testing |
 | `/crt debuffs` | Quality of Life, on the Debuffs tab |
-| `/crt notes` | Raid Notes. `/crt notes settings` opens its Settings tab |
+| `/crt notes` | Raid Notes. `/crt notes settings` opens its Notes Settings tab |
 | `/crt reminders` | Raid Notes, on the Reminders tab |
 | `/crt note test`, `/crt note next`, `/crt note stop` | Start the note in use now, start the next phase (the chat line names it), stop the whole run (note and reminders) |
 | `/crt late`, `/crt late start`, `/crt late end` | Late Tracker, start tonight's raid now, end it |

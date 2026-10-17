@@ -231,7 +231,7 @@ local function buildNotes(pf)
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
-    UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert timing and sharing settings are on the Settings tab; where your note lines show is on the Alert Settings tab, and your alerts for boss mechanics are on Mech Alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
+    UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert timing and sharing settings are on the Notes Settings tab; where your note lines show is on the Alert Settings tab, and your alerts for boss mechanics are on Mech Alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
         row:SetSize(250, ROW_H - 2)
@@ -434,7 +434,7 @@ local TABS = {
     { key = "notes", label = "Notes" },
     { key = "reminders", label = "Mech Alerts" },
     { key = "alerts", label = "Alert Settings" },
-    { key = "settings", label = "Settings" },
+    { key = "settings", label = "Notes Settings" },
 }
 local tabButtons, tabFrames, built = {}, {}, {}
 local currentTab = "notes"
