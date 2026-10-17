@@ -361,6 +361,7 @@ local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
 local MIN_W, MIN_H = 760, 360
 local popWin, popButton, dockedNote
 local popped = false
+local returnPage -- the page Show on the Timeline came from, shown again when the pop-out is closed
 
 local function popSettings()
     local s = settings()
@@ -470,13 +471,19 @@ local function buildPopout()
     end)
 
     -- Closing the window, however it closes, puts the Review tab back, and ends a Show on the
-    -- Timeline's light.
+    -- Timeline's light. Opened by Show on the Timeline, the main window goes back to the page it
+    -- came from (Raid Notes on its Mech Alerts tab); the Dock button stays on the Timeline.
     popWin:SetScript("OnHide", function()
         if view then
             view:ClearHighlight()
         end
+        local back = returnPage
+        returnPage = nil
         if popped then
             dock()
+        end
+        if back then
+            UI:SelectPage(back)
         end
     end)
     popWin:Hide()
@@ -516,6 +523,7 @@ local function popOut()
 end
 
 local function togglePopout()
+    returnPage = nil
     if popped then
         dock()
     else
@@ -627,6 +635,9 @@ local function bossKeyFor(encounterID)
 end
 
 function Timeline:ShowRow(encounterID, spell, name)
+    if not (popped and popWin:IsShown()) and CRT.db.lastPage ~= "timeline" then
+        returnPage = CRT.db.lastPage
+    end
     CRT.TimelinePopout()
     local key, before = nil, selectedGroup
     for _, group in ipairs({ before, before == "nh" and "mythic" or "nh" }) do
