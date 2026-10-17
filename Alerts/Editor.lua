@@ -58,7 +58,13 @@ local TEXT = {
     iconID = "Icon ID",
     iconHelpTitle = "Icon",
     iconHelp = "Spell: type the spell's ID. The alert shows its icon and, with no text, its name.\n\n"
-        .. "Icon ID: type an icon's file ID to show that icon instead.",
+        .. "Icon ID: type an icon's file ID to show that icon instead.\n\n"
+        .. "Or type a spell name (3 letters or more) to search this boss's abilities and your own "
+        .. "spells, then click one or press Enter for the top match.",
+    lookupBoss = "Boss",
+    lookupTimeline = "Timeline",
+    lookupYours = "Yours",
+    lookupNone = "No spells match",
     text = "Text",
     color = "Color",
     colorDefault = "Default",
@@ -135,6 +141,13 @@ local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
 local EXPORT_WIDTH = WIDTH - 88 -- the text box
 local EXPORT_TEXT_WIDTH = EXPORT_WIDTH - 2 * EXPORT_PAD
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
+local ID_WIDTH = 140 -- the Spell / Icon ID box, wide enough for a spell name being looked up
+local ID_SHIFT = ID_WIDTH - 80 -- the (?), preview and name sit this much right of where an 80 px box put them
+local LOOKUP_MIN = 3 -- letters before a name lookup opens
+local LOOKUP_ROWS = 8
+local LOOKUP_ROW_HEIGHT = 20
+local LOOKUP_WIDTH = 320
+local LOOKUP_LEVEL = 50 -- the match list's frame level over the editor's, so it covers the rows below
 
 local POPUP_NAME = "COWFEE_RAID_TOOLS_SAVED_ALERT_NAME"
 
@@ -707,6 +720,9 @@ local function refresh(rows)
     for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit, frame.colorSwatch, frame.colorDefault }) do
         el:SetEnabled(not locked)
     end
+    if locked then
+        frame.lookup:Hide()
+    end
     for _, k in ipairs(SHOW_KEYS) do
         frame.checks[k]:SetEnabled(not locked)
     end
@@ -750,6 +766,256 @@ local function fail(message)
     notice = message
     refresh()
     return false
+end
+
+-- Spell lookup --------------------------------------------------------------------------------------
+-- The Spell / Icon ID box takes a name too: 3 letters or more list the matching spells of the boss's
+-- Journal abilities, its reference rows and your spellbook (first source wins a spell), and a pick puts
+-- the spell (or, in Icon ID mode, its icon) in the box. Letters never change the draft by themselves.
+
+local SOURCE_ORDER = { boss = 1, timeline = 2, yours = 3 }
+local SOURCE_TAG = { boss = TEXT.lookupBoss, timeline = TEXT.lookupTimeline, yours = TEXT.lookupYours }
+local yours -- your spellbook's spells, read once per open the first time a name is looked up
+local matches = {} -- the matches the list shows, best first
+
+local function readableString(v)
+    return readable(v) and type(v) == "string" and v ~= ""
+end
+
+local function readableID(v)
+    return readable(v) and validID(v) or nil
+end
+
+local function readableIcon(v)
+    if v ~= nil and readable(v) and (type(v) == "number" or type(v) == "string") then
+        return v
+    end
+end
+
+-- Your spellbook's spells, { spellID, name, icon }: spells only (no future spells, flyouts or pet
+-- actions), anything missing or secret skipped.
+local function spellbook()
+    if yours then
+        return yours
+    end
+    yours = {}
+    local SB = C_SpellBook
+    if not (SB and SB.GetNumSpellBookSkillLines and SB.GetSpellBookSkillLineInfo and SB.GetSpellBookItemInfo) then
+        return yours
+    end
+    local E = Enum
+    local bank = E and E.SpellBookSpellBank and E.SpellBookSpellBank.Player or 0
+    local spellType = E and E.SpellBookItemType and E.SpellBookItemType.Spell or 1
+    local ok, count = pcall(SB.GetNumSpellBookSkillLines)
+    if not (ok and readable(count) and type(count) == "number") then
+        return yours
+    end
+    for i = 1, count do
+        local okLine, line = pcall(SB.GetSpellBookSkillLineInfo, i)
+        if okLine and type(line) == "table" then
+            local offset, num = line.itemIndexOffset, line.numSpellBookItems
+            if readable(offset) and readable(num) and type(offset) == "number" and type(num) == "number" then
+                for index = offset + 1, offset + num do
+                    local okItem, item = pcall(SB.GetSpellBookItemInfo, index, bank)
+                    if okItem and type(item) == "table" then
+                        local id, name, kind = readableID(item.spellID), item.name, item.itemType
+                        if id and readableString(name) and readable(kind) and kind == spellType then
+                            yours[#yours + 1] = { spellID = id, name = name, icon = readableIcon(item.iconID) }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return yours
+end
+
+-- Every spell the lookup can offer, in source order, each spell once: { spellID, name, icon, source }.
+local function lookupCandidates()
+    local out, seen = {}, {}
+    local function add(id, name, icon, source)
+        id = readableID(id)
+        if id and not seen[id] and readableString(name) then
+            seen[id] = true
+            out[#out + 1] = { spellID = id, name = name, icon = readableIcon(icon), source = source }
+        end
+    end
+    local encounterID = ctx and ctx.encounterID
+    if type(encounterID) == "number" then
+        local journal = {}
+        local J = CRT.TimelineJournal
+        if J and J.Rows then
+            local ok, rows = pcall(J.Rows, J, encounterID)
+            if ok and type(rows) == "table" then
+                journal = rows
+            end
+        end
+        for _, row in ipairs(journal) do
+            if type(row) == "table" then
+                add(row.spellID, row.name, row.icon, "boss")
+            end
+        end
+        local Ref, Lanes = CRT.TimelineReference, CRT.TimelineLanes
+        if Ref and Lanes and Lanes.RowSpell then
+            local okRefs, entries = pcall(Ref.ForBoss, Ref, encounterID, draft and draft.boss)
+            for _, entry in ipairs(okRefs and type(entries) == "table" and entries or {}) do
+                for _, row in ipairs(entry.ref and entry.ref.rows or {}) do
+                    local okSpell, id = pcall(Lanes.RowSpell, row, encounterID, journal)
+                    id = okSpell and readableID(id)
+                    if id and not seen[id] then
+                        add(id, Reminders.SpellName(id) or row.name, nil, "timeline")
+                    end
+                end
+            end
+        end
+    end
+    for _, s in ipairs(spellbook()) do
+        add(s.spellID, s.name, s.icon, "yours")
+    end
+    return out
+end
+
+-- The spells whose name holds the query, in any case: names starting with it first, then by source,
+-- then by name.
+local function findMatches(query)
+    local q = query:lower()
+    local found = {}
+    for _, c in ipairs(lookupCandidates()) do
+        local at = c.name:lower():find(q, 1, true)
+        if at then
+            c.starts = at == 1
+            found[#found + 1] = c
+        end
+    end
+    table.sort(found, function(a, b)
+        if a.starts ~= b.starts then
+            return a.starts
+        end
+        if a.source ~= b.source then
+            return SOURCE_ORDER[a.source] < SOURCE_ORDER[b.source]
+        end
+        if a.name:lower() ~= b.name:lower() then
+            return a.name:lower() < b.name:lower()
+        end
+        return a.spellID < b.spellID
+    end)
+    return found
+end
+
+local function hideLookup()
+    wipe(matches)
+    if frame and frame.lookup then
+        frame.lookup:Hide()
+    end
+end
+
+-- The icon a pick in Icon ID mode takes: the source's, else the game's when it reads as a number.
+local function matchIcon(m)
+    if type(m.icon) == "number" and m.icon > 0 then
+        return m.icon
+    end
+    if C_Spell and C_Spell.GetSpellTexture then
+        local ok, tex = pcall(C_Spell.GetSpellTexture, m.spellID)
+        if ok and readable(tex) then
+            return validID(tex)
+        end
+    end
+end
+
+-- A match picked: the spell (or its icon) goes in the draft and the box, and text that was empty or only
+-- named the previous spell becomes the new spell's name. Typed text stays.
+local function pickMatch(m)
+    hideLookup()
+    if not (draft and m) or readOnly() then
+        return
+    end
+    local before = validID(draft.spellID)
+    local beforeName = before and Reminders.SpellName(before)
+    local text = trim(draft.text)
+    local id
+    if draft.iconType == "id" then
+        id = matchIcon(m)
+        if id then
+            draft.iconID = id
+        end
+    else
+        id = m.spellID
+        draft.spellID = id
+    end
+    if text == "" or (beforeName and text == trim(beforeName)) then
+        draft.text = m.name
+        frame.textEdit:SetText(m.name)
+    end
+    if id then
+        frame.idEdit:SetText(tostring(id))
+    end
+    changed()
+end
+
+local function showLookup(query)
+    local list = frame.lookup
+    if not (draft and editable()) then
+        return hideLookup()
+    end
+    wipe(matches)
+    for i, m in ipairs(findMatches(query)) do
+        if i > LOOKUP_ROWS then
+            break
+        end
+        matches[i] = m
+    end
+    for i, row in ipairs(list.rows) do
+        local m = matches[i]
+        row.match = m or false
+        if m then
+            row.icon:SetTexture(m.icon or select(2, spellInfo(m.spellID)))
+            row.icon:Show()
+            row.nameText:SetText(m.name)
+            row.nameText:SetTextColor(1, 1, 1)
+            row.idText:SetText(tostring(m.spellID))
+            row.tagText:SetText(SOURCE_TAG[m.source] or "")
+            row:SetEnabled(true)
+            row:Show()
+        elseif i == 1 then
+            row.icon:Hide()
+            row.nameText:SetText(TEXT.lookupNone)
+            row.nameText:SetTextColor(0.6, 0.6, 0.6)
+            row.idText:SetText("")
+            row.tagText:SetText("")
+            row:SetEnabled(false)
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+    list:SetHeight(math.max(1, #matches) * LOOKUP_ROW_HEIGHT + 4)
+    list:SetFrameStrata(frame:GetFrameStrata())
+    list:SetFrameLevel((frame:GetFrameLevel() or 1) + LOOKUP_LEVEL)
+    list:Show()
+end
+
+-- The box's text changed: letters look a name up (leaving the draft alone), a number is the ID.
+local function idTextChanged(text)
+    if not draft then
+        return
+    end
+    local s = trim(text)
+    if s:find("%a") then
+        if #s >= LOOKUP_MIN then
+            showLookup(s)
+        else
+            hideLookup()
+        end
+        return
+    end
+    hideLookup()
+    local id = validID(tonumber(s))
+    if draft.iconType == "id" then
+        draft.iconID = id
+    else
+        draft.spellID = id
+    end
+    changed()
 end
 
 -- Saving and testing ------------------------------------------------------------------------------
@@ -1351,6 +1617,7 @@ local function build()
     f:SetScript("OnHide", function()
         -- closed any way (Escape, Save, Close, Previews off): the next Open starts at the centre
         leaveCorner()
+        hideLookup()
         if exportFrame then
             exportFrame:Hide()
         end
@@ -1472,25 +1739,83 @@ local function build()
             end
         end,
     }), LEFT, -132 - ROW1_EXTRA)
-    f.idEdit = makeEdit(f, 212, -138 - ROW1_EXTRA, 80, function(text)
-        if draft then
-            local id = validID(tonumber(trim(text)))
-            if draft.iconType == "id" then
-                draft.iconID = id
-            else
-                draft.spellID = id
-            end
-            changed()
+    f.idEdit = makeEdit(f, 212, -138 - ROW1_EXTRA, ID_WIDTH, idTextChanged)
+    -- Enter picks the top match of a name lookup; Escape or leaving the box closes the list
+    f.idEdit:SetScript("OnEnterPressed", function(self)
+        local top = f.lookup:IsShown() and matches[1]
+        if top then
+            pickMatch(top)
+        end
+        self:ClearFocus()
+    end)
+    f.idEdit:SetScript("OnEscapePressed", function(self)
+        hideLookup()
+        self:ClearFocus()
+    end)
+    f.idEdit:SetScript("OnEditFocusLost", function()
+        -- a click on a row takes the focus first: the row's own click closes the list then
+        if not (f.lookup:IsShown() and f.lookup:IsMouseOver()) then
+            hideLookup()
         end
     end)
-    lay(UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp), 296, -140 - ROW1_EXTRA)
+    lay(UI.Help(f, TEXT.iconHelpTitle, TEXT.iconHelp), 296 + ID_SHIFT, -140 - ROW1_EXTRA)
     f.iconPreview = f:CreateTexture(nil, "ARTWORK")
     f.iconPreview:SetSize(24, 24)
-    lay(f.iconPreview, 326, -136 - ROW1_EXTRA)
+    lay(f.iconPreview, 326 + ID_SHIFT, -136 - ROW1_EXTRA)
     f.iconPreview:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     f.spellName = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lay(f.spellName, 358, -142 - ROW1_EXTRA)
-    f.spellName:SetWidth(WIDTH - 358 - LEFT)
+    lay(f.spellName, 358 + ID_SHIFT, -142 - ROW1_EXTRA)
+    f.spellName:SetWidth(WIDTH - 358 - ID_SHIFT - LEFT)
+    -- the match list of a name lookup, under the box and over the rows below it
+    local list = CreateFrame("Frame", nil, f)
+    f.lookup = list
+    list:SetSize(LOOKUP_WIDTH, LOOKUP_ROW_HEIGHT + 4)
+    list:SetPoint("TOPLEFT", f.idEdit, "BOTTOMLEFT", -4, -2)
+    list:SetFrameStrata(f:GetFrameStrata())
+    list:SetFrameLevel((f:GetFrameLevel() or 1) + LOOKUP_LEVEL)
+    list:EnableMouse(true)
+    local M = CRT.MOCHA
+    list.edge = list:CreateTexture(nil, "BACKGROUND")
+    list.edge:SetAllPoints()
+    list.edge:SetColorTexture(M.edge[1], M.edge[2], M.edge[3], 1)
+    list.bg = list:CreateTexture(nil, "BORDER")
+    list.bg:SetPoint("TOPLEFT", 1, -1)
+    list.bg:SetPoint("BOTTOMRIGHT", -1, 1)
+    list.bg:SetColorTexture(M.espresso[1], M.espresso[2], M.espresso[3], 1)
+    list.rows = {}
+    for i = 1, LOOKUP_ROWS do
+        local r = CreateFrame("Button", nil, list)
+        r:SetSize(LOOKUP_WIDTH - 4, LOOKUP_ROW_HEIGHT)
+        r:SetPoint("TOPLEFT", 2, -2 - (i - 1) * LOOKUP_ROW_HEIGHT)
+        r.highlight = r:CreateTexture(nil, "HIGHLIGHT")
+        r.highlight:SetAllPoints()
+        r.highlight:SetColorTexture(M.mocha[1], M.mocha[2], M.mocha[3], 0.5)
+        r.icon = r:CreateTexture(nil, "ARTWORK")
+        r.icon:SetSize(LOOKUP_ROW_HEIGHT - 4, LOOKUP_ROW_HEIGHT - 4)
+        r.icon:SetPoint("LEFT", 2, 0)
+        r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        r.tagText = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        r.tagText:SetPoint("RIGHT", -4, 0)
+        r.tagText:SetWidth(56)
+        r.tagText:SetJustifyH("RIGHT")
+        r.tagText:SetTextColor(0.6, 0.6, 0.6)
+        r.idText = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        r.idText:SetPoint("RIGHT", r.tagText, "LEFT", -6, 0)
+        r.idText:SetWidth(56)
+        r.idText:SetJustifyH("RIGHT")
+        r.nameText = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        r.nameText:SetPoint("LEFT", LOOKUP_ROW_HEIGHT + 2, 0)
+        r.nameText:SetPoint("RIGHT", r.idText, "LEFT", -6, 0)
+        r.nameText:SetJustifyH("LEFT")
+        r.nameText:SetWordWrap(false)
+        r:SetScript("OnClick", function(self)
+            if self.match then
+                pickMatch(self.match)
+            end
+        end)
+        list.rows[i] = r
+    end
+    list:Hide()
     f.spellName:SetJustifyH("LEFT")
     f.spellName:SetWordWrap(false)
 
@@ -1707,6 +2032,8 @@ end
 -- Fills the boxes from the draft and shows the window on top.
 local function show()
     notice = nil
+    yours = nil -- the spellbook is read again, on the first lookup of this open
+    hideLookup()
     setTitle()
     applyLayout(ctx.savedMode == true)
     if not ctx.savedMode and not draft.timeTouched then
