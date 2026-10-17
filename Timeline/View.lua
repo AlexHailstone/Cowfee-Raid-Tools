@@ -22,9 +22,11 @@ local ADDON, CRT = ...
 -- one. Dragging a chip onto the track opens the editor on a new alert from it at that time (taking the
 -- spell of a cast icon it is dropped on); right-clicking a chip edits, renames or deletes it. Under it a
 -- Cooldowns row lists healer cooldowns and raid defensives (CRT.AlertCooldowns, filtered by its
--- dropdown): dragged the same way, one opens a new alert of your own with its spell, or for a raid leader
--- or assistant a menu of who it is for (a Raid note for a player, or for no one yet); right-clicked, it
--- can be saved as a template. Each group's chips wrap onto rows, up to 3 shown (fewer when the lanes
+-- dropdown): dragged the same way, one is saved at once as an alert of your own with its spell (shown as
+-- text and read out, Alerts/Draft.lua's cooldown defaults), or for a raid leader or assistant after a menu
+-- of who it is for (a Raid note line for a player, or for no one yet); a double-click on its flag edits it.
+-- Right-clicked, it can be saved as a template; the cooldowns themselves never change. Each group's
+-- chips wrap onto rows, up to 3 shown (fewer when the lanes
 -- would get under 3 rows); the wheel scrolls the rest. A right click on the track that doesn't move
 -- opens a menu there: New alert here, or Place a template or a cooldown.
 
@@ -122,13 +124,13 @@ local TEXT = {
     deleteTime = "Delete this time of \"%s\"? Its other times stay.",
     deleteReminder = "Delete your reminder \"%s\"?",
     cooldowns = "Cooldowns",
-    cooldownsHelp = "Healer cooldowns and raid defensives. Drag one onto the timeline to make an alert with its "
-        .. "spell there (your own, Only me). A raid leader or assistant picks who it is for: a player of its "
-        .. "class, anyone else on the Raid Groups layout, no one yet, or just you. Right-click one to save it "
-        .. "as a template.\n\n"
+    cooldownsHelp = "Healer cooldowns and raid defensives. Drag one onto the timeline to place an alert with its "
+        .. "spell there at once (your own, Only me), shown as text and read out. A raid leader or assistant "
+        .. "picks who it is for: a player of its class, anyone else on the Raid Groups layout, no one yet, or "
+        .. "just you. Double-click its flag to change it. Right-click one to save it as a template.\n\n"
         .. "The dropdown picks which ones are listed: your class (healer cooldowns when your class has none), "
         .. "all of them, the healer cooldowns, the raid defensives, or one class.",
-    cooldownHint = "Drag onto the timeline to make an alert",
+    cooldownHint = "Drag onto the timeline to place an alert",
     saveTemplate = "Save as template",
     noCooldowns = "No cooldowns",
     assignClass = "%s", -- the title over a dropped cooldown's class players: the class's name
@@ -136,6 +138,11 @@ local TEXT = {
     unassigned = "Leave unassigned",
     anyoneElse = "Anyone else",
     justMe = "Just me",
+    -- the chat line after a cooldown is placed: its name, the time, and who it is for
+    placedFor = "%s placed at %s for %s.",
+    placedMine = "%s placed at %s for you.",
+    placedNone = "%s placed at %s unassigned.",
+    placeFailed = "%s was not placed: %s",
 }
 
 local function settings()
@@ -1558,10 +1565,48 @@ function Methods:AssignRoster()
     return out
 end
 
+-- Saves cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from the pull at once, with the
+-- cooldown defaults (Alerts/Draft.lua): for tag, a player's name (a raid note line for them), "" (a line
+-- for no one), or nil (one of your reminders, Only me). The time goes back through WrittenTime for the
+-- chosen order. A chat line says it was placed, or why not; the editor never opens.
+function Methods:PlaceCooldownAt(t, e, tag)
+    local encounterID = self:EncounterNumber()
+    if not encounterID then
+        CRT:Print(TEXT.needPull)
+        return false
+    end
+    local Draft = CRT.AlertDraft
+    if not (Draft and e and e.spellID) then
+        return false
+    end
+    local name = e.name or CRT.AlertReminders.SpellName(e.spellID) or string.format(TEXT.spell, e.spellID)
+    local at = clock(t)
+    local written = self:WrittenTime(e.spellID, e.name, t)
+    local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(written))
+    local called, ok, err = pcall(Draft.PlaceCooldown, encounterID, e.spellID, e.name, self.bossName, ph,
+        tenth(seconds), tag)
+    if not called then
+        ok, err = false, tostring(ok)
+    end
+    if not ok then
+        CRT:Print(string.format(TEXT.placeFailed, name, tostring(err or "")))
+        return false
+    end
+    if tag == nil then
+        CRT:Print(string.format(TEXT.placedMine, name, at))
+    elseif tag == "" then
+        CRT:Print(string.format(TEXT.placedNone, name, at))
+    else
+        CRT:Print(string.format(TEXT.placedFor, name, at, tag))
+    end
+    return true
+end
+
 -- Fills root (the drop's menu, or a cooldown's Place submenu) with who cooldown e can be given at t: under
 -- its class's name that class's players, or a greyed line saying there are none and Leave unassigned (a
--- Raid note for no one); then Anyone else, the rest of the roster; then Just me (your own, as before).
--- With nobody on the roster: Leave unassigned and Just me. roster is AssignRoster's, read here when nil.
+-- Raid note line for no one); then Anyone else, the rest of the roster; then Just me (your own). Each
+-- choice places it at once (PlaceCooldownAt). With nobody on the roster: Leave unassigned and Just me.
+-- roster is AssignRoster's, read here when nil.
 function Methods:AssignMenu(root, e, t, roster)
     roster = roster or self:AssignRoster()
     local ofClass, others = {}, {}
@@ -1574,7 +1619,7 @@ function Methods:AssignMenu(root, e, t, roster)
     end
     local function forPlayer(menu, p)
         menu:CreateButton(classColored(p.name, p.class), function()
-            self:OpenAt(t, e.spellID, e.name, p.name)
+            self:PlaceCooldownAt(t, e, p.name)
         end)
     end
     if #roster > 0 and type(e.class) == "string" then
@@ -1593,7 +1638,7 @@ function Methods:AssignMenu(root, e, t, roster)
     end
     if #ofClass == 0 then
         root:CreateButton(TEXT.unassigned, function()
-            self:OpenAt(t, e.spellID, e.name, "")
+            self:PlaceCooldownAt(t, e, "")
         end)
     end
     if #others > 0 then
@@ -1608,21 +1653,21 @@ function Methods:AssignMenu(root, e, t, roster)
     end
     root:CreateDivider()
     root:CreateButton(TEXT.justMe, function()
-        self:OpenAt(t, e.spellID, e.name)
+        self:PlaceCooldownAt(t, e)
     end)
 end
 
 -- Places cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from the pull, dropped on lane.
 -- Someone who may change the raid note gets a menu at the cursor of who it is for (AssignMenu); anyone
--- else, and anyone on the Personal notes lane, gets the editor at once on an alert of their own (OpenAt
--- with its spell and its name as the text).
+-- else, and anyone on the Personal notes lane, has it saved at once as an alert of their own
+-- (PlaceCooldownAt, Only me).
 function Methods:PlaceCooldown(e, t, lane)
     if not (e and e.spellID) then
         return
     end
-    -- without the game's menus, as before: the editor at once
+    -- without the game's menus too: saved at once as your own
     if not (self:EncounterNumber() and assigns(lane) and MenuUtil and MenuUtil.CreateContextMenu) then
-        self:OpenAt(t, e.spellID, e.name)
+        self:PlaceCooldownAt(t, e)
         return
     end
     contextMenu(self.hscroll, function(root)
@@ -2414,17 +2459,16 @@ function Methods:FinishChipMove()
     end
 end
 
--- Makes a template from cooldown e: its name, spell and text, in caramel, with what a new alert in the
--- editor starts with (CRT.AlertEditor.NewDefaults, the one source of those).
+-- Makes a new template from cooldown e: its name, spell and text, with the cooldown defaults a drop saves
+-- with (Alerts/Draft.lua's Draft.CooldownTemplate: Text, read out). The cooldown itself is never changed.
 function Methods:SaveCooldown(e)
     local Saved = CRT.AlertSaved
     if not (Saved and e) then
         return nil
     end
-    local Editor = CRT.AlertEditor
-    local fields = Editor and Editor.NewDefaults and Editor.NewDefaults() or {}
-    local r, g, b = mocha("caramel")
-    fields.name, fields.spellID, fields.text, fields.color = e.name, e.spellID, e.name, { r, g, b, 1 }
+    local Draft = CRT.AlertDraft
+    local fields = Draft and Draft.CooldownTemplate and Draft.CooldownTemplate() or {}
+    fields.name, fields.spellID, fields.text = e.name, e.spellID, e.name
     return Saved:Save(nil, fields)
 end
 

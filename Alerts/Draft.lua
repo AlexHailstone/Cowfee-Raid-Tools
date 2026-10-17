@@ -9,6 +9,9 @@ local ADDON, CRT = ...
 --          text, color, show = { alert, text, icon, bar, circle }, speak, count, glow, sound, warn,
 --          linger, boss, baseDifficulty, difficultyTouched }
 -- Every function takes ctx and the draft it works on; none keeps either.
+-- A cooldown dropped on the Timeline (or placed from its menu) is saved at once, without the editor:
+-- Draft.PlaceCooldown, with Draft.CooldownDefaults (the one place those are set). A note line, from the
+-- editor or a drop, is written by Draft.SaveNote.
 
 local Reminders = CRT.AlertReminders
 
@@ -24,12 +27,19 @@ local TEXT = {
     noEncounter = "Pick a boss first: this alert has no boss to be saved for.",
     saveFailed = "The reminder could not be saved.",
     stale = "This note line was changed elsewhere, such as by a new share. Close the editor and open it again.",
+    noBoss = "This boss has no encounter ID, so it can't have a raid note line.",
+    noteFailed = "The note line could not be saved.",
 }
 Draft.TEXT = TEXT
 
 local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle" }
 Draft.SHOW_KEYS = SHOW_KEYS
 local DEFAULT_WARN = 5
+
+-- A cooldown placed from the Timeline's Cooldowns row: shown as Text only and read out, from this many
+-- seconds ahead, gone at once (Linger), in the default colour. Draft.CooldownDefaults gives them.
+local COOLDOWN_WARN = 5
+local COOLDOWN_LINGER = 0
 
 function Draft.trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -185,6 +195,35 @@ function Draft.ApplyFor(ctx, draft, tag)
     end
 end
 
+-- What a placed cooldown starts with, as draft fields: Show as Text only, Speak the text, no count,
+-- glow or sound, Show from COOLDOWN_WARN, Linger COOLDOWN_LINGER, the default colour, the spell's own
+-- icon. A fresh table each call. Not the editor's new-alert defaults (Draft.New): a cooldown has its own.
+function Draft.CooldownDefaults()
+    return { show = { alert = false, text = true, icon = false, bar = false, circle = false }, speak = true,
+        count = false, glow = false, sound = nil, warn = COOLDOWN_WARN, linger = COOLDOWN_LINGER, color = nil,
+        iconType = "spell" }
+end
+
+-- A new draft for a cooldown: its spell, named after the spell unless text is given, with the cooldown
+-- defaults; Only me, for everyone, until the caller says otherwise.
+function Draft.ForCooldown(spellID, text, boss)
+    local d = Draft.ForSpell(spellID, text, boss)
+    for k, v in pairs(Draft.CooldownDefaults()) do
+        d[k] = v
+    end
+    d.iconID = nil
+    return d
+end
+
+-- The cooldown defaults as a template's fields (CRT.AlertSaved:Save), for Save as template on a cooldown:
+-- Only me, for everyone, Text, read out.
+function Draft.CooldownTemplate()
+    local d = Draft.ForCooldown(nil, nil, nil)
+    local outputs, speech = Draft.Outputs(d)
+    return { saveAs = d.saveAs, tags = d.tag, outputs = outputs, speech = speech, warn = d.warn,
+        linger = d.linger, glow = d.glow or nil, sound = d.sound, color = copy(d.color) }
+end
+
 -- Checks ----------------------------------------------------------------------------------------------
 
 -- The draft as reminder text fields, for Reminders:Times.
@@ -316,6 +355,215 @@ function Draft.SaveMine(ctx, draft)
         CRT.Notes:RemoveLine(ctx.noteID, ctx.line, ctx.expected)
     end
     return id
+end
+
+-- As a raid note line ----------------------------------------------------------------------------------
+
+-- Text fit for a note line: no ";" (it ends a field) and no line ends.
+function Draft.clean(s)
+    return trim((tostring(s or ""):gsub(";", ""):gsub("[\r\n]+", " ")))
+end
+local clean = Draft.clean
+
+-- The draft as a note line's timer (Parser.FormatLine writes it). A line keeps its dur:.
+function Draft.NoteTimer(ctx, draft)
+    local base = ctx and ctx.timer or {}
+    local spellID = validID(draft.spellID)
+    local text = clean(draft.text)
+    local show = {}
+    for _, k in ipairs(SHOW_KEYS) do
+        show[k] = draft.show[k] or nil
+    end
+    return {
+        time = parseTime(draft.timeText) or 0,
+        ph = draft.ph or 1,
+        tags = Draft.words(draft.tag),
+        spellId = spellID,
+        kind = spellID and "spell" or "text",
+        text = text ~= "" and text or nil,
+        dur = base.dur,
+        color = copy(draft.color),
+        show = show,
+        tts = draft.speak or nil,
+        count = draft.count or nil,
+        sound = draft.sound,
+        glow = draft.glow or nil,
+        warn = draft.warn,
+        linger = draft.linger > 0 and draft.linger or nil,
+        iconID = draft.iconType == "id" and validID(draft.iconID) or nil,
+    }
+end
+
+-- The fields of the raw line the draft was opened from that FormatLine doesn't write (such as
+-- DisplayType:), kept on the end of the line written back.
+function Draft.KeptFields(ctx)
+    return ctx and ctx.expected and CRT.NoteParser.UnknownFields(ctx.expected) or ""
+end
+
+-- The times of a reminder moving to the raid note (Draft.KeepsTimes), or nil.
+function Draft.KeptTimeList(ctx, draft)
+    if Draft.KeepsTimes(ctx, draft) then
+        local list = Reminders:Times(ctx.encounterID, Draft.TimesProbe(draft))
+        if #list > 0 then
+            return list
+        end
+    end
+    return nil
+end
+
+-- The draft as note line timers: one per time of a reminder moving here (KeepsTimes), else one.
+function Draft.NoteTimers(ctx, draft)
+    local base = Draft.NoteTimer(ctx, draft)
+    local list = Draft.KeptTimeList(ctx, draft)
+    if list then
+        local out = {}
+        for i, e in ipairs(list) do
+            local t = copy(base)
+            t.ph, t.time = e.ph, e.t
+            out[i] = t
+        end
+        return out
+    end
+    return { base }
+end
+
+local function lower(s)
+    return trim(s):lower()
+end
+
+-- The raid difficulty you are in now, by the name a pull there gets (GetDifficultyInfo, as the engine
+-- names it on ENCOUNTER_START), or nil outside a raid.
+function Draft.CurrentDifficulty()
+    if not GetInstanceInfo then
+        return nil
+    end
+    local ok, _, kind, difficultyID, name = pcall(GetInstanceInfo)
+    if not (ok and Draft.readable(kind) and kind == "raid") then
+        return nil
+    end
+    if GetDifficultyInfo and Draft.readable(difficultyID) and type(difficultyID) == "number" then
+        local okName, n = pcall(GetDifficultyInfo, difficultyID)
+        if okName and Draft.readable(n) and type(n) == "string" and trim(n) ~= "" then
+            return n
+        end
+    end
+    if Draft.readable(name) and type(name) == "string" and trim(name) ~= "" then
+        return name
+    end
+    return nil
+end
+
+-- The Difficulty a new raid note line starts on: that of the note the pull you are in would read, or,
+-- outside a raid, of the boss's only note. Nil (Any) when there is no such note.
+function Draft.DefaultDifficulty(encounterID)
+    if type(encounterID) ~= "number" then
+        return nil
+    end
+    local Notes = CRT.Notes
+    local current = Draft.CurrentDifficulty()
+    local id
+    if current then
+        id = Notes:FindForEncounter(encounterID, current)
+    else
+        for _, e in ipairs(Notes:List()) do
+            if e.record.encounterID == encounterID then
+                if id then
+                    return nil
+                end
+                id = e.id
+            end
+        end
+    end
+    local record = id and Notes:Get(id)
+    return record and record.difficulty or nil
+end
+
+-- The note a raid note line saved now goes to: the line's own note while its difficulty is unchanged,
+-- else the one a pull of that difficulty reads (Notes:AddLine writes there). Nil: a new note is made.
+function Draft.TargetNote(ctx, draft)
+    if not (ctx and type(ctx.encounterID) == "number") then
+        return nil
+    end
+    local difficulty = draft.difficulty and trim(draft.difficulty) or nil
+    if ctx.noteID and lower(ctx.noteDifficulty) == lower(difficulty) then
+        return ctx.noteID
+    end
+    return CRT.Notes:FindForEncounter(ctx.encounterID, difficulty)
+end
+
+-- Saves the draft as raid note lines: over the line it was opened from (ctx.noteID, line, expected)
+-- while it stays in that note, else as new lines in the note the pull reads (a new note for the boss
+-- when it has none), taking the old line or reminder (ctx.id) away once they are written. The raid
+-- note is asked again here, and a line changed elsewhere is never overwritten. True, or false and the
+-- message.
+function Draft.SaveNote(ctx, draft)
+    local allowed, why = Draft.CanEditRaid()
+    if not allowed then
+        return false, why
+    end
+    local encounterID = ctx.encounterID
+    if type(encounterID) ~= "number" then
+        return false, TEXT.noBoss
+    end
+    local Notes = CRT.Notes
+    local extra = Draft.KeptFields(ctx)
+    local lines = {}
+    for i, t in ipairs(Draft.NoteTimers(ctx, draft)) do
+        lines[i] = CRT.NoteParser.FormatLine(t) .. extra
+    end
+    local difficulty = draft.difficulty and trim(draft.difficulty) or nil
+    if ctx.noteID then
+        if not Draft.LineUnchanged(ctx) then
+            return false, TEXT.stale
+        end
+        -- still going to its own note: the line is replaced where it is
+        if Draft.TargetNote(ctx, draft) == ctx.noteID then
+            if not Notes:ReplaceLine(ctx.noteID, ctx.line, lines[1], ctx.expected) then
+                return false, TEXT.stale
+            end
+            return true
+        end
+    end
+    -- a new line, or lines moving here from a reminder (one per time) or from another note. If one
+    -- can't be written, the ones written are taken out again and the old alert stays as it was.
+    local written = {}
+    for _, line in ipairs(lines) do
+        local id, n = Notes:AddLine(encounterID, difficulty, draft.boss, line)
+        if not id then
+            for i = #written, 1, -1 do
+                Notes:RemoveLine(written[i].id, written[i].n, written[i].line)
+            end
+            return false, TEXT.noteFailed
+        end
+        written[#written + 1] = { id = id, n = n, line = line }
+    end
+    if ctx.noteID then
+        Notes:RemoveLine(ctx.noteID, ctx.line, ctx.expected)
+    elseif ctx.id then
+        Reminders:Delete(encounterID, ctx.id)
+    end
+    return true
+end
+
+-- Placing a cooldown ------------------------------------------------------------------------------------
+
+-- Saves cooldown spellID (named text, or the spell's name) for boss encounterID at once, at ph and
+-- seconds into it, with the cooldown defaults. tag nil: one of your reminders (Only me); a name: a raid
+-- note line for that player; "": a raid note line for no one. A true value (the reminder's id for Only
+-- me), or false and the message.
+function Draft.PlaceCooldown(encounterID, spellID, text, boss, ph, seconds, tag)
+    local ctx = { encounterID = encounterID }
+    local draft = Draft.ForCooldown(spellID, text, boss)
+    draft.ph = type(ph) == "number" and ph or 1
+    draft.timeText = ("%.10g"):format(type(seconds) == "number" and math.max(0, seconds) or 0)
+    draft.timeTouched = true
+    if type(tag) ~= "string" then
+        return Draft.SaveMine(ctx, draft)
+    end
+    draft.saveAs = "note"
+    Draft.ApplyFor(ctx, draft, tag)
+    draft.difficulty = Draft.DefaultDifficulty(encounterID)
+    return Draft.SaveNote(ctx, draft)
 end
 
 -- The Sound choices: None (key Draft.NO_SOUND, saved as no sound), then the speech module's sounds.

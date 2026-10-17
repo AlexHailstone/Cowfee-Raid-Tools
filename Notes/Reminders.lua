@@ -154,50 +154,17 @@ local function copy(t)
     return out
 end
 
--- The bosses the tabs can pick: the active note's boss first, then the bosses with recorded pulls,
--- then the bosses of the raid you are standing in (from the Journal, as the Timeline page lists them),
--- then the bosses of the references. Only bosses with an encounter ID are listed, since that is what
--- a pull is matched on. { { key = encounterID, name, label } }. Shared with the Phases tab.
+-- The bosses the tabs can pick, in the raid route order the boss library keeps (CRT.Bosses:Options,
+-- the one ordered source every boss list reads; set on the Development page, shipped in Season.lua).
+-- Bosses outside the library are not listed. { { key = encounterID, name, label } }, headings left
+-- out. Shared with the Phases tab and Pace.
 local function bossList()
-    local list, seen = {}, {}
-    local function add(key, name)
-        if type(key) == "number" and not seen[key] then
-            seen[key] = true
-            name = (type(name) == "string" and name ~= "") and name or tostring(key)
-            list[#list + 1] = { key = key, name = name, label = name }
+    local list = {}
+    local Bosses = CRT.Bosses
+    for _, o in ipairs(Bosses and Bosses.Options and Bosses:Options() or {}) do
+        if not o.title and type(o.key) == "number" then
+            list[#list + 1] = { key = o.key, name = o.label, label = o.label }
         end
-    end
-    local known = {}
-    for _, boss in ipairs(CRT.Timeline and CRT.Timeline:Bosses() or {}) do
-        known[boss.encounterID] = boss.name
-    end
-    local Journal = CRT.TimelineJournal
-    local raid = Journal and Journal.RaidBosses and Journal:RaidBosses() or {}
-    for _, boss in ipairs(raid) do
-        if not known[boss.encounterID] then
-            known[boss.encounterID] = boss.name
-        end
-    end
-    local Ref = CRT.TimelineReference
-    local refs = Ref and Ref:List() or {}
-    for _, entry in ipairs(refs) do
-        local id = entry.ref.encounterID
-        if id and not known[id] then
-            known[id] = entry.ref.boss
-        end
-    end
-    local _, record = CRT.Notes:Active()
-    if record and type(record.encounterID) == "number" then
-        add(record.encounterID, known[record.encounterID] or record.name)
-    end
-    for _, boss in ipairs(CRT.Timeline and CRT.Timeline:Bosses() or {}) do
-        add(boss.encounterID, boss.name)
-    end
-    for _, boss in ipairs(raid) do
-        add(boss.encounterID, boss.name)
-    end
-    for _, entry in ipairs(refs) do
-        add(entry.ref.encounterID, entry.ref.boss)
     end
     return list
 end
@@ -253,7 +220,9 @@ end
 
 local function pickBoss(bosses)
     if not selected or not bossName(bosses, selected) then
-        selected = bosses[1] and bosses[1].key or nil
+        local _, record = CRT.Notes:Active()
+        local active = record and record.encounterID
+        selected = (active and bossName(bosses, active) and active) or (bosses[1] and bosses[1].key) or nil
         viewDiff = nil
     end
     return selected, selected and bossName(bosses, selected)
@@ -1228,16 +1197,16 @@ local function build(f)
         labelWidth = L.BOSS_LABEL,
         width = L.BOSS_W,
         options = function()
-            local out = {}
-            for _, b in ipairs(bosses()) do
-                out[#out + 1] = { key = b.key, label = b.label }
-            end
-            return out
+            local Bosses = CRT.Bosses
+            return Bosses and Bosses.Options and Bosses:Options() or {}
         end,
         get = function()
             return (pickBoss(bosses()))
         end,
         set = function(key)
+            if type(key) ~= "number" then
+                return -- a raid heading is not a boss
+            end
             saveTyped()
             selected, viewDiff, offset = key, nil, 0
             reveal = true
@@ -1410,6 +1379,15 @@ local function build(f)
                 end
             end
         end)
+        -- the boss route changed (the Development page's Boss order): the list is read again
+        if CRT.Bosses and CRT.Bosses.OnRouteChange then
+            CRT.Bosses:OnRouteChange(function()
+                allChanged()
+                if tab and tab:IsShown() then
+                    refresh()
+                end
+            end)
+        end
         -- a reference added, changed or deleted: the bosses, references and times are read again
         if CRT.Timeline and CRT.Timeline.OnChange then
             CRT.Timeline:OnChange(function()
