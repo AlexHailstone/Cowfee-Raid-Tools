@@ -234,8 +234,13 @@ function ReferencePage.Build(f, ctx)
             end
             local sameName = saved and ctx.bossName() and saved.boss:lower() == ctx.bossName():lower()
             local where = (here or sameName) and GROUP_NAMES[ctx.difficulty()] or saved.boss
-            status:SetText("Saved for " .. where)
-            status:SetTextColor(0.4, 1, 0.4)
+            if saved and saved.warnings then
+                status:SetText("Saved for " .. where .. "\n" .. saved.warnings[1])
+                status:SetTextColor(1, 0.82, 0)
+            else
+                status:SetText("Saved for " .. where)
+                status:SetTextColor(0.4, 1, 0.4)
+            end
         else
             local shown = {}
             for i = 1, math.min(MAX_ERRORS, #errors) do

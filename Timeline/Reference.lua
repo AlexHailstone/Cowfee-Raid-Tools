@@ -281,6 +281,7 @@ local function orderPhases(ref)
 end
 
 -- Reads reference text. Returns the reference, or nil and a list of "Line N: reason" errors.
+-- A reference that reads but has a likely mistake carries ref.warnings, a list in the same form.
 function Reference.Parse(text)
     if type(text) ~= "string" then
         return nil, { "No text to read" }
@@ -289,6 +290,7 @@ function Reference.Parse(text)
     text = text:gsub("\194\160", " "):gsub("\226\128\139", "")
     local ref = { phases = {}, rows = {} }
     local errors = {}
+    local warnings, numbers = {}, {}
     local explicitLength
     local n = 0
     for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
@@ -332,6 +334,19 @@ function Reference.Parse(text)
                     err = "bad planned time '" .. plannedText .. "'"
                 else
                     ref.phases[#ref.phases + 1] = { t = t, planned = planned or t, label = label ~= "" and label or nil }
+                    -- the alerts take a phase's number from the first number in its label: a label
+                    -- that reads as phase 1 (which always runs from the pull) or as a number used
+                    -- before would put reminders at the wrong time, so it is saved with a warning
+                    local num = label:match("%d+%.%d+") or label:match("%d+")
+                    num = num and tonumber(num)
+                    if num == 1 or (num and numbers[num]) then
+                        warnings[#warnings + 1] = "Line " .. n .. ": '" .. label .. "' reads as phase " .. num
+                            .. (num == 1 and ", which is the pull" or ", like an earlier phase")
+                            .. "; reminders use that number. Name a window that isn't a game phase without digits."
+                    end
+                    if num then
+                        numbers[num] = true
+                    end
                 end
             elseif key == "order" then
                 local order, reason = readOrder(val)
@@ -369,6 +384,9 @@ function Reference.Parse(text)
         return a.t < b.t
     end)
     orderPhases(ref)
+    if #warnings > 0 then
+        ref.warnings = warnings
+    end
     local last = 0
     for _, row in ipairs(ref.rows) do
         table.sort(row.casts, function(a, b)

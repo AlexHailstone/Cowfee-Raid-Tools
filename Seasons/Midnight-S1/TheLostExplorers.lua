@@ -22,11 +22,11 @@ Boss: The Lost Explorers
 Difficulty: Mythic
 Length: 7:31
 Encounter: 3497
-Phase: Empowered 1 1:04
-Phase: Empowered 2 3:03
-Phase: Empowered 3 5:06
+Phase: Empowered A 1:04
+Phase: Empowered B 3:03
+Phase: Empowered C 5:06
 Phase: 7:08
-Order: Empowered 1, Empowered 2, Empowered 3 = Gebbo, Nama, Iku
+Order: Empowered A, Empowered B, Empowered C = Gebbo, Nama, Iku
 Malevolent Presence: 0:02+62, 1:04+119, 3:03+123, 5:06+145
 Empower: 0:00, 2:02, 4:01, 6:04
 Blink Nova (lead 8): 0:17, 0:48, 2:20, 2:51, 4:19, 4:50, 5:33, 6:22, 6:53

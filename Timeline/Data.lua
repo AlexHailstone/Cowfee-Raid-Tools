@@ -59,6 +59,58 @@ function Timeline:SetOrder(encounterID, group, key)
     self:Fire()
 end
 
+-- The difficulty group of a difficulty's name ("Mythic", "Heroic", "Normal", as notes write it):
+-- "mythic" for Mythic, "nh" for anything else.
+function Timeline:GroupFor(difficultyName)
+    return type(difficultyName) == "string" and difficultyName:lower():find("mythic", 1, true) and "mythic" or "nh"
+end
+
+-- For the alerts: how the raid's chosen order moves a line's time. Nil when the boss's reference for
+-- the group (your own first, else the shipped one) has no Order line, or the chosen order is the
+-- written one. Otherwise a function(spellID, text, t) giving t moved as Reference.PartMover moves a
+-- cast of the part row the line belongs to: found by spellID, else by a row name in the text. A line
+-- of no part row keeps t; a line that would run past its new window gives false.
+function Timeline:OrderShift(encounterID, group)
+    local Reference = CRT.TimelineReference
+    local ref
+    for _, entry in ipairs(Reference:ForGroup(Reference:ForBoss(encounterID), group or "nh")) do
+        if entry.ref.order then
+            ref = entry.ref
+            break
+        end
+    end
+    if not ref then
+        return nil
+    end
+    local chosen = Reference.ResolveOrder(ref, self:Order(encounterID, group))
+    if Reference.OrderKey(chosen) == Reference.OrderKey(ref.order.parts) then
+        return nil
+    end
+    local move = Reference.PartMover(ref, chosen)
+    return function(spellID, text, t)
+        local found
+        for _, row in ipairs(ref.rows) do
+            if row.part and spellID and spellID ~= 0 and CRT.TimelineLanes.RowSpell(row, encounterID) == spellID then
+                found = row
+                break
+            end
+        end
+        if not found and type(text) == "string" then
+            local lower = text:lower()
+            for _, row in ipairs(ref.rows) do
+                if row.part and lower:find(row.name:lower(), 1, true) then
+                    found = row
+                    break
+                end
+            end
+        end
+        if not found then
+            return t
+        end
+        return move(found, t)
+    end
+end
+
 -- The name of each group, as the dropdowns and messages show it.
 Timeline.GROUP_NAMES = { nh = "Normal/Heroic", mythic = "Mythic" }
 
