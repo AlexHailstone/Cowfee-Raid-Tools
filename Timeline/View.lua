@@ -1896,6 +1896,21 @@ local function wrapWidth(scroll)
     return w - STRIP_IND_W - STRIP_IND_GAP
 end
 
+-- A group laid out before its scroll frame had a width (the first draw of a new window) went on one
+-- row: wrap it again on the next frame, once, when the size is known.
+function Methods:RewrapSoon()
+    if self.rewrapPending or not (C_Timer and C_Timer.After) then
+        return
+    end
+    self.rewrapPending = true
+    C_Timer.After(0, function()
+        self.rewrapPending = false
+        if self.strip and self.strip:IsShown() then
+            self:DrawStrip()
+        end
+    end)
+end
+
 -- Places chips left to right on row (a group's scroll child), starting a new row whenever the next
 -- would pass width. The returned function places frame f of width w and returns its row number.
 local function flow(row, width)
@@ -2044,6 +2059,9 @@ function Methods:DrawStrip()
     end
     local list = CRT.AlertSaved and CRT.AlertSaved:List() or {}
     local width = wrapWidth(self.chipScroll)
+    if width == math.huge then
+        self:RewrapSoon()
+    end
     local put = flow(self.chipRow, width)
     for n, e in ipairs(list) do
         local c = self:Chip(n)
@@ -2069,6 +2087,9 @@ function Methods:DrawCooldowns()
     end
     local list = self:CooldownList()
     local width = wrapWidth(self.cdScroll)
+    if width == math.huge then
+        self:RewrapSoon()
+    end
     local put = flow(self.cdRow, width)
     local rows = 1
     for n, e in ipairs(list) do
