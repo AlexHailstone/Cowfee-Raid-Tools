@@ -109,6 +109,8 @@ UI.LAYERS = {
     -- At most Fullscreen: the alert editor and the game's dropdown lists sit above it, on Fullscreen
     -- dialog and Tooltip, so editing from the Timeline window always shows on top.
     { key = "timeline", label = "Timeline window", default = "HIGH", max = "FULLSCREEN" },
+    -- The windows that open over the others: the dev tools, the text, import and roster windows.
+    { key = "popups", label = "Pop-up windows", default = "FULLSCREEN_DIALOG" },
 }
 
 local layerDefaults, layerFrames = {}, {}
@@ -167,6 +169,10 @@ function UI:RegisterLayer(key, frame)
     local list = layerFrames[key]
     list[#list + 1] = frame
     frame:SetFrameStrata(self:Layer(key))
+    -- a pop-up comes in front of the other pop-ups when clicked
+    if key == "popups" then
+        frame:SetToplevel(true)
+    end
 end
 
 function UI:SetLayer(key, strata)
@@ -185,6 +191,7 @@ UI.LAYER_GROUPS = {
     { key = "timeline", label = "Timeline window", layers = { "timeline" } },
     { key = "alerts", label = "Alerts", layers = { "alert", "alertbars", "alerticons", "alerttexts", "alertcircles", "lowhealth" } },
     { key = "raid", label = "Raid windows", layers = { "readycheck", "bar", "debuffs" } },
+    { key = "popups", label = "Pop-up windows", layers = { "popups" } },
 }
 
 -- The layer every window of a group is in, or "mixed" when they differ.

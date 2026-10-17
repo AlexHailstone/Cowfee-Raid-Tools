@@ -73,7 +73,7 @@ local function getDialog()
     end
     local d = CreateFrame("Frame", "CowfeeRaidToolsDialog", UIParent, "BasicFrameTemplateWithInset")
     UI:StyleWindow(d)
-    d:SetFrameStrata("FULLSCREEN_DIALOG")
+    UI:RegisterLayer("popups", d)
     d:SetPoint("CENTER")
     d:SetClampedToScreen(true)
     d:SetMovable(true)

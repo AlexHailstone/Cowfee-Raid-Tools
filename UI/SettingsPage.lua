@@ -146,7 +146,7 @@ local function getTextDialog()
     UI:StyleWindow(d)
     d:SetSize(520, 340)
     d:SetPoint("CENTER")
-    d:SetFrameStrata("FULLSCREEN_DIALOG")
+    UI:RegisterLayer("popups", d)
     d:SetClampedToScreen(true)
     d:SetMovable(true)
     d:EnableMouse(true)
@@ -374,7 +374,7 @@ end
 local function buildRight(pf)
     local x = RIGHT_X
 
-    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nAlerts: your next spell, alert bars, icons, texts and circles, and the low-health banner.\nRaid windows: the ready check window, your consumables bar and the debuff panel.\n\nMixed means the windows of a group are in different layers; picking one puts them all in it. The game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
+    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything). A window in a higher layer always covers one in a lower layer, including the game's own windows in those layers.\n\nAlerts: your next spell, alert bars, icons, texts and circles, and the low-health banner.\nRaid windows: the ready check window, your consumables bar and the debuff panel.\nPop-up windows: the windows that open over the others, such as text to copy, imports and the Late Tracker roster.\n\nMixed means the windows of a group are in different layers; picking one puts them all in it. The game's windows are mostly Medium and High, and dialogs are Dialog. The consumables bar can't change layer during combat, so a change to it waits until combat ends.")
     for i, group in ipairs(UI.LAYER_GROUPS) do
         add(UI.Dropdown(pf, group.label, {
             options = function()
