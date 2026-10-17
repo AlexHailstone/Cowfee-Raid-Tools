@@ -365,6 +365,8 @@ local function itemsFor(enc, name)
         else
             item.label = itemName(item)
             item.iconTex = itemIcon(item)
+            -- the game had not loaded the spell yet: asked again when the row is painted
+            item.unloaded = item.spellID ~= nil and (item.label == TEXT.unnamed or item.iconTex == nil) or nil
             local r = item.r and copy(item.r) or { spellID = item.spellID, text = item.label }
             r.boss = r.boss or name
             item.timesRaw, item.has = timesFor(enc, r)
@@ -597,6 +599,11 @@ local function paint(index)
     for i, row in ipairs(rows) do
         local item = items[offset + i]
         if item then
+            if item.unloaded then
+                -- a spell name or icon loaded late: only these two are asked again, nothing else
+                item.label, item.iconTex = itemName(item), itemIcon(item)
+                item.unloaded = (item.label == TEXT.unnamed or item.iconTex == nil) or nil
+            end
             local on = item.r ~= nil and item.r.enabled ~= false
             row.item = item
             row.icon:SetTexture(item.iconTex)
@@ -733,10 +740,10 @@ commit = function(quiet)
     notice = nil
     ctx.id = id
     ctx.reminder = Draft.copy(CRT.AlertReminders:Get(ctx.encounterID, id))
+    pendingOwn[ctx.encounterID] = nil -- saved: the new row is a reminder now, never left behind empty
     if quiet then
         return true
     end
-    pendingOwn[ctx.encounterID] = nil
     followID = id
     refresh(true)
     local enc = ctx.encounterID
@@ -1378,6 +1385,28 @@ local function build(f)
             listChanged()
             if tab and tab:IsShown() then
                 refresh()
+            end
+        end)
+        -- the active note changed: its boss leads the list
+        if CRT.Notes and CRT.Notes.OnChange then
+            CRT.Notes:OnChange(function()
+                data.bosses = nil
+                if tab and tab:IsShown() then
+                    refresh()
+                end
+            end)
+        end
+        -- a spell's name and icon arrived: the rows still waiting for one are painted again
+        local loader = CreateFrame("Frame")
+        loader:RegisterEvent("SPELL_DATA_LOAD_RESULT")
+        loader:SetScript("OnEvent", function()
+            if tab and tab:IsShown() and items then
+                for _, item in ipairs(items) do
+                    if item.unloaded then
+                        paint(selectedIndex(pickBoss(bosses())))
+                        return
+                    end
+                end
             end
         end)
         -- a reference added, changed or deleted: the bosses, references and times are read again
