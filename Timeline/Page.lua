@@ -627,6 +627,51 @@ function CRT.TimelinePopout()
     end
 end
 
+-- "Show on the Timeline": opens the pop-out on a boss (by encounter ID) with its reference, or else
+-- its newest pull, and lights the row of a spell there: spell is a spellID or an ability's name, and
+-- name (optional) is tried when no row has that spellID. The boss is
+-- looked for on the shown difficulty first, then on the other one. Returns true when the row is
+-- shown, false when the boss or the row is not.
+local function bossKeyFor(encounterID)
+    for _, option in ipairs(bossOptions()) do
+        local refs = refsByBoss[option.key] or {}
+        local match = option.key == encounterID
+        for _, entry in ipairs(refs) do
+            match = match or entry.ref.encounterID == encounterID
+        end
+        -- listed with something to show on this difficulty: a reference or a pull
+        if match and (refs[1] or (type(option.key) == "number" and Timeline:Pulls(option.key, selectedGroup)[1])) then
+            return option.key
+        end
+    end
+end
+
+function Timeline:ShowRow(encounterID, spell, name)
+    CRT.TimelinePopout()
+    local key, before = nil, selectedGroup
+    for _, group in ipairs({ before, before == "nh" and "mythic" or "nh" }) do
+        selectedGroup, bossList = group, nil
+        key = bossKeyFor(encounterID)
+        if key then
+            break
+        end
+    end
+    if not key then
+        selectedGroup, bossList = before, nil
+        refresh()
+        return false
+    end
+    if key ~= selectedBoss or selectedGroup ~= before then
+        selectedBoss, selectedPull, overlayID = key, nil, nil
+    end
+    refresh()
+    if not view then
+        return false
+    end
+    local spellID = type(spell) == "number" and spell or nil
+    return view:Highlight(spellID, type(spell) == "string" and spell or name)
+end
+
 -- The page -------------------------------------------------------------------------------------
 
 refresh = function()

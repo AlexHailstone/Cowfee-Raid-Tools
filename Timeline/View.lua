@@ -498,8 +498,61 @@ end
 -- base is a recorded pull or { reference = ref }; overlay is a pull laid over a reference.
 function Methods:SetData(base, encounterID, overlay, bossName, group)
     self.pull, self.encounterID, self.overlay, self.bossName, self.group = base, encounterID, overlay, bossName, group
+    self.highlight = nil -- a lit row belongs to what was shown
     self:Refresh()
     self:ScrollTo(0)
+end
+
+-- Lights the row of a spell (by its ID, else by the row's name) in a foamy off-white and scrolls it
+-- into the middle of the view, for "Show on the Timeline". Returns true when such a row is shown.
+-- The light stays until other data is shown.
+local HIGHLIGHT = { 0.96, 0.94, 0.86 }
+function Methods:Highlight(spellID, name)
+    self.highlight = { spellID = spellID, name = type(name) == "string" and name:lower() or nil }
+    self:Refresh()
+    local row = self.highlightRow
+    if not row then
+        return false
+    end
+    local v = self.vscroll
+    if v.UpdateScrollChildRect then
+        v:UpdateScrollChildRect()
+    end
+    local range = v:GetVerticalScrollRange() or 0
+    local top = (row - 1) * ROW_H - ((v:GetHeight() or 0) - ROW_H) / 2
+    v:SetVerticalScroll(math.max(0, math.min(range, top)))
+    return true
+end
+
+-- The lit row's band over the labels and the track, or nothing.
+function Methods:DrawHighlight(lanes)
+    local want = self.highlight
+    self.highlightRow = nil
+    if want then
+        for i, lane in ipairs(lanes) do
+            local id = lane.spellID
+            if (want.spellID and want.spellID ~= 0 and id == want.spellID)
+                or (want.name and type(lane.label) == "string" and lane.label:lower() == want.name) then
+                self.highlightRow = i
+                break
+            end
+        end
+    end
+    if not self.highlightRow then
+        if self.highlightTex then
+            self.highlightTex:Hide()
+        end
+        return
+    end
+    if not self.highlightTex then
+        self.highlightTex = self.body:CreateTexture(nil, "ARTWORK")
+    end
+    local tex, y = self.highlightTex, -(self.highlightRow - 1) * ROW_H
+    tex:SetColorTexture(HIGHLIGHT[1], HIGHLIGHT[2], HIGHLIGHT[3], 0.22)
+    tex:ClearAllPoints()
+    tex:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
+    tex:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
+    tex:Show()
 end
 
 -- The chosen order of the shown reference's parts (a list of part names), or nil for the order the
@@ -2583,6 +2636,7 @@ function Methods:Refresh()
         names[#names + 1] = death.name or "Unknown"
     end
     self.unknownText:SetText(#names > 0 and ("Time unknown: " .. table.concat(names, ", ")) or "")
+    self:DrawHighlight(lanes)
     self:DrawMarks(length)
     self:DrawStrip()
     self:ScrollTo(self.hscroll:GetHorizontalScroll())
