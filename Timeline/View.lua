@@ -427,10 +427,16 @@ function View.Create(parent)
         end
     end)
     hscroll:SetScript("OnMouseDown", function(_, button)
+        if view:PhaseMouseDown(button) then
+            return -- Shift + drag moves a phase line; a right press on a moved one may reset it
+        end
         view:StartDrag(button)
         view:RightDown(button)
     end)
     hscroll:SetScript("OnMouseUp", function(_, button)
+        if view:PhaseMouseUp(button) then
+            return
+        end
         view:RightUp(button) -- before StopDrag: a menu click puts back the few pixels it scrolled
         view:StopDrag()
         view:TrackClick(button)
@@ -577,6 +583,124 @@ function Methods:OnUpdate()
     elseif self.cursorLine:IsShown() then
         self.hover:SetText("")
         self.cursorLine:Hide()
+    end
+    if self.phaseDrag then
+        self:UpdatePhaseDrag() -- after the hover time, so its own label wins while a line drags
+    end
+end
+
+-- Moving phase lines --------------------------------------------------------------------------------
+-- With a reference shown, Shift + left-drag on a red phase line moves it, and a right-click on a moved
+-- line puts it back where it was planned. While it drags, the shown reference's phase time changes and
+-- the timeline redraws (casts follow their phase, and an earlier phase's casts past the line hide); on
+-- release view.onPhaseMoved(index, seconds) saves it into the reference (Timeline/Page.lua).
+
+local PHASE_GRAB = 4 -- pixels either side of a phase line that pick it up
+local PHASE_GAP = 5 -- seconds a phase line keeps from its neighbours and from the pull
+
+-- The time under the cursor on the track, in seconds.
+function Methods:CursorSeconds()
+    local x = self.hscroll:GetHorizontalScroll() + cursorX(self.hscroll)
+    return x * clampSpan(settings().span) / self:VisibleWidth()
+end
+
+-- The index (into the shown reference's phases) of the phase line under the cursor, or nil.
+function Methods:PhaseNear()
+    local ref = self.pull and self.pull.reference
+    if not (ref and ref.phases and self.trackW and self.trackW > 0) then
+        return nil
+    end
+    local length = math.max(1, self.extra and self.extra.length or 0)
+    local x = self.hscroll:GetHorizontalScroll() + cursorX(self.hscroll)
+    for i, phase in ipairs(ref.phases) do
+        if type(phase.t) == "number" and phase.t > 0
+            and math.abs(View.TimeToX(phase.t, length, self.trackW) - x) <= PHASE_GRAB then
+            return i
+        end
+    end
+    return nil
+end
+
+-- A press on the track. True when it belongs to a phase line (and the track does nothing else with it).
+function Methods:PhaseMouseDown(button)
+    local i = self:PhaseNear()
+    if not i then
+        return false
+    end
+    local phase = self.pull.reference.phases[i]
+    if button == "LeftButton" and IsShiftKeyDown() then
+        self.phaseDrag = { index = i, from = phase.t }
+        return true
+    end
+    if button == "RightButton" and phase.planned and phase.planned ~= phase.t then
+        local x, y = GetCursorPosition()
+        self.phaseReset = { index = i, x = x, y = y, at = GetTime() }
+        return true
+    end
+    return false
+end
+
+-- A release on the track. True when it ended a phase drag or a reset click.
+function Methods:PhaseMouseUp(button)
+    if self.phaseDrag and button == "LeftButton" then
+        self:FinishPhaseDrag()
+        return true
+    end
+    local r = self.phaseReset
+    if r and button == "RightButton" then
+        self.phaseReset = nil
+        local scale = self.hscroll:GetEffectiveScale()
+        local x, y = GetCursorPosition()
+        local phase = self.pull and self.pull.reference and self.pull.reference.phases[r.index]
+        if phase and math.abs(x - r.x) / scale < MENU_DIST and math.abs(y - r.y) / scale < MENU_DIST
+            and GetTime() - r.at <= MENU_TIME then
+            if self.onPhaseMoved then
+                self.onPhaseMoved(r.index, phase.planned)
+            end
+        end
+        return true
+    end
+    return false
+end
+
+-- Moves the dragged line to the cursor, kept PHASE_GAP seconds from its neighbours and the pull.
+function Methods:UpdatePhaseDrag()
+    local drag = self.phaseDrag
+    local ref = self.pull and self.pull.reference
+    local phase = ref and ref.phases and ref.phases[drag.index]
+    if not phase then
+        self.phaseDrag = nil
+        return
+    end
+    if not IsMouseButtonDown("LeftButton") then
+        self:FinishPhaseDrag()
+        return
+    end
+    local prev = ref.phases[drag.index - 1]
+    local nextPhase = ref.phases[drag.index + 1]
+    local low = (prev and prev.t or 0) + PHASE_GAP
+    local high = nextPhase and (nextPhase.t - PHASE_GAP) or math.max(low, (self.extra and self.extra.length or 0) - PHASE_GAP)
+    local t = math.floor(self:CursorSeconds() + 0.5)
+    t = math.max(low, math.min(high, t))
+    if t ~= phase.t then
+        phase.t = t
+        self:Refresh()
+    end
+    local masked = self.extra and self.extra.masked or 0
+    self.hover:SetText(string.format("%s%s (planned %s)%s", phase.label and (phase.label .. ": ") or "", View.Format(t),
+        View.Format(phase.planned or t), masked > 0 and string.format(", %d hidden", masked) or ""))
+end
+
+-- Lets go of the dragged line and saves where it ended.
+function Methods:FinishPhaseDrag()
+    local drag = self.phaseDrag
+    self.phaseDrag = nil
+    local ref = self.pull and self.pull.reference
+    local phase = ref and ref.phases and ref.phases[drag.index]
+    if phase and phase.t ~= drag.from and self.onPhaseMoved then
+        self.onPhaseMoved(drag.index, phase.t)
+    else
+        self:Refresh()
     end
 end
 
@@ -1944,6 +2068,13 @@ function Methods:DrawPhases(phases, length, height)
             n = n + 1
             local x = View.TimeToX(phase.t, length, self.trackW)
             local line = self:Tex(self.phaseLines, n, "ARTWORK", DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
+            -- the line being dragged is gold, the others red (set every draw, since lines are pooled)
+            local dragging = self.phaseDrag and (self.pull and self.pull.reference and self.pull.reference.phases[self.phaseDrag.index]) == phase
+            if dragging then
+                line:SetColorTexture(1, 0.82, 0, 1)
+            else
+                line:SetColorTexture(DEATH_RED[1], DEATH_RED[2], DEATH_RED[3], 1)
+            end
             line:ClearAllPoints()
             line:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - 1, 0)
             line:SetSize(2, height)
