@@ -63,22 +63,11 @@ local function refresh()
     win.test:SetText(Markers:Testing() and "Stop test" or "Test")
 end
 
+-- The bosses in the raid route, each raid a heading (CRT.Bosses:Options), with their encounter IDs.
 local function bosses()
     local out = {}
-    local list = CRT.NoteReminders and CRT.NoteReminders.BossList and CRT.NoteReminders.BossList() or {}
-    for _, b in ipairs(list) do
-        out[#out + 1] = { key = b.key, label = b.label .. " (" .. b.key .. ")" }
-    end
-    for id in pairs(Markers:Displays()) do
-        local found = false
-        for _, o in ipairs(out) do
-            if o.key == id then
-                found = true
-            end
-        end
-        if not found then
-            out[#out + 1] = { key = id, label = "Encounter " .. id }
-        end
+    for _, o in ipairs(CRT.Bosses:Options()) do
+        out[#out + 1] = o.title and o or { key = o.key, label = o.label .. " (" .. o.key .. ")" }
     end
     return out
 end
@@ -251,7 +240,7 @@ function Editor:Toggle()
     if not win then
         build()
         local list = bosses()
-        loadDraft(list[1] and list[1].key or nil)
+        loadDraft(CRT.Bosses.FirstKey(list))
     end
     win:SetShown(not win:IsShown())
     refresh()

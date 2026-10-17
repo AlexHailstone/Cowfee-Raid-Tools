@@ -62,37 +62,22 @@ local newRow = { ph = 1, unit = "boss1" }
 local statusText, emptyText, secondsEdit, hpEdit, textDialog, slider, startRow
 local refresh
 
+-- The boss library's bosses in the raid route, each raid a heading (CRT.Bosses:Options), as every boss
+-- list in the addon shows them.
 local function bosses()
-    local list = CRT.NoteReminders and CRT.NoteReminders.BossList and CRT.NoteReminders.BossList() or {}
-    local out, seen = {}, {}
-    for _, b in ipairs(list) do
-        out[#out + 1] = { key = b.key, label = b.label }
-        seen[b.key] = true
-    end
-    for id in pairs(CRT.PaceDB.bosses) do
-        if not seen[id] then
-            out[#out + 1] = { key = id, label = "Encounter " .. id }
-        end
-    end
-    for id in pairs(CRT.db.pace.own) do
-        if not seen[id] then
-            seen[id] = true
-            out[#out + 1] = { key = id, label = "Encounter " .. id }
-        end
-    end
-    return out
+    return CRT.Bosses:Options()
 end
 
 local function boss()
     local list = bosses()
     if selected then
         for _, b in ipairs(list) do
-            if b.key == selected then
+            if b.key == selected and not b.title then
                 return selected
             end
         end
     end
-    selected = list[1] and list[1].key or nil
+    selected = CRT.Bosses.FirstKey(list)
     return selected
 end
 
@@ -478,6 +463,7 @@ local function build(pf)
 
     pf:SetScript("OnShow", refresh)
     Pace:OnChange(refresh)
+    CRT.Bosses:OnRouteChange(refresh)
 end
 
 UI:RegisterPage("pace", TEXT.title, build)

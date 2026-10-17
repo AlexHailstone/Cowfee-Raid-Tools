@@ -165,6 +165,30 @@ function Bosses:RouteIndex(encounterID)
     end
 end
 
+-- The route as dropdown options for UI.Dropdown: each raid a heading (title = true), then its bosses,
+-- { key = encounterID, label = name }. Only bosses in the library are listed. The first pickable key
+-- is FirstKey(options).
+function Bosses:Options(seasonKey)
+    local out = {}
+    for _, group in ipairs(self:Route(seasonKey)) do
+        if #group.bosses > 0 then
+            out[#out + 1] = { key = "raid:" .. tostring(group.raid.key), label = group.raid.name, title = true }
+            for _, def in ipairs(group.bosses) do
+                out[#out + 1] = { key = def.encounterID, label = def.name }
+            end
+        end
+    end
+    return out
+end
+
+function Bosses.FirstKey(options)
+    for _, o in ipairs(options) do
+        if not o.title then
+            return o.key
+        end
+    end
+end
+
 -- Which seasons load: "current" (the default) or "all", set in the dev window.
 function Bosses:LoadMode()
     local dev = CRT.db and CRT.db.dev

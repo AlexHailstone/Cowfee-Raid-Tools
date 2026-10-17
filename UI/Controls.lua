@@ -39,7 +39,8 @@ end
 
 -- A dropdown. opts:
 --   options    { { key, label }, ... }, or a function returning that list when the menu opens. An
---              option with disabled = true is shown greyed out and can't be picked.
+--              option with disabled = true is shown greyed out and can't be picked, and one with
+--              title = true is a heading in the open list (such as a raid over its bosses).
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
@@ -66,18 +67,22 @@ function UI.Dropdown(parent, text, opts)
         end
         local list = type(opts.options) == "function" and opts.options() or opts.options
         for _, option in ipairs(list) do
-            local radio = root:CreateRadio(option.label, function(key)
-                return opts.get() == key
-            end, function(key)
-                opts.set(key)
-            end, option.key)
-            if option.disabled and radio and radio.SetEnabled then
-                radio:SetEnabled(false)
-            end
-            if opts.decorate then
-                radio:AddInitializer(function(button)
-                    return opts.decorate(button, option)
-                end)
+            if option.title then
+                root:CreateTitle(option.label)
+            else
+                local radio = root:CreateRadio(option.label, function(key)
+                    return opts.get() == key
+                end, function(key)
+                    opts.set(key)
+                end, option.key)
+                if option.disabled and radio and radio.SetEnabled then
+                    radio:SetEnabled(false)
+                end
+                if opts.decorate then
+                    radio:AddInitializer(function(button)
+                        return opts.decorate(button, option)
+                    end)
+                end
             end
         end
     end)
