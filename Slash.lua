@@ -142,6 +142,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.MarkerEditor then
             CRT.MarkerEditor:Toggle()
         end
+    elseif msg == "dev types" then
+        if CRT.ReferenceTypes then
+            CRT.ReferenceTypes:Toggle()
+        end
     elseif msg == "dev reset" then
         if CRT.Dev then
             CRT.Dev:ResetAllPositions()

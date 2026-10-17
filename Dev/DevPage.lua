@@ -9,6 +9,7 @@ local ADDON, CRT = ...
 --   Diagnostics       the debuff panel's diagnostics
 --   Timeline probe    arm it for the next raid boss pull, show what it found
 --   Marker displays   the marker display editor
+--   Reference types   set each ability's types on a reference timeline
 --   Season packs      which seasons load, and purging one
 
 local UI = CRT.UI
@@ -57,7 +58,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Development")
-    UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev markers and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev markers, /crt dev types and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     local x, right = 8, 352
 
@@ -98,6 +99,12 @@ local function build(pf)
     heading(pf, x, -192, "Diagnostics", "Prints to chat what the game allows the debuff panel to do on this client: which of its setup calls worked.")
     action(pf, x, -212, "Debuff panel diagnostics", 180, function()
         CRT.DebuffPanel:ShowInfo()
+    end)
+
+    -- Reference types.
+    heading(pf, x, -252, "Reference types", "Set each ability's types on a boss's reference timeline with dropdowns: a Main type that colors the row, and any others as dots. Save as my copy shows the colors on the Timeline; Export gives the text to paste to Claude, who ships it in the boss's file.")
+    action(pf, x, -272, "Open reference types", 180, function()
+        CRT.ReferenceTypes:Toggle()
     end)
 
     -- Timeline probe.
