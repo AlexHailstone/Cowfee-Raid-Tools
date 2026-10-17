@@ -485,13 +485,12 @@ local function createWindow(key, defaultPosition, build)
     frame:RegisterForDrag("LeftButton")
     w.frame = frame
 
-    -- The "note updated" stamp: a caramel layer inside the border, under the text, that appears at
+    -- The "note updated" stamp: a caramel layer over the whole window, under the text, that appears at
     -- FLASH_ALPHA, holds for a moment and fades away to the window's own background, whatever its color
     -- or transparency. NoteWindow:Flash() plays it when a shared note arrives or is sent.
     -- on ARTWORK: above the backdrop's own background, whatever layer it uses, and under the text
     local flash = frame:CreateTexture(nil, "ARTWORK")
-    flash:SetPoint("TOPLEFT", 1, -1)
-    flash:SetPoint("BOTTOMRIGHT", -1, 1)
+    flash:SetAllPoints()
     local tan = CRT.MOCHA.caramel
     flash:SetColorTexture(tan[1], tan[2], tan[3], FLASH_ALPHA)
     flash:SetAlpha(0)
@@ -592,10 +591,11 @@ local function createWindow(key, defaultPosition, build)
         local bg = (settings.bgAlpha or 50) / 100
         frame:SetBackdropColor(0, 0, 0, bg)
         local open = unlocked()
+        -- unlocked, a green edge shows where to drag; locked, no edge at all, so the window is seamless
         if open then
             frame:SetBackdropBorderColor(0.3, 0.9, 0.3, 1)
         else
-            frame:SetBackdropBorderColor(0.3, 0.3, 0.3, bg)
+            frame:SetBackdropBorderColor(0, 0, 0, 0)
         end
         -- Locked windows let clicks through to the game.
         frame:EnableMouse(open)
