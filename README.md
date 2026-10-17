@@ -174,6 +174,7 @@ Grasping Depths [spell 123456]: 0:42, 1:53
 | `/crt timeline` | Timeline. `/crt timeline pop` opens the Review tab in its own window, which you can drag to any size |
 | `/crt pace` | Pace |
 | `/crt previews` | Toggles the previews, same as the button in the panel |
+| `/crt break 10` | A break timer for that many minutes, counting down in a small window and ending with a sound; `/crt break 0` cancels it. From a raid leader or assistant it reaches everyone with the addon and is posted as a raid warning |
 | `/crt qol` | The Quality of Life page, with the experimental low-health alert and the Debuffs tab |
 | `/crt settings` | General Settings: the look, window, fonts, sound, minimap button, layers and profiles |
 | `/crt minimap` | Shows or hides the minimap button |
