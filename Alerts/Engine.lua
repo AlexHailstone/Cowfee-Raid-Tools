@@ -66,6 +66,34 @@ end
 
 -- Every block's items for a run, each copied and stamped with its block key. A failing block is skipped.
 -- opts.blocks limits which blocks run; opts.filter(blockKey, item) -> bool keeps only some items.
+-- The chosen order of a boss whose reference has an Order line (Timeline:OrderShift): a function that
+-- moves a line for one part's spell with that part, or nil when there is nothing to move.
+local function orderShift(encounterID, difficultyName)
+    local Timeline = CRT.Timeline
+    if type(encounterID) ~= "number" or not (Timeline and Timeline.OrderShift and Timeline.GroupFor) then
+        return nil
+    end
+    local ok, shift = pcall(function()
+        return Timeline:OrderShift(encounterID, Timeline:GroupFor(difficultyName))
+    end)
+    return ok and type(shift) == "function" and shift or nil
+end
+
+-- A line's time in the run's chosen order: a phase 1 line (seconds from the pull) for one part's spell
+-- moves with that part; false when it falls past its new window, so it never comes. Every other line,
+-- and every line without a chosen order, keeps its time. The line itself is never rewritten.
+function Alerts:OrderTime(spellID, text, ph, time)
+    local shift = self.running and self.run and self.run.shift
+    if not shift or ph ~= 1 or type(time) ~= "number" then
+        return time
+    end
+    local ok, t = pcall(shift, spellID, text, time)
+    if not ok or (t ~= false and type(t) ~= "number") then
+        return time
+    end
+    return t
+end
+
 function Alerts:Collect(run, opts)
     local out = {}
     for _, key in ipairs(self.blockOrder) do
@@ -85,7 +113,12 @@ function Alerts:Collect(run, opts)
                         copy.block = (def.keepBlock and type(it.block) == "string") and it.block or key
                         copy.ph = type(copy.ph) == "number" and copy.ph or 1
                         copy.time = type(copy.time) == "number" and copy.time or 0
-                        out[#out + 1] = copy
+                        -- the raid's chosen order: a part's line moves with it, or never comes
+                        local t = self:OrderTime(copy.spellID, copy.text, copy.ph, copy.time)
+                        if t then
+                            copy.time = t
+                            out[#out + 1] = copy
+                        end
                     end
                 end
             end
@@ -156,6 +189,7 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     self.running = true
     self.starts, self.skipped = {}, {}
     self.items = {}
+    run.shift = orderShift(encounterID, difficultyName)
     changed(self)
     if reason == "encounter" then
         for _, fn in ipairs(self.onPull) do

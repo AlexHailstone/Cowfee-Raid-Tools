@@ -753,12 +753,39 @@ end
 -- Opens the editor on a new alert t seconds from the pull, as phase + seconds through the shown
 -- reference's phase lines (on a recorded pull, phase 1 from the pull), saved as your own by default.
 -- Reminders are keyed by encounter ID, so a boss with none asks to be pulled once first.
+-- The raid's chosen order on this boss (Timeline:OrderShift): shift moves a part's line to where its
+-- part now is, unshift is the reverse (once the Timeline offers it). Both nil when nothing moves.
+function Methods:OrderShifts()
+    local encounterID = self:EncounterNumber()
+    local Timeline = CRT.Timeline
+    if not (encounterID and Timeline and Timeline.OrderShift) then
+        return nil
+    end
+    local ok, shift, unshift = pcall(Timeline.OrderShift, Timeline, encounterID, self.group)
+    if not ok then
+        return nil
+    end
+    return type(shift) == "function" and shift or nil, type(unshift) == "function" and unshift or nil
+end
+
+-- A time on screen as the note or reminder stores it: the chosen order moves a part's lines, so a time
+-- picked on a moved cast is put back where the written order has it.
+function Methods:WrittenTime(spellID, text, t)
+    local _, unshift = self:OrderShifts()
+    if not unshift then
+        return t
+    end
+    local ok, w = pcall(unshift, spellID, text, t)
+    return ok and type(w) == "number" and w or t
+end
+
 function Methods:OpenAt(t, spellID, text)
     local encounterID = self:EncounterNumber()
     if not encounterID then
         CRT:Print(TEXT.needPull)
         return
     end
+    t = self:WrittenTime(spellID, text, t)
     local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
     CRT.AlertEditor:Open(encounterID, nil, {
         spellID = spellID,
@@ -900,9 +927,21 @@ function Methods:NoteAndReminderMarks(lanes, length)
         return out
     end
     local ref = self.pull.reference
+    local shift = self:OrderShifts()
     local function add(m, spellID, text, iconID)
         m.spellID, m.iconID = spellID, iconID
         m.t = Reminders.AbsoluteTime(ref, m.ph, m.time)
+        -- the raid's chosen order: a phase 1 line for one part's spell sits where that part now is
+        -- (shiftDelta, so a drag puts it back in the written order); past its new window it is hidden
+        if shift and m.ph == 1 and m.t then
+            local ok, t2 = pcall(shift, spellID, text, m.t)
+            if ok and t2 == false then
+                return
+            elseif ok and type(t2) == "number" then
+                m.shiftDelta = t2 - m.t
+                m.t = t2
+            end
+        end
         if not (m.t and m.t >= 0 and m.t <= length) then
             return
         end
@@ -1224,6 +1263,7 @@ function Methods:FinishMove()
     if t == m.t then
         return
     end
+    t = t - (m.shiftDelta or 0) -- back to the written order
     local Reminders = CRT.AlertReminders
     local ph, seconds = Reminders.PhaseAt(self.pull and self.pull.reference, t)
     seconds = tenth(seconds)
@@ -1321,6 +1361,8 @@ function Methods:PlaceSaved(id, t, spellID, lane)
     if not Saved then
         return
     end
+    local saved = Saved.Get and Saved:Get(id)
+    t = self:WrittenTime(spellID or (saved and saved.spellID), saved and saved.text, t)
     local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
     local prefill = Saved:Prefill(id, encounterID, ph, tenth(seconds), spellID, self.bossName)
     if prefill then

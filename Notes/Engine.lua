@@ -256,8 +256,13 @@ end
 
 -- Seconds until a timer, or nil if its phase has not started. Negative once it has passed.
 -- Whether a later phase has started before this line's time (the phase mask, Alerts:IsCut).
+-- Also true when the raid's chosen order moves the line past its part's new window.
 function Engine:IsCut(item)
-    return Alerts:IsCut(item.ph, item.time)
+    local t = Alerts:OrderTime(item.spellId, item.text, item.ph, item.time)
+    if t == false then
+        return true
+    end
+    return Alerts:IsCut(item.ph, t)
 end
 
 function Engine:Remaining(item)
@@ -265,7 +270,8 @@ function Engine:Remaining(item)
     if not start then
         return nil
     end
-    return start + item.time - GetTime()
+    local t = Alerts:OrderTime(item.spellId, item.text, item.ph, item.time)
+    return start + (t or item.time) - GetTime()
 end
 
 -- The note block -----------------------------------------------------------------------------
