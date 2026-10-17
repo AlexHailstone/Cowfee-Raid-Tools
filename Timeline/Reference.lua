@@ -16,7 +16,7 @@ CRT.TimelineReference = Reference
 
 -- What an ability is, written (type raid) or (type mythic soak). The first type colors the row; the
 -- others show as dots on its label, and the tooltip lists them all. No type means a plain mechanic.
-Reference.TYPE_ORDER = { "dispel", "raid", "falloff", "mythic", "heroic", "generic", "soak", "spread" }
+Reference.TYPE_ORDER = { "dispel", "raid", "falloff", "mythic", "heroic", "generic", "soak", "spread", "dodge", "heavydot" }
 Reference.TYPES = {
     dispel = { label = "Dispellable debuff", color = { 0.29, 0.64, 1 } },
     raid = { label = "Raid-wide damage, unavoidable", color = { 1, 0.31, 0.31 } },
@@ -26,6 +26,8 @@ Reference.TYPES = {
     generic = { label = "Mechanic", color = { 0.95, 0.9, 0.84 } },
     soak = { label = "Soak", color = { 1, 0.5, 0.82 } },
     spread = { label = "Spread out or get away", color = { 1, 0.85, 0.29 } },
+    dodge = { label = "Dodge", color = { 0.2, 0.82, 0.78 } },
+    heavydot = { label = "Heavy damage over time", color = { 0.75, 0.92, 0.25 } },
 }
 
 -- The type colors as tooltip text, one line per type in its own color: "Soak (soak)".
@@ -217,12 +219,21 @@ function Reference.Parse(text)
                     err = "bad encounter ID '" .. val .. "'"
                 end
             elseif key == "phase" then
+                -- a moved phase line keeps the time it was transcribed with: "P2 2:53 (planned 3:03)"
+                local plannedText
+                local rest, p = val:match("^(.-)%s*%(%s*[Pp][Ll][Aa][Nn][Nn][Ee][Dd]%s+(%S+)%s*%)$")
+                if rest then
+                    val, plannedText = rest, p
+                end
                 local label, last = val:match("^(.-)%s*(%S+)$")
                 local t = last and Reference.ParseTime(last)
+                local planned = plannedText and Reference.ParseTime(plannedText)
                 if not t then
                     err = "Phase needs a time at the end"
+                elseif plannedText and not planned then
+                    err = "bad planned time '" .. plannedText .. "'"
                 else
-                    ref.phases[#ref.phases + 1] = { t = t, label = label ~= "" and label or nil }
+                    ref.phases[#ref.phases + 1] = { t = t, planned = planned or t, label = label ~= "" and label or nil }
                 end
             else
                 local row, reason = readAbility(line)
@@ -455,4 +466,77 @@ function Reference:Delete(key)
     end
     table.remove(saved(), i)
     CRT.Timeline:Fire()
+end
+
+-- Moving phases -------------------------------------------------------------------------------------
+-- A phase line can be moved on the timeline. The move is written into the Phase line as its new time
+-- with the transcribed one kept: "Phase: P2 2:53 (planned 3:03)". The cast times stay as transcribed:
+-- each cast belongs to the phase it was planned in (by the planned times), moves with that phase, and
+-- is hidden while it would land at or after the next phase's start. Moving the line back shows it again.
+
+-- The start of every phase, phase 1 (the pull) first: { 0, start of the first Phase line, ... }.
+function Reference.PhaseStarts(ref)
+    local starts = { 0 }
+    for i, phase in ipairs(ref and ref.phases or {}) do
+        starts[i + 1] = phase.t
+    end
+    return starts
+end
+
+local function clock(seconds)
+    seconds = math.floor(seconds + 0.5)
+    return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+-- The text with its index-th phase (in time order, as Parse sorts them) moved to t. At the planned
+-- time the "(planned ...)" goes away. Returns nil when there is no such phase line.
+function Reference.MovePhaseText(text, index, t)
+    if type(text) ~= "string" or type(index) ~= "number" or type(t) ~= "number" then
+        return nil
+    end
+    local lines, found = {}, {}
+    for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
+        lines[#lines + 1] = raw
+        local cr = raw:sub(-1) == "\r" and "\r" or ""
+        local line = cr == "" and raw or raw:sub(1, -2)
+        local indent, key, val = line:match("^(%s*)(%a+)%s*:%s*(.*)$")
+        if key and key:lower() == "phase" then
+            local one = Reference.Parse("Boss: x\nPhase: " .. val .. "\nx: 1")
+            local phase = one and one.phases[1]
+            if phase then
+                found[#found + 1] = { n = #lines, phase = phase, indent = indent, cr = cr }
+            end
+        end
+    end
+    table.sort(found, function(a, b)
+        return a.phase.t < b.phase.t
+    end)
+    local hit = found[index]
+    if not hit then
+        return nil
+    end
+    local phase = hit.phase
+    local line = hit.indent .. "Phase: " .. (phase.label and (phase.label .. " ") or "") .. clock(t)
+    if math.floor(t + 0.5) ~= phase.planned then
+        line = line .. " (planned " .. clock(phase.planned) .. ")"
+    end
+    lines[hit.n] = line .. hit.cr
+    return table.concat(lines, "\n")
+end
+
+-- Moves a reference's index-th phase to t and saves it. Your own reference is changed in place; a
+-- shipped one is saved as a new reference of your own with the move, since shipped text never changes.
+-- Returns the key of the reference that now holds the move (and true when it is a new copy), or nil.
+function Reference:MovePhase(key, index, t)
+    local entry = self:Find(key)
+    local text = entry and Reference.MovePhaseText(entry.text, index, t)
+    if not text then
+        return nil
+    end
+    if entry.own then
+        local ok = self:Update(key, text)
+        return ok and key or nil, false
+    end
+    local newKey = self:Add(text)
+    return newKey, newKey ~= nil
 end

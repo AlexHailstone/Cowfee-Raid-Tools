@@ -145,6 +145,29 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     end
     local mine = settings.rows and settings.rows[encounterID]
     local hiddenNames = mine and mine.hiddenNames
+
+    -- Moved phase lines: a cast belongs to the phase it was planned in (by the planned phase times),
+    -- moves by as much as that phase's line moved, and is hidden (not dropped from the reference) while
+    -- it would land at or after the next phase's start. With no moved line every cast stays where it is.
+    local phases = ref.phases or {}
+    local function place(t)
+        local k = 0
+        for i, phase in ipairs(phases) do
+            if t >= (phase.planned or phase.t) then
+                k = i
+            end
+        end
+        local shifted = t
+        if k > 0 then
+            shifted = t + (phases[k].t - (phases[k].planned or phases[k].t))
+        end
+        local nextPhase = phases[k + 1]
+        if nextPhase and shifted >= nextPhase.t then
+            return nil
+        end
+        return shifted
+    end
+    local maskedCasts = 0
     for _, row in ipairs(ref.rows or {}) do
         local key = trimLower(row.name)
         local spellID = Lanes.RowSpell(row, eid, rows)
@@ -158,8 +181,13 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
             or (hiddenNames and hiddenNames[key])
         if not hidden then
             local marks = {}
-            for i, cast in ipairs(row.casts or {}) do
-                marks[i] = { t = cast.t, dur = cast.dur }
+            for _, cast in ipairs(row.casts or {}) do
+                local at = place(cast.t)
+                if at then
+                    marks[#marks + 1] = { t = at, dur = cast.dur }
+                else
+                    maskedCasts = maskedCasts + 1
+                end
             end
             lanes[#lanes + 1] = {
                 key = "ref:" .. row.name, label = row.name, color = row.color, lead = row.lead, kind = "reference",
@@ -168,7 +196,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
         end
     end
 
-    local extra = { phases = ref.phases or {}, length = math.max(ref.length or 0, overlay and overlay.length or 0) }
+    local extra = { phases = phases, masked = maskedCasts, length = math.max(ref.length or 0, overlay and overlay.length or 0) }
     if overlay then
         local ticks = { key = "overlay", label = "Pull " .. tostring(overlay.id) .. " casts", kind = "ticks", marks = {} }
         for _, cast in ipairs(overlay.casts or {}) do

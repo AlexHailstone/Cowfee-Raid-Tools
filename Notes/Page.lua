@@ -79,9 +79,10 @@ local function getImportDialog()
         return importDialog
     end
     local d = CreateFrame("Frame", "CowfeeRaidToolsNoteImport", UIParent, "BasicFrameTemplateWithInset")
+    UI:StyleWindow(d)
     d:SetSize(560, 420)
     d:SetPoint("CENTER")
-    d:SetFrameStrata("FULLSCREEN_DIALOG")
+    UI:RegisterLayer("popups", d)
     d:SetClampedToScreen(true)
     d:SetMovable(true)
     d:EnableMouse(true)

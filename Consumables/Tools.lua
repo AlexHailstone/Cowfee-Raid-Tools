@@ -16,9 +16,10 @@ local function getWindow()
         return window
     end
     local w = CreateFrame("Frame", "CowfeeRaidToolsTextWindow", UIParent, "BasicFrameTemplateWithInset")
+    UI:StyleWindow(w)
     w:SetSize(760, 560)
     w:SetPoint("CENTER")
-    w:SetFrameStrata("FULLSCREEN_DIALOG")
+    UI:RegisterLayer("popups", w)
     w:SetClampedToScreen(true)
     w:SetMovable(true)
     w:SetResizable(true)

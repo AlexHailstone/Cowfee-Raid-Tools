@@ -645,9 +645,10 @@ local function getEditor()
         return editor
     end
     local d = CreateFrame("Frame", "CowfeeRaidToolsLateRoster", UIParent, "BasicFrameTemplateWithInset")
+    UI:StyleWindow(d)
     d:SetSize(440, 480)
     d:SetPoint("CENTER")
-    d:SetFrameStrata("DIALOG")
+    UI:RegisterLayer("popups", d)
     d:SetClampedToScreen(true)
     d:SetMovable(true)
     d:EnableMouse(true)

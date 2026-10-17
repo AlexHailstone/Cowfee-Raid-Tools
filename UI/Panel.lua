@@ -109,6 +109,8 @@ UI.LAYERS = {
     -- At most Fullscreen: the alert editor and the game's dropdown lists sit above it, on Fullscreen
     -- dialog and Tooltip, so editing from the Timeline window always shows on top.
     { key = "timeline", label = "Timeline window", default = "HIGH", max = "FULLSCREEN" },
+    -- The windows that open over the others: the dev tools, the text, import and roster windows.
+    { key = "popups", label = "Pop-up windows", default = "FULLSCREEN_DIALOG" },
 }
 
 local layerDefaults, layerFrames = {}, {}
@@ -167,6 +169,10 @@ function UI:RegisterLayer(key, frame)
     local list = layerFrames[key]
     list[#list + 1] = frame
     frame:SetFrameStrata(self:Layer(key))
+    -- a pop-up comes in front of the other pop-ups when clicked
+    if key == "popups" then
+        frame:SetToplevel(true)
+    end
 end
 
 function UI:SetLayer(key, strata)
@@ -185,6 +191,7 @@ UI.LAYER_GROUPS = {
     { key = "timeline", label = "Timeline window", layers = { "timeline" } },
     { key = "alerts", label = "Alerts", layers = { "alert", "alertbars", "alerticons", "alerttexts", "alertcircles", "lowhealth" } },
     { key = "raid", label = "Raid windows", layers = { "readycheck", "bar", "debuffs" } },
+    { key = "popups", label = "Pop-up windows", layers = { "popups" } },
 }
 
 -- The layer every window of a group is in, or "mixed" when they differ.
@@ -281,28 +288,43 @@ function UI:RegisterThemed(f, classic)
 end
 
 -- Floating windows: a window of its own made from BasicFrameTemplateWithInset, such as the alert
--- editor, its export box and an alert area's settings. Classic shows the template's own art; Modern
--- a flat espresso background with an edge border, a caramel line under the title and the plain X.
+-- editor, its export box, the dev tools and the text and import dialogs. Classic shows the template's
+-- own art, or with the Minimal black style a flat black background with a grey border like the main
+-- window; Modern a flat espresso background with an edge border, a caramel line under the title and
+-- the plain X.
 -- Call StyleWindow right after CreateFrame, before adding anything, so only the template's own
 -- textures count as its art. Its buttons and dropdowns are skinned now and each time it shows.
 UI.windows = {}
 
 function UI:ApplyWindow(f)
     local modern = self:IsModern()
+    -- Classic with the Minimal black style is flat too, in black and grey like the main window
+    local flat = modern or (CRT.db and CRT.db.ui and CRT.db.ui.style == "minimal")
     for _, texture in ipairs(f.crtArt) do
-        texture:SetShown(not modern)
+        texture:SetShown(not flat)
     end
-    f.crtBg:SetShown(modern)
-    f.crtBg:SetColorTexture(mocha("espresso", 0.96))
+    f.crtBg:SetShown(flat)
+    f.crtTitle:SetShown(flat)
+    if modern then
+        f.crtBg:SetColorTexture(mocha("espresso", 0.96))
+        f.crtTitle:SetColorTexture(mocha("espresso"))
+    else
+        f.crtBg:SetColorTexture(0, 0, 0, 0.92)
+        f.crtTitle:SetColorTexture(0.12, 0.12, 0.12, 1)
+    end
     for _, edge in ipairs(f.crtEdges) do
-        edge:SetShown(modern)
-        edge:SetColorTexture(mocha("edge"))
+        edge:SetShown(flat)
+        if modern then
+            edge:SetColorTexture(mocha("edge"))
+        else
+            edge:SetColorTexture(0.3, 0.3, 0.3, 1)
+        end
     end
     f.crtTitleLine:SetShown(modern)
     f.crtTitleLine:SetColorTexture(mocha("caramel"))
     -- the template's inset (its own frame on some clients) is part of the Classic art
     if type(f.Inset) == "table" and f.Inset.SetShown then
-        f.Inset:SetShown(not modern)
+        f.Inset:SetShown(not flat)
     end
 end
 
@@ -318,6 +340,11 @@ function UI:StyleWindow(f)
     end
     f.crtBg = f:CreateTexture(nil, "BACKGROUND", nil, -8)
     f.crtBg:SetAllPoints()
+    -- the title strip, as on the main window
+    f.crtTitle = f:CreateTexture(nil, "BACKGROUND", nil, -7)
+    f.crtTitle:SetPoint("TOPLEFT", 1, -1)
+    f.crtTitle:SetPoint("TOPRIGHT", -1, -1)
+    f.crtTitle:SetHeight(23)
     f.crtEdges = {}
     for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true }, { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false } }) do
         local edge = f:CreateTexture(nil, "BORDER")

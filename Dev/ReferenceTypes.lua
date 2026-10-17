@@ -277,9 +277,10 @@ end
 
 local function build()
     win = CreateFrame("Frame", "CowfeeRaidToolsReferenceTypes", UIParent, "BasicFrameTemplateWithInset")
+    UI:StyleWindow(win)
     win:SetSize(600, 400)
     win:SetPoint("CENTER")
-    win:SetFrameStrata("DIALOG")
+    UI:RegisterLayer("popups", win)
     win:SetMovable(true)
     win:EnableMouse(true)
     win:RegisterForDrag("LeftButton")
