@@ -48,8 +48,13 @@ for _, u in ipairs(Pace.UNITS) do
     UNIT_OPTIONS[#UNIT_OPTIONS + 1] = { key = u, label = u }
 end
 
+-- Two columns: the boss, its plan and the new-checkpoint row on the left; the checkpoints on the right,
+-- from LIST_TOP down to the buttons at the bottom of the page (UI.PAGE_W x UI.PAGE_H).
 local ROW_H = 22
-local MAX_ROWS = 14
+local LIST_X = 390
+local LIST_W = UI.PAGE_W - LIST_X - 8 - 16 -- the scroll bar takes the rest
+local LIST_TOP = -82
+local MAX_ROWS = math.floor((UI.PAGE_H + LIST_TOP - 44) / ROW_H)
 
 local page, selected, rows, offset = nil, nil, {}, 0
 local controls = {}
@@ -183,8 +188,8 @@ end
 
 local function makeRow(f, i)
     local r = CreateFrame("Frame", nil, f)
-    r:SetSize(560, ROW_H)
-    r:SetPoint("TOPLEFT", 8, -218 - (i - 1) * ROW_H)
+    r:SetSize(LIST_W, ROW_H)
+    r:SetPoint("TOPLEFT", LIST_X, LIST_TOP - (i - 1) * ROW_H)
     local bg = r:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(1, 1, 1, i % 2 == 0 and 0.04 or 0.08)
@@ -195,7 +200,7 @@ local function makeRow(f, i)
         fs:SetJustifyH("LEFT")
         return fs
     end
-    r.ph, r.t, r.unit, r.hp = cell(8, 80), cell(100, 90), cell(200, 100), cell(310, 100)
+    r.ph, r.t, r.unit, r.hp = cell(8, 70), cell(82, 90), cell(176, 80), cell(260, 70)
     r.delete = button(r, TEXT.delete, 70)
     r.delete:SetHeight(18)
     r.delete:SetPoint("RIGHT", -4, 0)
@@ -279,17 +284,17 @@ local function build(pf)
         set = function(mode)
             Pace:SetMode(boss(), mode)
         end })
-    modeRow:SetPoint("TOPLEFT", 330, -40)
+    modeRow:SetPoint("TOPLEFT", 8, -72)
     controls[#controls + 1] = modeRow
 
-    checkbox(pf, 4, -74, TEXT.showBoss, function()
+    checkbox(pf, 4, -104, TEXT.showBoss, function()
         return boss() and Pace:Enabled(boss())
     end, function(on)
         if boss() then
             Pace:SetEnabled(boss(), on)
         end
     end)
-    checkbox(pf, 330, -74, TEXT.showAll, function()
+    checkbox(pf, 4, -128, TEXT.showAll, function()
         return CRT.db.pace.shown ~= false
     end, function(on)
         CRT.db.pace.shown = on
@@ -310,10 +315,10 @@ local function build(pf)
             local plan = boss() and Pace:Plan(boss())
             return not (plan and plan.mode == "time")
         end })
-    phaseRow:SetPoint("TOPLEFT", 8, -108)
+    phaseRow:SetPoint("TOPLEFT", 8, -214)
     controls[#controls + 1] = phaseRow
     local secLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    secLabel:SetPoint("TOPLEFT", 170, -116)
+    secLabel:SetPoint("TOPLEFT", 170, -222)
     secLabel:SetText(TEXT.seconds)
     secondsEdit = numberBox(pf, 50)
     secondsEdit:SetPoint("LEFT", secLabel, "RIGHT", 8, 0)
@@ -324,10 +329,10 @@ local function build(pf)
         set = function(v)
             newRow.unit = v
         end })
-    unitRow:SetPoint("TOPLEFT", 300, -108)
+    unitRow:SetPoint("TOPLEFT", 8, -248)
     controls[#controls + 1] = unitRow
     local hpLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    hpLabel:SetPoint("TOPLEFT", 470, -116)
+    hpLabel:SetPoint("TOPLEFT", 170, -256)
     hpLabel:SetText(TEXT.expected)
     hpEdit = numberBox(pf, 50)
     hpEdit:SetPoint("LEFT", hpLabel, "RIGHT", 8, 0)
@@ -348,10 +353,10 @@ local function build(pf)
 
     -- The list.
     local head = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    head:SetPoint("TOPLEFT", 16, -176)
-    head:SetText("Phase             Time                    Unit                    Expected")
+    head:SetPoint("TOPLEFT", LIST_X + 8, -40)
+    head:SetText("Phase         Time                  Unit              Expected")
     statusText = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    statusText:SetPoint("TOPLEFT", 8, -150)
+    statusText:SetPoint("TOPLEFT", 8, -158)
     local useRow = UI.Dropdown(pf, TEXT.use, { labelWidth = 80, width = 200,
         options = function()
             local shared = boss() and Pace:Shared(boss())
@@ -368,7 +373,7 @@ local function build(pf)
         set = function(key)
             Pace:SetUse(boss(), key)
         end })
-    useRow:SetPoint("TOPLEFT", 330, -142)
+    useRow:SetPoint("TOPLEFT", 8, -176)
     local useRefresh = useRow.refresh
     useRow.refresh = function()
         useRefresh()
@@ -376,12 +381,12 @@ local function build(pf)
     end
     controls[#controls + 1] = useRow
     emptyText = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    emptyText:SetPoint("TOPLEFT", 16, -222)
+    emptyText:SetPoint("TOPLEFT", LIST_X + 8, LIST_TOP - 4)
     emptyText:SetText(TEXT.noRows)
     -- Every boss starts at 100% at the pull, so that point is always there; checkpoints follow it.
     startRow = makeRow(pf, 1)
     startRow:ClearAllPoints()
-    startRow:SetPoint("TOPLEFT", 8, -196)
+    startRow:SetPoint("TOPLEFT", LIST_X, LIST_TOP + ROW_H)
     startRow.delete:Hide()
     startRow.note = startRow:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     startRow.note:SetPoint("RIGHT", -10, 0)
@@ -395,7 +400,7 @@ local function build(pf)
     slider = CreateFrame("Slider", nil, pf)
     slider:SetOrientation("VERTICAL")
     slider:SetSize(10, MAX_ROWS * ROW_H)
-    slider:SetPoint("TOPLEFT", 574, -218)
+    slider:SetPoint("TOPLEFT", LIST_X + LIST_W + 6, LIST_TOP)
     slider:SetMinMaxValues(0, 0)
     slider:SetValueStep(1)
     slider:SetObeyStepOnDrag(true)
