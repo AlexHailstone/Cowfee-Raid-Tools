@@ -18,6 +18,12 @@ CRT.NoteWindow = NoteWindow
 local REFRESH_SECONDS = 0.1
 local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber"
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
+-- The "note updated" stamp: how strong it starts, how long it holds, and how long it fades (seconds).
+local FLASH_ALPHA = 0.75
+local FLASH_HOLD = 0.15
+local FLASH_FADE = 1.2
+-- The windows that show the shared note, and so flash when one arrives.
+local SHARED_WINDOWS = { window = true, assignments = true }
 
 -- The same list as the General Settings page's font choice, in Core.lua.
 NoteWindow.FONTS = CRT.FONTS
@@ -479,6 +485,30 @@ local function createWindow(key, defaultPosition, build)
     frame:RegisterForDrag("LeftButton")
     w.frame = frame
 
+    -- The "note updated" stamp: a caramel layer inside the border, under the text, that appears at
+    -- FLASH_ALPHA, holds for a moment and fades away to the window's own background, whatever its color
+    -- or transparency. NoteWindow:Flash() plays it when a shared note arrives or is sent.
+    local flash = frame:CreateTexture(nil, "BACKGROUND", nil, 7)
+    flash:SetPoint("TOPLEFT", 1, -1)
+    flash:SetPoint("BOTTOMRIGHT", -1, 1)
+    local tan = CRT.MOCHA.caramel
+    flash:SetColorTexture(tan[1], tan[2], tan[3], FLASH_ALPHA)
+    flash:SetAlpha(0)
+    local stamp = flash:CreateAnimationGroup()
+    local fade = stamp:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(0)
+    fade:SetStartDelay(FLASH_HOLD)
+    fade:SetDuration(FLASH_FADE)
+    fade:SetSmoothing("IN")
+    stamp:SetScript("OnPlay", function()
+        flash:SetAlpha(1)
+    end)
+    stamp:SetScript("OnFinished", function()
+        flash:SetAlpha(0)
+    end)
+    w.stamp = stamp
+
     local font = CreateFont("CRTNoteFont_" .. key)
     font:CopyFontObject(GameFontHighlight)
 
@@ -585,8 +615,15 @@ local function createWindow(key, defaultPosition, build)
         local text, heading, hasContent = build()
         local visible = previewOn or (s().shown and hasContent)
         frame:SetShown(visible and true or false)
+        -- a stamp waits for this draw, so a window the new note just made visible shows it too
+        local stampNow = self.flashPending
+        self.flashPending = nil
         if not visible then
             return
+        end
+        if stampNow then
+            self.stamp:Stop()
+            self.stamp:Play()
         end
         title:SetText(heading)
         if text ~= self.lastText then
@@ -617,6 +654,17 @@ function NoteWindow:ResetPosition(key)
     if w then
         w:ResetPosition()
     end
+end
+
+-- The "note updated" stamp on the windows that show the shared note (timers and assignments), played
+-- on their next draw.
+function NoteWindow:Flash()
+    for key, w in pairs(self.windows) do
+        if SHARED_WINDOWS[key] then
+            w.flashPending = true
+        end
+    end
+    changed()
 end
 
 function NoteWindow:RefreshAll()

@@ -234,6 +234,10 @@ function Comm:Share(id)
         CRT:Print(format("Sharing %s in %d parts. The game allows 10 at once and then 1 a second, so this takes about %d seconds.", outgoing.name, #parts, #parts - 10))
     end
     Notes:Fire()
+    -- the sender sees the same "note updated" stamp the raid gets
+    if CRT.NoteWindow then
+        CRT.NoteWindow:Flash()
+    end
     sendParts()
 end
 
@@ -243,6 +247,10 @@ local function received(text, short)
     local newId, result = Notes:Import(text, short)
     if newId then
         Notes:SetActive(newId)
+        -- the note windows show a "note updated" stamp
+        if CRT.NoteWindow then
+            CRT.NoteWindow:Flash()
+        end
         CRT:Print("Received a note from " .. short .. ". " .. result)
     else
         CRT:Print("Received a note from " .. short .. " that could not be read: " .. tostring(result))
