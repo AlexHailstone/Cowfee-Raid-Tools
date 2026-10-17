@@ -16,7 +16,7 @@ CRT.TimelineReference = Reference
 
 -- What an ability is, written (type raid) or (type mythic soak). The first type colors the row; the
 -- others show as dots on its label, and the tooltip lists them all. No type means a plain mechanic.
-Reference.TYPE_ORDER = { "dispel", "raid", "falloff", "mythic", "heroic", "generic", "soak", "spread" }
+Reference.TYPE_ORDER = { "dispel", "raid", "falloff", "mythic", "heroic", "generic", "soak", "spread", "dodge", "heavydot" }
 Reference.TYPES = {
     dispel = { label = "Dispellable debuff", color = { 0.29, 0.64, 1 } },
     raid = { label = "Raid-wide damage, unavoidable", color = { 1, 0.31, 0.31 } },
@@ -26,6 +26,8 @@ Reference.TYPES = {
     generic = { label = "Mechanic", color = { 0.95, 0.9, 0.84 } },
     soak = { label = "Soak", color = { 1, 0.5, 0.82 } },
     spread = { label = "Spread out or get away", color = { 1, 0.85, 0.29 } },
+    dodge = { label = "Dodge", color = { 0.2, 0.82, 0.78 } },
+    heavydot = { label = "Heavy damage over time", color = { 0.75, 0.92, 0.25 } },
 }
 
 -- The type colors as tooltip text, one line per type in its own color: "Soak (soak)".
