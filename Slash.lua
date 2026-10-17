@@ -146,6 +146,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.ReferenceTypes then
             CRT.ReferenceTypes:Toggle()
         end
+    elseif msg == "dev winlog" then
+        if CRT.WindowLog then
+            CRT.WindowLog:Toggle()
+        end
     elseif msg == "dev reset" then
         if CRT.Dev then
             CRT.Dev:ResetAllPositions()

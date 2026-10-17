@@ -10,6 +10,8 @@ local ADDON, CRT = ...
 --   Timeline probe    arm it for the next raid boss pull, show what it found
 --   Marker displays   the marker display editor
 --   Reference types   set each ability's types on a reference timeline
+--   Layers            every window's layer on its own (General Settings shows groups)
+--   Window log        prints every move of the main window, to find what makes it jump
 --   Season packs      which seasons load, and purging one
 
 local UI = CRT.UI
@@ -58,7 +60,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Development")
-    UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev markers, /crt dev types and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
+    UI.Help(pf, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev markers, /crt dev types, /crt dev winlog and /crt dev seasons."):SetPoint("LEFT", title, "RIGHT", 6, 0)
 
     local x, right = 8, 352
 
@@ -105,6 +107,33 @@ local function build(pf)
     heading(pf, x, -252, "Reference types", "Set each ability's types on a boss's reference timeline with dropdowns: a Main type that colors the row, and any others as dots. Save as my copy shows the colors on the Timeline; Export gives the text to paste to Claude, who ships it in the boss's file.")
     action(pf, x, -272, "Open reference types", 180, function()
         CRT.ReferenceTypes:Toggle()
+    end)
+
+    -- Every window's layer on its own (General Settings shows them in groups).
+    heading(pf, x, -312, "Layers, each window", "The layer of every window on its own. General Settings shows them in groups (Main window, Note windows, Timeline window, Alerts, Raid windows); a group whose windows differ shows Mixed there.")
+    for i, layer in ipairs(UI.LAYERS) do
+        local col = (i - 1) % 2
+        local rowN = math.floor((i - 1) / 2)
+        local dd = UI.Dropdown(pf, layer.label, {
+            options = UI:LayerChoices(layer.key),
+            labelWidth = 150,
+            width = 150,
+            get = function()
+                return UI:Layer(layer.key)
+            end,
+            set = function(key)
+                UI:SetLayer(layer.key, key)
+                refresh()
+            end,
+        })
+        dd:SetPoint("TOPLEFT", x + col * 344, -332 - rowN * 30)
+        controls[#controls + 1] = dd
+    end
+
+    -- Window log.
+    heading(pf, right, -264, "Window log", "Prints to chat every time something moves, sizes or rescales the main window: its anchor, its place on screen and the line of code that did it, and where it is one frame into a drag. For finding what makes the window jump. Click again to turn it off.")
+    action(pf, right, -284, "Window log on or off", 160, function()
+        CRT.WindowLog:Toggle()
     end)
 
     -- Timeline probe.
