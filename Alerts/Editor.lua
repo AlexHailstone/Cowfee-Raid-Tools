@@ -1670,8 +1670,9 @@ local function show()
 end
 
 -- Opens the editor for a boss: one of your reminders (id), or a new alert. prefill is { spellID, text,
--- times, boss, ph, time, saveAs } from a spell, a Timeline row or a click on the Timeline: time is
--- seconds into phase ph, saveAs "note" or "mine". A new alert from a spell is named after it.
+-- times, boss, ph, time, saveAs, tag } from a spell, a Timeline row or a click on the Timeline: time is
+-- seconds into phase ph, saveAs "note" or "mine", tag the For of a note line ("" for No one). A new
+-- alert from a spell is named after it.
 function Editor:Open(encounterID, id, prefill)
     build()
     ctx = { encounterID = encounterID }
@@ -1709,6 +1710,7 @@ function Editor:Open(encounterID, id, prefill)
         if prefill.saveAs == "note" or prefill.saveAs == "mine" then
             draft.saveAs = prefill.saveAs
         end
+        Draft.ApplyFor(ctx, draft, prefill.tag) -- For: a player's name, or "" for No one
         if type(prefill.time) == "number" then
             draft.ph = type(prefill.ph) == "number" and prefill.ph or 1
             draft.timeText = clock(prefill.time, true) -- a click on the Timeline gives tenths

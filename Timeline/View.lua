@@ -22,7 +22,8 @@ local ADDON, CRT = ...
 -- one. Dragging a chip onto the track opens the editor on a new alert from it at that time (taking the
 -- spell of a cast icon it is dropped on); right-clicking a chip edits, renames or deletes it. Under it a
 -- Cooldowns row lists healer cooldowns and raid defensives (CRT.AlertCooldowns, filtered by its
--- dropdown): dragged the same way, one opens a new alert of your own with its spell; right-clicked, it
+-- dropdown): dragged the same way, one opens a new alert of your own with its spell, or for a raid leader
+-- or assistant a menu of who it is for (a Raid note for a player, or for no one yet); right-clicked, it
 -- can be saved as a template. Each group's chips wrap onto rows, up to 3 shown (fewer when the lanes
 -- would get under 3 rows); the wheel scrolls the rest. A right click on the track that doesn't move
 -- opens a menu there: New alert here, or Place a template or a cooldown.
@@ -121,12 +122,19 @@ local TEXT = {
     deleteReminder = "Delete your reminder \"%s\"?",
     cooldowns = "Cooldowns",
     cooldownsHelp = "Healer cooldowns and raid defensives. Drag one onto the timeline to make an alert with its "
-        .. "spell there (your own, Only me). Right-click one to save it as a template.\n\n"
+        .. "spell there (your own, Only me). A raid leader or assistant picks who it is for: a player of its "
+        .. "class, anyone else on the Raid Groups layout, no one yet, or just you. Right-click one to save it "
+        .. "as a template.\n\n"
         .. "The dropdown picks which ones are listed: your class (healer cooldowns when your class has none), "
         .. "all of them, the healer cooldowns, the raid defensives, or one class.",
     cooldownHint = "Drag onto the timeline to make an alert",
     saveTemplate = "Save as template",
     noCooldowns = "No cooldowns",
+    assignClass = "%s", -- the title over a dropped cooldown's class players: the class's name
+    noClass = "No %s on this roster",
+    unassigned = "Leave unassigned",
+    anyoneElse = "Anyone else",
+    justMe = "Just me",
 }
 
 local function settings()
@@ -857,7 +865,9 @@ function Methods:WrittenTime(spellID, text, t)
     return ok and type(w) == "number" and w or t
 end
 
-function Methods:OpenAt(t, spellID, text)
+-- Opens the editor on a new alert at t, your own (Only me); given tag (a player's name, or "" for no
+-- one) a Raid note with For set to it.
+function Methods:OpenAt(t, spellID, text, tag)
     local encounterID = self:EncounterNumber()
     if not encounterID then
         CRT:Print(TEXT.needPull)
@@ -871,7 +881,8 @@ function Methods:OpenAt(t, spellID, text)
         ph = ph,
         time = tenth(seconds),
         boss = self.bossName,
-        saveAs = "mine",
+        saveAs = tag ~= nil and "note" or "mine",
+        tag = tag,
     })
 end
 
@@ -1451,16 +1462,6 @@ function Methods:PlaceSaved(id, t, spellID, lane)
     end
 end
 
--- Opens the editor on a new alert from cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from
--- the pull: OpenAt with its spell and its name as the text, so it is your own (Only me) wherever it is
--- dropped, the Personal notes lane included.
-function Methods:PlaceCooldown(e, t)
-    if not (e and e.spellID) then
-        return
-    end
-    self:OpenAt(t, e.spellID, e.name)
-end
-
 -- A context menu at the cursor, built by build(root) with the game's menu; without one, a chat line.
 local function contextMenu(owner, build)
     if MenuUtil and MenuUtil.CreateContextMenu then
@@ -1470,6 +1471,147 @@ local function contextMenu(owner, build)
     else
         CRT:Print(TEXT.noMenu)
     end
+end
+
+-- Assigning a cooldown -----------------------------------------------------------------------------
+
+-- Whether a cooldown placed on lane is offered to the roster: only by someone who may change the raid
+-- note (asked now), and never on the Personal notes lane, where it is always your own.
+local function assigns(lane)
+    if lane and lane.kind == "personal" then
+        return false
+    end
+    return canEditRaid() and true or false
+end
+
+-- A name as a menu line in its class's colour, or as it is when the class is unknown.
+local function classColored(name, class)
+    local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+    if type(c) ~= "table" then
+        return name
+    end
+    local hex = c.colorStr
+    if type(hex) ~= "string" or #hex ~= 8 then
+        local function byte(v)
+            return math.floor((tonumber(v) or 1) * 255 + 0.5)
+        end
+        hex = string.format("ff%02x%02x%02x", byte(c.r), byte(c.g), byte(c.b))
+    end
+    return "|c" .. hex .. name .. "|r"
+end
+
+-- Who a cooldown can be given to: the names of the Raid Groups page's layout (CRT.Groups:SelectedNames),
+-- else the live group. { { key, name, class } } in name order: name as the editor's For shows it (no
+-- realm on your own), class from the live group, else the class cache, else nil.
+function Methods:AssignRoster()
+    local Groups = CRT.Groups
+    if not Groups then
+        return {}
+    end
+    local live = {}
+    if Groups.ReadRoster then
+        local ok, list = pcall(Groups.ReadRoster, Groups)
+        for _, entry in ipairs(ok and type(list) == "table" and list or {}) do
+            if readable(entry.key) and type(entry.key) == "string" and entry.key ~= "" then
+                live[#live + 1] = entry
+            end
+        end
+    end
+    local keys = Groups.SelectedNames and Groups:SelectedNames() or {}
+    if #keys == 0 then
+        for _, entry in ipairs(live) do
+            keys[#keys + 1] = entry.key
+        end
+    end
+    local lookup = Groups.MakeLookup and Groups.MakeLookup(live)
+    local cache = CRT.db and CRT.db.classCache or {}
+    local out = {}
+    for _, key in ipairs(keys) do
+        local entry = lookup and lookup(key)
+        local class = entry and entry.class
+        if not (readable(class) and type(class) == "string" and class ~= "") then
+            class = cache[key:lower()]
+            if type(class) ~= "string" or class == "" then
+                class = nil
+            end
+        end
+        local name = Groups.Display and Groups.Display(key) or key
+        if readable(name) and type(name) == "string" and name ~= "" then
+            out[#out + 1] = { key = key, name = name, class = class }
+        end
+    end
+    table.sort(out, function(a, b)
+        return a.name:lower() < b.name:lower()
+    end)
+    return out
+end
+
+-- Fills root (the drop's menu, or a cooldown's Place submenu) with who cooldown e can be given at t: under
+-- its class's name that class's players, or a greyed line saying there are none and Leave unassigned (a
+-- Raid note for no one); then Anyone else, the rest of the roster; then Just me (your own, as before).
+-- With nobody on the roster: Leave unassigned and Just me.
+function Methods:AssignMenu(root, e, t)
+    local roster = self:AssignRoster()
+    local ofClass, others = {}, {}
+    for _, p in ipairs(roster) do
+        if p.class and p.class == e.class then
+            ofClass[#ofClass + 1] = p
+        else
+            others[#others + 1] = p
+        end
+    end
+    local function forPlayer(menu, p)
+        menu:CreateButton(classColored(p.name, p.class), function()
+            self:OpenAt(t, e.spellID, e.name, p.name)
+        end)
+    end
+    if #roster > 0 and type(e.class) == "string" then
+        local Cooldowns = CRT.AlertCooldowns
+        local className = Cooldowns and Cooldowns.ClassName(e.class) or e.class
+        root:CreateTitle(string.format(TEXT.assignClass, className))
+        for _, p in ipairs(ofClass) do
+            forPlayer(root, p)
+        end
+        if #ofClass == 0 then
+            local none = root:CreateButton(string.format(TEXT.noClass, className))
+            if none and none.SetEnabled then
+                none:SetEnabled(false)
+            end
+        end
+    end
+    if #ofClass == 0 then
+        root:CreateButton(TEXT.unassigned, function()
+            self:OpenAt(t, e.spellID, e.name, "")
+        end)
+    end
+    if #others > 0 then
+        root:CreateDivider()
+        local sub = root:CreateButton(TEXT.anyoneElse)
+        for _, p in ipairs(others) do
+            forPlayer(sub, p)
+        end
+    end
+    root:CreateDivider()
+    root:CreateButton(TEXT.justMe, function()
+        self:OpenAt(t, e.spellID, e.name)
+    end)
+end
+
+-- Places cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from the pull, dropped on lane.
+-- Someone who may change the raid note gets a menu at the cursor of who it is for (AssignMenu); anyone
+-- else, and anyone on the Personal notes lane, gets the editor at once on an alert of their own (OpenAt
+-- with its spell and its name as the text).
+function Methods:PlaceCooldown(e, t, lane)
+    if not (e and e.spellID) then
+        return
+    end
+    if not (self:EncounterNumber() and assigns(lane)) then
+        self:OpenAt(t, e.spellID, e.name)
+        return
+    end
+    contextMenu(self.hscroll, function(root)
+        self:AssignMenu(root, e, t)
+    end)
 end
 
 -- The Rename popup: an edit box with the saved alert's name. data = { id, name }. The popup helpers
@@ -2250,7 +2392,7 @@ function Methods:FinishChipMove()
     end
     local x, y = cursorOnTrack(self)
     if cm.kind == "cooldown" then
-        self:PlaceCooldown(cm.cooldown, self:TimeAtX(x))
+        self:PlaceCooldown(cm.cooldown, self:TimeAtX(x), self:LaneAtY(y))
     else
         self:PlaceSaved(cm.id, self:TimeAtX(x), self:IconSpellAt(x, y), self:LaneAtY(y))
     end
@@ -2382,16 +2524,22 @@ function Methods:TrackMenu(x, y)
                 self:PlaceSaved(e.id, t, spellID, lane)
             end)
         end
-        -- the cooldowns the Cooldowns row lists now, placed as a drop there would be
+        -- the cooldowns the Cooldowns row lists now, placed as a drop there would be: each a submenu of
+        -- who it is for when a drop would ask, else a button
         local cooldowns = place:CreateButton(TEXT.cooldowns)
         local cds = self:CooldownList()
         if #cds == 0 then
             cooldowns:CreateTitle(TEXT.noCooldowns)
         end
+        local assigning = assigns(lane) and self:EncounterNumber() ~= nil
         for _, e in ipairs(cds) do
-            cooldowns:CreateButton(e.name, function()
-                self:PlaceCooldown(e, t)
-            end)
+            if assigning then
+                self:AssignMenu(cooldowns:CreateButton(e.name), e, t)
+            else
+                cooldowns:CreateButton(e.name, function()
+                    self:PlaceCooldown(e, t, lane)
+                end)
+            end
         end
     end)
 end

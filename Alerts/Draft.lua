@@ -173,6 +173,18 @@ function Draft.ForSpell(spellID, text, boss)
     return d
 end
 
+-- A For chosen before the draft opens (a cooldown assigned on the Timeline): a player's name as the note
+-- line's tag, or "" for no one (the line then only shows in the timers window, and keeps that choice).
+function Draft.ApplyFor(ctx, draft, tag)
+    if type(tag) ~= "string" then
+        return
+    end
+    draft.tag = trim(tag)
+    if draft.tag == "" and ctx then
+        ctx.untagged = true
+    end
+end
+
 -- Checks ----------------------------------------------------------------------------------------------
 
 -- The draft as reminder text fields, for Reminders:Times.

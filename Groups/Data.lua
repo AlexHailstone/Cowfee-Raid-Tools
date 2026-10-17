@@ -203,6 +203,25 @@ function Groups:Working()
     return g.working
 end
 
+-- The names in the layout the Raid Groups page shows (the selected one, with any edits not yet saved
+-- to it), in slot order, each once: { key, ... }. Reads only; an empty list when there is none.
+function Groups:SelectedNames()
+    local g = CRT.db and CRT.db.groups
+    local slots = g and g.working
+    local out, seen = {}, {}
+    if type(slots) ~= "table" then
+        return out
+    end
+    for i = 1, NUM_SLOTS do
+        local key = slots[i]
+        if type(key) == "string" and key ~= "" and not seen[key:lower()] then
+            seen[key:lower()] = true
+            out[#out + 1] = key
+        end
+    end
+    return out
+end
+
 function Groups:OnChange(fn)
     self.listeners[#self.listeners + 1] = fn
 end
