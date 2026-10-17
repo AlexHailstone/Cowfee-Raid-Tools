@@ -40,7 +40,21 @@ function Timeline:Set(field, value)
     self:Fire()
 end
 
--- Saves a finished pull under its boss, numbers it, and keeps only the newest `keep` of that boss.
+-- The difficulty group a difficultyID belongs to: Mythic (16) is "mythic", every other
+-- difficulty (or none) is "nh" (Normal/Heroic).
+function Timeline.DifficultyGroup(difficultyID)
+    return difficultyID == 16 and "mythic" or "nh"
+end
+
+local groupOf = Timeline.DifficultyGroup
+
+-- True when a pull belongs in the asked group; no group asks for every pull.
+local function inGroup(pull, group)
+    return group == nil or groupOf(pull.difficultyID) == group
+end
+
+-- Saves a finished pull under its boss, numbers it, and keeps only the newest `keep` pulls of its
+-- difficulty group for that boss (the other group's pulls are never dropped).
 function Timeline:SavePull(pull)
     local db = tdb()
     local boss = db.bosses[pull.encounterID]
@@ -52,18 +66,42 @@ function Timeline:SavePull(pull)
     pull.id = db.nextId
     db.nextId = db.nextId + 1
     boss.pulls[#boss.pulls + 1] = pull
-    while #boss.pulls > (db.keep or 10) do
-        table.remove(boss.pulls, 1)
+    local group = groupOf(pull.difficultyID)
+    local inGroupCount = 0
+    for _, p in ipairs(boss.pulls) do
+        if groupOf(p.difficultyID) == group then
+            inGroupCount = inGroupCount + 1
+        end
+    end
+    local keep = db.keep or 10
+    local i = 1
+    while inGroupCount > keep and i <= #boss.pulls do
+        if groupOf(boss.pulls[i].difficultyID) == group then
+            table.remove(boss.pulls, i)
+            inGroupCount = inGroupCount - 1
+        else
+            i = i + 1
+        end
     end
     self:Fire()
     return pull.id
 end
 
--- Every boss with saved pulls, by name.
-function Timeline:Bosses()
+-- Every boss with saved pulls, by name. With a group, count is that group's pull count (a boss
+-- with pulls only in the other group is still listed, with count 0).
+function Timeline:Bosses(group)
     local list = {}
     for encounterID, boss in pairs(tdb().bosses) do
-        list[#list + 1] = { encounterID = encounterID, name = boss.name or "", count = #boss.pulls }
+        local count = #boss.pulls
+        if group then
+            count = 0
+            for _, pull in ipairs(boss.pulls) do
+                if inGroup(pull, group) then
+                    count = count + 1
+                end
+            end
+        end
+        list[#list + 1] = { encounterID = encounterID, name = boss.name or "", count = count }
     end
     table.sort(list, function(a, b)
         if a.name ~= b.name then
@@ -74,13 +112,15 @@ function Timeline:Bosses()
     return list
 end
 
--- A boss's pulls, newest first.
-function Timeline:Pulls(encounterID)
+-- A boss's pulls, newest first; with a group, only that group's pulls.
+function Timeline:Pulls(encounterID, group)
     local list = {}
     local boss = tdb().bosses[encounterID]
     if boss then
         for i = #boss.pulls, 1, -1 do
-            list[#list + 1] = boss.pulls[i]
+            if inGroup(boss.pulls[i], group) then
+                list[#list + 1] = boss.pulls[i]
+            end
         end
     end
     return list
@@ -103,8 +143,9 @@ function Timeline:DeleteBoss(encounterID)
 end
 
 -- The deaths of pull fromID (the newest pull when nil) and of the count - 1 pulls saved before it,
--- newest first, for drawing earlier pulls' deaths over the shown one.
-function Timeline:RecentDeaths(encounterID, count, fromID)
+-- newest first, for drawing earlier pulls' deaths over the shown one. With a group, only that
+-- group's pulls are counted and walked.
+function Timeline:RecentDeaths(encounterID, count, fromID, group)
     local list = {}
     local boss = tdb().bosses[encounterID]
     if not boss then
@@ -119,9 +160,14 @@ function Timeline:RecentDeaths(encounterID, count, fromID)
             end
         end
     end
-    for i = start, math.max(1, start - count + 1), -1 do
+    for i = start, 1, -1 do
+        if #list >= count then
+            break
+        end
         local pull = boss.pulls[i]
-        list[#list + 1] = { pull = pull, deaths = pull.deaths or {} }
+        if inGroup(pull, group) then
+            list[#list + 1] = { pull = pull, deaths = pull.deaths or {} }
+        end
     end
     return list
 end
