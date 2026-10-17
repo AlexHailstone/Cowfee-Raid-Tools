@@ -535,7 +535,7 @@ local function build()
             return
         end
         dragging = true
-        frame:StartMoving()
+        frame:StartMoving(true)
     end)
     handle:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()

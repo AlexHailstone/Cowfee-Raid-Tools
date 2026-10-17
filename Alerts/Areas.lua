@@ -665,7 +665,7 @@ function Area:Build()
     end)
 
     handle:SetScript("OnDragStart", function()
-        frame:StartMoving()
+        frame:StartMoving(true)
     end)
     -- Saved by its center, which is the first alert's center.
     handle:SetScript("OnDragStop", function()

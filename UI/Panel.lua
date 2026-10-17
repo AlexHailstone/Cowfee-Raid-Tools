@@ -904,7 +904,10 @@ function UI:Create()
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
+    -- StartMoving(true) moves from where the mouse is now. Without it the game moves from a press
+    -- point it remembers, which can be an old one (it went stale after using the Timeline pop-out),
+    -- and the window jumped by the distance between the two. Every movable window does the same.
+    f:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         UI:SaveWindowPosition()

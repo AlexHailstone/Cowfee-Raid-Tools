@@ -150,7 +150,7 @@ local function getTextDialog()
     d:SetMovable(true)
     d:EnableMouse(true)
     d:RegisterForDrag("LeftButton")
-    d:SetScript("OnDragStart", d.StartMoving)
+    d:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
     d:SetScript("OnDragStop", d.StopMovingOrSizing)
     tinsert(UISpecialFrames, "CowfeeRaidToolsProfileText")
 

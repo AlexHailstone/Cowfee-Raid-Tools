@@ -1313,7 +1313,7 @@ local function build()
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         inCorner = false -- dragged: it keeps the spot it was put in

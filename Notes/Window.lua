@@ -523,7 +523,7 @@ local function createWindow(key, defaultPosition, build)
 
     frame:SetScript("OnDragStart", function()
         if unlocked() then
-            frame:StartMoving()
+            frame:StartMoving(true)
         end
     end)
     frame:SetScript("OnDragStop", function()

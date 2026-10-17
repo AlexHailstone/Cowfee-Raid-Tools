@@ -696,7 +696,7 @@ local function buildPopout()
         p.height = math.floor(popWin:GetHeight() + 0.5)
     end
     header:SetScript("OnDragStart", function()
-        popWin:StartMoving()
+        popWin:StartMoving(true)
     end)
     header:SetScript("OnDragStop", function()
         popWin:StopMovingOrSizing()

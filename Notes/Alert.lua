@@ -211,7 +211,7 @@ local function build()
     handleText = text
     measureHandle()
     handle:SetScript("OnDragStart", function()
-        frame:StartMoving()
+        frame:StartMoving(true)
     end)
     -- Saved by its center, so the alert grows evenly around where you put it.
     handle:SetScript("OnDragStop", function()
