@@ -24,6 +24,9 @@ local FLASH_HOLD = 0.15
 local FLASH_FADE = 1.2
 -- The windows that show the shared note, and so flash when one arrives.
 local SHARED_WINDOWS = { window = true, assignments = true }
+-- What a shared window says while it stays up for the stamp of a note with nothing for it.
+local CLEARED_TEXT = "Note cleared"
+local CLEARED_TITLE = "Raid note"
 
 -- The same list as the General Settings page's font choice, in Core.lua.
 NoteWindow.FONTS = CRT.FONTS
@@ -507,6 +510,8 @@ local function createWindow(key, defaultPosition, build)
     end)
     stamp:SetScript("OnFinished", function()
         flash:SetAlpha(0)
+        -- redraw: a window kept up only for the stamp of a cleared note hides again
+        changed()
     end)
     w.stamp = stamp
 
@@ -614,13 +619,19 @@ local function createWindow(key, defaultPosition, build)
         self.drawnVersion = contentVersion
         self.drawnAt = GetTime()
         local text, heading, hasContent = build()
-        local visible = previewOn or (s().shown and hasContent)
-        frame:SetShown(visible and true or false)
-        -- a stamp waits for this draw, so a window the new note just made visible shows it too
+        -- a stamp waits for this draw, so a window the new note just made visible shows it too; and a
+        -- note with nothing for this window (a cleared note) keeps it up for the stamp, saying so
         local stampNow = self.flashPending
         self.flashPending = nil
+        local stamping = stampNow or self.stamp:IsPlaying()
+        local cleared = stamping and not hasContent and not previewOn
+        local visible = previewOn or (s().shown and (hasContent or stamping))
+        frame:SetShown(visible and true or false)
         if not visible then
             return
+        end
+        if cleared then
+            text, heading = CLEARED_TEXT, heading or CLEARED_TITLE
         end
         if stampNow then
             self.stamp:Stop()
