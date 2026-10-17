@@ -298,6 +298,10 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
             Notes:SetActive(id)
             CRT:Print(short .. " shared " .. (CRT.db.notes.list[id].name or "a note") .. ", which you already have. It is now your active note.")
         end
+        -- a note you already have still shows the "note updated" stamp: the leader pushed it
+        if CRT.NoteWindow then
+            CRT.NoteWindow:Flash()
+        end
         return
     end
 

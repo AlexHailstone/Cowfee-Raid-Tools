@@ -488,7 +488,8 @@ local function createWindow(key, defaultPosition, build)
     -- The "note updated" stamp: a caramel layer inside the border, under the text, that appears at
     -- FLASH_ALPHA, holds for a moment and fades away to the window's own background, whatever its color
     -- or transparency. NoteWindow:Flash() plays it when a shared note arrives or is sent.
-    local flash = frame:CreateTexture(nil, "BACKGROUND", nil, 7)
+    -- on ARTWORK: above the backdrop's own background, whatever layer it uses, and under the text
+    local flash = frame:CreateTexture(nil, "ARTWORK")
     flash:SetPoint("TOPLEFT", 1, -1)
     flash:SetPoint("BOTTOMRIGHT", -1, 1)
     local tan = CRT.MOCHA.caramel
