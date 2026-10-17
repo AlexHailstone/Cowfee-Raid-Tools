@@ -208,14 +208,15 @@ function Bosses:Loaded(encounterID)
     return def and seasonLoaded(def.season) or false
 end
 
--- Fills each feature's shipped table from the loaded bosses. Runs once, after every file loads.
+-- Fills each feature's shipped table from the loaded bosses, in route order, so lists built from those
+-- tables (Tattlebot's mechanics) follow the route too. Runs once, after every file loads.
 function Bosses:Build()
     local timeline = CRT.TimelineDB and CRT.TimelineDB.references
     local phases = CRT.AlertPhaseDB
     local tattle = CRT.TattleDB and CRT.TattleDB.bosses
     local markers = CRT.MarkerDisplayDB and CRT.MarkerDisplayDB.displays
     local pace = CRT.PaceDB and CRT.PaceDB.bosses
-    for _, def in ipairs(self:List()) do
+    for _, def in ipairs(self:RouteList()) do
         if seasonLoaded(def.season) then
             local id = def.encounterID
             if timeline then
