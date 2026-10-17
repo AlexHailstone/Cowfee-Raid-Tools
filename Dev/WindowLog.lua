@@ -143,12 +143,15 @@ function Log:Stamp()
     end
     NW:Flash()
     C_Timer.After(0.3, function()
-        for _, key in ipairs({ "window", "assignments" }) do
+        for _, key in ipairs({ "window", "assignments", "personal" }) do
             local w = NW:Get(key)
             if not w then
                 print("|cffc8a050stamp|r " .. key .. ": no window")
             else
-                print(string.format("|cffc8a050stamp|r %s: shown %s, stamp playing %s, pending %s", key, tostring(w.frame:IsShown()), tostring(w.stamp and w.stamp:IsPlaying()), tostring(w.flashPending)))
+                local t, f = w.stampTexture, w.frame
+                print(string.format("|cffc8a050stamp|r %s: shown %s, stamp playing %s, pending %s | layer %s, alpha %.2f, shown %s, size %.0fx%.0f | window alpha %.2f, strata %s, level %d, size %.0fx%.0f", key, tostring(f:IsShown()), tostring(w.stamp and w.stamp:IsPlaying()), tostring(w.flashPending),
+                    t and tostring(t:GetDrawLayer()) or "?", t and t:GetAlpha() or -1, t and tostring(t:IsShown()) or "?", t and t:GetWidth() or 0, t and t:GetHeight() or 0,
+                    f:GetEffectiveAlpha(), f:GetFrameStrata(), f:GetFrameLevel(), f:GetWidth(), f:GetHeight()))
             end
         end
     end)

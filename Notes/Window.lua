@@ -22,8 +22,9 @@ local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interfac
 local FLASH_ALPHA = 0.75
 local FLASH_HOLD = 0.15
 local FLASH_FADE = 1.2
--- The windows that show the shared note, and so flash when one arrives.
-local SHARED_WINDOWS = { window = true, assignments = true }
+-- The windows that flash when a note is shared: all three, the personal one included, so a share is seen
+-- whichever window you keep up.
+local STAMP_WINDOWS = { window = true, assignments = true, personal = true }
 
 -- The same list as the General Settings page's font choice, in Core.lua.
 NoteWindow.FONTS = CRT.FONTS
@@ -485,13 +486,12 @@ local function createWindow(key, defaultPosition, build)
     frame:RegisterForDrag("LeftButton")
     w.frame = frame
 
-    -- The "note updated" stamp: a caramel layer inside the border, under the text, that appears at
+    -- The "note updated" stamp: a caramel layer over the whole window, under the text, that appears at
     -- FLASH_ALPHA, holds for a moment and fades away to the window's own background, whatever its color
     -- or transparency. NoteWindow:Flash() plays it when a shared note arrives or is sent.
     -- on ARTWORK: above the backdrop's own background, whatever layer it uses, and under the text
     local flash = frame:CreateTexture(nil, "ARTWORK")
-    flash:SetPoint("TOPLEFT", 1, -1)
-    flash:SetPoint("BOTTOMRIGHT", -1, 1)
+    flash:SetAllPoints()
     local tan = CRT.MOCHA.caramel
     flash:SetColorTexture(tan[1], tan[2], tan[3], FLASH_ALPHA)
     flash:SetAlpha(0)
@@ -510,7 +510,7 @@ local function createWindow(key, defaultPosition, build)
         -- redraw: a window kept up only for the stamp of a cleared note hides again
         changed()
     end)
-    w.stamp = stamp
+    w.stamp, w.stampTexture = stamp, flash
 
     local font = CreateFont("CRTNoteFont_" .. key)
     font:CopyFontObject(GameFontHighlight)
@@ -592,10 +592,11 @@ local function createWindow(key, defaultPosition, build)
         local bg = (settings.bgAlpha or 50) / 100
         frame:SetBackdropColor(0, 0, 0, bg)
         local open = unlocked()
+        -- unlocked, a green edge shows where to drag; locked, no edge at all, so the window is seamless
         if open then
             frame:SetBackdropBorderColor(0.3, 0.9, 0.3, 1)
         else
-            frame:SetBackdropBorderColor(0.3, 0.3, 0.3, bg)
+            frame:SetBackdropBorderColor(0, 0, 0, 0)
         end
         -- Locked windows let clicks through to the game.
         frame:EnableMouse(open)
@@ -618,17 +619,17 @@ local function createWindow(key, defaultPosition, build)
         local text, heading, hasContent = build()
         -- a stamp waits for this draw, so a window the new note just made visible shows it too; and a
         -- note with nothing for this window (an empty note, or a boss with no timers or text) keeps it
-        -- up, blank, for the stamp
+        -- up, blank, at least for the stamp
         local stampNow = self.flashPending
         self.flashPending = nil
         local stamping = stampNow or self.stamp:IsPlaying()
-        local cleared = stamping and not hasContent and not previewOn
-        local visible = previewOn or (s().shown and (hasContent or stamping))
+        -- Keep up when empty: a window with nothing to show stays up, blank at its own transparency
+        local visible = previewOn or (s().shown and (hasContent or stamping or s().keepEmpty))
         frame:SetShown(visible and true or false)
         if not visible then
             return
         end
-        if cleared then
+        if not hasContent and not previewOn then
             text, heading = "", ""
         end
         if stampNow then
@@ -666,11 +667,11 @@ function NoteWindow:ResetPosition(key)
     end
 end
 
--- The "note updated" stamp on the windows that show the shared note (timers and assignments), played
--- on their next draw.
+-- The "note updated" stamp on the note windows (timers, assignments and personal), played on their next
+-- draw.
 function NoteWindow:Flash()
     for key, w in pairs(self.windows) do
-        if SHARED_WINDOWS[key] then
+        if STAMP_WINDOWS[key] then
             w.flashPending = true
         end
     end

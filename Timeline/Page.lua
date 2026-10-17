@@ -8,8 +8,9 @@ local ADDON, CRT = ...
 -- bosses with saved pulls, the bosses of the raid you are standing in, and the bosses that only
 -- have a reference, so a boss can be opened before its first pull. With a reference shown, the
 -- Recent pulls list beside it lays one of the boss's pulls over it; that choice is not saved. The
--- Difficulty dropdown picks Normal/Heroic or Mythic, and every list shows only that group (the choice
--- is not saved either: the page starts on Normal/Heroic).
+-- Difficulty dropdown picks Normal/Heroic or Mythic, and every list shows only that group. The
+-- difficulty, boss and reference or pull shown are saved in timeline.lastView, so the page opens on
+-- them again, after a reload too.
 
 local Timeline = CRT.Timeline
 local Journal = CRT.TimelineJournal
@@ -634,6 +635,8 @@ refresh = function()
     end
     bossList = buildBossList()
     fixSelection()
+    -- what is shown is kept, so the page (and a reload) opens on it again
+    settings().lastView = { group = selectedGroup, boss = selectedBoss, pull = selectedPull, bossName = selectedBossName }
     for _, control in ipairs(controls) do
         control.refresh()
     end
@@ -725,6 +728,14 @@ local function build(pf)
             refresh()
         end,
     })
+
+    -- open on the difficulty, boss and reference or pull last shown; fixSelection falls back when
+    -- the boss or pull is gone (the boss's reference, else its newest pull)
+    local last = settings().lastView
+    if type(last) == "table" then
+        selectedGroup = (last.group == "mythic") and "mythic" or "nh"
+        selectedBoss, selectedPull, selectedBossName = last.boss, last.pull, last.bossName
+    end
 
     pf:SetScript("OnShow", function()
         selectTab(currentTab)

@@ -12,7 +12,7 @@ local UI = CRT.UI
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
 local TEXT = {
-    hint = "Untick Locked to drag a window and resize it from its bottom-right corner, then lock it again so clicks pass through. Previews shows every window with sample text. Everything here is saved for you.",
+    hint = "Untick Locked to drag a window and resize it from its bottom-right corner, then lock it again so clicks pass through. Keep up when empty leaves a window on screen, blank at its own transparency, while it has nothing to show, so a new or cleared note never makes it vanish. Previews shows every window with sample text. Everything here is saved for you.",
 
     -- The three window columns.
     timers = "Timers",
@@ -20,6 +20,7 @@ local TEXT = {
     personal = "Personal note",
     show = "Show this window",
     locked = "Locked (clicks pass through)",
+    keepEmpty = "Keep up when empty",
     hidePassed = "Hide lines once passed",
     onlyMe = "Show only me",
     fontSize = "Font size",
@@ -168,7 +169,8 @@ local function buildColumn(pf, index, def, top)
     end
     makeCheck(pf, x - 4, top - 20, TEXT.show, nil, setting(def.key, "shown"))
     makeCheck(pf, x - 4, top - 44, TEXT.locked, shown, setting(def.key, "locked"))
-    local y = top - 68
+    makeCheck(pf, x - 4, top - 68, TEXT.keepEmpty, shown, setting(def.key, "keepEmpty"))
+    local y = top - 92
     if def.key == "window" then
         makeCheck(pf, x - 4, y, TEXT.hidePassed, shown, setting(def.key, "hidePassed"))
         makeCheck(pf, x - 4, y - 24, TEXT.onlyMe, shown, setting(def.key, "onlyMe"))
