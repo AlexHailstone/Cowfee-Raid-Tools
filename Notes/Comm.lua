@@ -191,6 +191,11 @@ function Comm:Share(id)
     if Notes:Active() ~= id then
         Notes:SetActive(id)
     end
+    -- Every press of Share note shows the "note updated" stamp here, whether or not it can go out (the
+    -- chat says why when it can't); everyone who receives it gets the stamp too.
+    if CRT.NoteWindow then
+        CRT.NoteWindow:Flash()
+    end
     local ok, why = self:CanShare()
     if not ok then
         CRT:Print(format("%s is now your active note, but it wasn't sent to the group: %s", record.name or "The note", why))
@@ -234,10 +239,6 @@ function Comm:Share(id)
         CRT:Print(format("Sharing %s in %d parts. The game allows 10 at once and then 1 a second, so this takes about %d seconds.", outgoing.name, #parts, #parts - 10))
     end
     Notes:Fire()
-    -- the sender sees the same "note updated" stamp the raid gets
-    if CRT.NoteWindow then
-        CRT.NoteWindow:Flash()
-    end
     sendParts()
 end
 
