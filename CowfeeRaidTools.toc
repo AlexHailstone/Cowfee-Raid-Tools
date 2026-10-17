@@ -104,5 +104,6 @@ Dev\MarkerEditor.lua
 Dev\SeasonTools.lua
 Dev\ReferenceTypes.lua
 Dev\WindowLog.lua
+Dev\LayoutCheck.lua
 Dev\DevPage.lua
 #@end-do-not-package@

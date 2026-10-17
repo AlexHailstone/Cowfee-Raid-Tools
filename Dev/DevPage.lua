@@ -135,6 +135,9 @@ local function build(pf)
     action(pf, right, -284, "Window log on or off", 160, function()
         CRT.WindowLog:Toggle()
     end)
+    action(pf, right + 166, -284, "Check the layout", 140, function()
+        CRT.LayoutCheck:Run()
+    end)
 
     -- Timeline probe.
     heading(pf, right, -44, "Timeline probe", "For the next raid boss pull, logs whether each boss timeline, cast, damage meter, death recap and Journal value, and each phase event, was secret, readable or missing: when it fired, at the end of the encounter and after combat. Show prints what it found.")
