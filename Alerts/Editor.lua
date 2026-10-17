@@ -406,6 +406,25 @@ local function reminderTimes()
     return Reminders.FormatTimes({ { ph = draft.ph or 1, t = t } })
 end
 
+-- A draft's Show as boxes and Read out choices as a reminder's outputs and speech (nil when neither
+-- read out choice is ticked).
+local function draftOutputs(d)
+    local outputs = {}
+    for _, k in ipairs(SHOW_KEYS) do
+        outputs[k] = d.show[k] and true or false
+    end
+    outputs.speech = (d.speak or d.count) and true or false
+    local speech
+    if d.speak and d.count then
+        speech = "textcount"
+    elseif d.speak then
+        speech = "text"
+    elseif d.count then
+        speech = "count"
+    end
+    return outputs, speech
+end
+
 -- The draft as a reminder, laid over the saved one so its other fields (priority, enabled) stay.
 local function buildReminder()
     local r = copy(ctx and ctx.reminder or {})
@@ -415,16 +434,12 @@ local function buildReminder()
     r.difficulty = draft.difficulty
     r.times = reminderTimes()
     r.outputs = r.outputs or {}
-    for _, k in ipairs(SHOW_KEYS) do
-        r.outputs[k] = draft.show[k] and true or false
+    local outputs, speech = draftOutputs(draft)
+    for k, on in pairs(outputs) do
+        r.outputs[k] = on
     end
-    r.outputs.speech = (draft.speak or draft.count) and true or false
-    if draft.speak and draft.count then
-        r.speech = "textcount"
-    elseif draft.speak then
-        r.speech = "text"
-    elseif draft.count then
-        r.speech = "count"
+    if speech then
+        r.speech = speech
     end
     r.warn = draft.warn
     r.linger = draft.linger > 0 and draft.linger or nil
@@ -2069,6 +2084,14 @@ local function newDraft()
     return { saveAs = "mine", tag = "everyone", ph = 1, timeText = "", timeTouched = false, iconType = "spell",
         text = "", show = { alert = true, bar = true }, speak = true, count = false, glow = false, warn = 5,
         linger = 0 }
+end
+
+-- What a new alert starts with, as a template's fields (CRT.AlertSaved:Save): its Save as, For, outputs,
+-- speech and warning time. A fresh table each call, from the same draft a new alert opens with.
+function Editor.NewDefaults()
+    local d = newDraft()
+    local outputs, speech = draftOutputs(d)
+    return { saveAs = d.saveAs, tags = d.tag, outputs = outputs, speech = speech, warn = d.warn }
 end
 
 -- A saved reminder into the draft. Its times text is kept until Relative to or Time is touched.

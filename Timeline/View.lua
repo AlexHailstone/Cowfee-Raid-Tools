@@ -67,9 +67,6 @@ local MENU_DIST, MENU_TIME = 6, 0.3 -- a right click that moves less and lets go
 local DASH, DASH_GAP = 6, 4 -- the dashed line where a dragged chip would land
 local RENAME_POPUP = "COWFEE_RAID_TOOLS_SAVED_ALERT_RENAME"
 local CD_DROP_W = 120 -- the Cooldowns row's filter dropdown
-local CD_LEFT = LABEL_W + 64 -- where the cooldown chips start, after the label, its (?) and the dropdown
--- what a template made from a cooldown shows: what a new alert in the editor starts with
-local NEW_OUTPUTS = { alert = true, bar = true, speech = true }
 
 local TEXT = {
     notes = "Notes",
@@ -1390,31 +1387,13 @@ function Methods:PlaceSaved(id, t, spellID, lane)
 end
 
 -- Opens the editor on a new alert from cooldown e (as CRT.AlertCooldowns:List gives it) at t seconds from
--- the pull (phase + seconds as OpenAt gives them): its spell, its name as the text, and your own (Only
--- me), wherever it is dropped.
-function Methods:PlaceCooldown(e, t, lane)
-    local encounterID = self:EncounterNumber()
-    if not encounterID then
-        CRT:Print(TEXT.needPull)
-        return
-    end
+-- the pull: OpenAt with its spell and its name as the text, so it is your own (Only me) wherever it is
+-- dropped, the Personal notes lane included.
+function Methods:PlaceCooldown(e, t)
     if not (e and e.spellID) then
         return
     end
-    t = self:WrittenTime(e.spellID, e.name, t)
-    local ph, seconds = CRT.AlertReminders.PhaseAt(self.pull and self.pull.reference, tenth(t))
-    local prefill = {
-        spellID = e.spellID,
-        text = e.name,
-        ph = ph,
-        time = tenth(seconds),
-        boss = self.bossName,
-        saveAs = "mine",
-    }
-    if lane and lane.kind == "personal" then
-        prefill.saveAs = "mine" -- the Personal notes lane is always your own
-    end
-    CRT.AlertEditor:Open(encounterID, nil, prefill)
+    self:OpenAt(t, e.spellID, e.name)
 end
 
 -- A context menu at the cursor, built by build(root) with the game's menu; without one, a chat line.
@@ -1729,17 +1708,17 @@ function Methods:BuildStrip()
     strip:Hide()
     self.strip = strip
 
-    local function chipScroll(left, top)
+    local function chipScroll()
         local scroll = CreateFrame("ScrollFrame", nil, strip)
-        scroll:SetPoint("TOPLEFT", strip, "TOPLEFT", left, top - 3)
-        scroll:SetPoint("BOTTOMRIGHT", strip, "TOPRIGHT", 0, top - STRIP_ROW + 3)
         local row = CreateFrame("Frame", nil, scroll)
         row:SetSize(1, CHIP_H)
         scroll:SetScrollChild(row)
         scroll:EnableMouseWheel(true)
         return scroll, row
     end
-    local scroll, row = chipScroll(LABEL_W, 0)
+    local scroll, row = chipScroll()
+    scroll:SetPoint("TOPLEFT", strip, "TOPLEFT", LABEL_W, -3)
+    scroll:SetPoint("BOTTOMRIGHT", strip, "TOPRIGHT", 0, -STRIP_ROW + 3)
     scroll:SetScript("OnMouseWheel", function(_, delta)
         self:ScrollChips(-delta * CHIP_WHEEL)
     end)
@@ -1777,8 +1756,14 @@ function Methods:BuildStrip()
         drop:SetHeight(STRIP_ROW)
         drop:SetPoint("LEFT", after, "RIGHT", 0, 0)
         self.cdFilter = drop
+        after = drop.Dropdown or drop
     end
-    local cdScroll, cdRow = chipScroll(CD_LEFT, -STRIP_ROW)
+    -- the chips start just after the dropdown (else the (?), else the label), whatever their widths, and
+    -- run to the strip's right end, centred on the second row
+    local cdScroll, cdRow = chipScroll()
+    cdScroll:SetPoint("LEFT", after, "RIGHT", 6, 0)
+    cdScroll:SetPoint("RIGHT", strip, "TOPRIGHT", 0, -STRIP_ROW - STRIP_ROW / 2)
+    cdScroll:SetHeight(CHIP_H)
     cdScroll:SetScript("OnMouseWheel", function(_, delta)
         self:ScrollCooldowns(-delta * CHIP_WHEEL)
     end)
@@ -2066,30 +2051,24 @@ function Methods:FinishChipMove()
     end
     local x, y = cursorOnTrack(self)
     if cm.kind == "cooldown" then
-        self:PlaceCooldown(cm.cooldown, self:TimeAtX(x), self:LaneAtY(y))
+        self:PlaceCooldown(cm.cooldown, self:TimeAtX(x))
     else
         self:PlaceSaved(cm.id, self:TimeAtX(x), self:IconSpellAt(x, y), self:LaneAtY(y))
     end
 end
 
--- Makes a template from cooldown e: its name, spell and text, in caramel, showing what a new alert does.
+-- Makes a template from cooldown e: its name, spell and text, in caramel, with what a new alert in the
+-- editor starts with (CRT.AlertEditor.NewDefaults, the one source of those).
 function Methods:SaveCooldown(e)
     local Saved = CRT.AlertSaved
     if not (Saved and e) then
         return nil
     end
+    local Editor = CRT.AlertEditor
+    local fields = Editor and Editor.NewDefaults and Editor.NewDefaults() or {}
     local r, g, b = mocha("caramel")
-    return Saved:Save(nil, {
-        name = e.name,
-        spellID = e.spellID,
-        text = e.name,
-        color = { r, g, b, 1 },
-        saveAs = "mine",
-        tags = "everyone",
-        outputs = NEW_OUTPUTS,
-        speech = "text",
-        warn = 5,
-    })
+    fields.name, fields.spellID, fields.text, fields.color = e.name, e.spellID, e.name, { r, g, b, 1 }
+    return Saved:Save(nil, fields)
 end
 
 -- A chip's menu. A template: Edit, Rename, Delete. A cooldown: Save as template.
@@ -2212,7 +2191,7 @@ function Methods:TrackMenu(x, y)
         end
         for _, e in ipairs(cds) do
             cooldowns:CreateButton(e.name, function()
-                self:PlaceCooldown(e, t, lane)
+                self:PlaceCooldown(e, t)
             end)
         end
     end)

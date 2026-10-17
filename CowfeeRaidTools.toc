@@ -58,6 +58,7 @@ Timeline\Journal.lua
 Timeline\Database.lua
 Timeline\Reference.lua
 Timeline\Lanes.lua
+Alerts\CooldownData.lua
 Alerts\Cooldowns.lua
 Timeline\View.lua
 Timeline\ReferencePage.lua
