@@ -170,8 +170,20 @@ refresh = function()
         end
     end
 
-    if not editor:HasFocus() then
-        editor:SetText(record and record.raw or "")
+    -- The note's text, as saved. A box with the keyboard focus keeps it until something else takes it,
+    -- so focus alone can't mean "being typed in": the box follows the saved text whenever it holds
+    -- no unsaved typing (its text is still what it last loaded), so a line moved, copied or deleted
+    -- on the Timeline shows here at once. Unsaved typing is never replaced.
+    local raw = record and record.raw or ""
+    if not editor:HasFocus() or editor:GetText() == editor.loaded then
+        if editor:GetText() ~= raw then
+            local cursor = editor:GetCursorPosition() or 0
+            editor:SetText(raw)
+            if editor:HasFocus() then
+                editor:SetCursorPosition(math.min(cursor, #raw))
+            end
+        end
+        editor.loaded = raw
     end
 
     local lines = {}
@@ -297,6 +309,7 @@ local function buildNotes(pf)
     save:SetScript("OnClick", function()
         if selected then
             editor:ClearFocus()
+            editor.loaded = editor:GetText()
             Notes:UpdateRaw(selected, editor:GetText())
             CRT:Print("Saved.")
         end
