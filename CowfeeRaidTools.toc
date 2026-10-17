@@ -104,6 +104,7 @@ Dev\LayoutEditor.lua
 Dev\TimelineProbe.lua
 Dev\MarkerEditor.lua
 Dev\SeasonTools.lua
+Dev\BossOrder.lua
 Dev\ReferenceTypes.lua
 Dev\WindowLog.lua
 Dev\LayoutCheck.lua
