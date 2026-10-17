@@ -4,12 +4,16 @@ local Groups = CRT.Groups
 local UI = CRT.UI
 
 local NUM_SLOTS = Groups.NUM_SLOTS
-local SLOT_W, SLOT_H, SLOT_GAP = 190, 22, 1
-local COL_GAP = 14
+-- The grid: the 8 groups as GRID_COLS across and 8 / GRID_COLS down, beside a right column RIGHT_W wide.
+-- Slots are as wide as the page leaves them (UI.PAGE_W), about 148 at 866.
+local GRID_COLS = 4
+local COL_GAP = 10
+local RIGHT_W = 220
+local SLOT_W = math.floor((UI.PAGE_W - 8 - RIGHT_W - 16 - (GRID_COLS - 1) * COL_GAP) / GRID_COLS)
+local SLOT_H, SLOT_GAP = 22, 1
 local GROUP_LABEL_H = 20
 local BLOCK_H = GROUP_LABEL_H + 5 * (SLOT_H + SLOT_GAP) + 8
 local GRID_TOP = -52
-local RIGHT_W = 250
 local PICK_ROWS = 10
 local ROW_H = 22
 
@@ -745,7 +749,7 @@ local function buildPage(pf)
 
     -- Group grid
     for g = 1, 8 do
-        local col, row = (g - 1) % 2, math.floor((g - 1) / 2)
+        local col, row = (g - 1) % GRID_COLS, math.floor((g - 1) / GRID_COLS)
         local x = 8 + col * (SLOT_W + COL_GAP)
         local y = GRID_TOP - row * BLOCK_H
         local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")

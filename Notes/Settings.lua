@@ -44,7 +44,11 @@ local TEXT = {
     trustedOnly = "Only accept notes from leader or assistants",
 }
 
-local COLUMN_W = 226
+-- Four columns across the page (UI.PAGE_W): the three note windows, COLUMN_W each, then Alerts and
+-- Sharing in what is left. A slider row is 4 + labelWidth + 5 + width + its value (about 44).
+local COLUMN_W = 205
+local ALERTS_X = 8 + 3 * COLUMN_W + 10
+local ALERTS_W = UI.PAGE_W - 8 - ALERTS_X
 local ICON_POSITIONS = {
     { key = "left", label = "Left" },
     { key = "right", label = "Right" },
@@ -105,6 +109,9 @@ local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
     check:SetPoint("TOPLEFT", x, y)
     local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     text:SetPoint("LEFT", check, "RIGHT", 2, 0)
+    -- wraps inside its column rather than running into the next one
+    text:SetWidth(COLUMN_W - 30)
+    text:SetJustifyH("LEFT")
     text:SetText(label)
     check:SetScript("OnClick", function(self)
         setter(self:GetChecked() and true or false)
@@ -121,7 +128,7 @@ local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
 end
 
 -- A number setting as an Edit Mode style slider. opts: low and high (the range), labelWidth and
--- width (default 92 and 78, to fit a column), format (the text beside the bar) and enabledIf.
+-- width (default 84 and 70, to fit a column), format (the text beside the bar) and enabledIf.
 -- getter and setter come last because setting() and alert() return both: Lua only passes every
 -- return value of a call when it is the last argument, so in the middle the setter is lost.
 local function makeNumber(parent, x, y, label, opts, getter, setter)
@@ -129,8 +136,8 @@ local function makeNumber(parent, x, y, label, opts, getter, setter)
         min = opts.low,
         max = opts.high,
         step = 1,
-        labelWidth = opts.labelWidth or 92,
-        width = opts.width or 78,
+        labelWidth = opts.labelWidth or 84,
+        width = opts.width or 70,
         format = opts.format,
         enabledIf = opts.enabledIf,
         get = getter,
@@ -221,7 +228,7 @@ local function build(pf)
         buildColumn(pf, index, def, -14)
     end
 
-    -- Alerts, on the left, and sharing, on the right. The seconds row greys out while alerts are off,
+    -- Alerts, then sharing under it, in the fourth column. The seconds row greys out while alerts are off,
     -- and the speech rows while "Read them out" is off (whatever the alert is); both switches are on the
     -- Alerts tab.
     local function alertsOn()
@@ -230,27 +237,28 @@ local function build(pf)
     local function speechOn()
         return Notes:Alert().tts and true or false
     end
-    local top = -300
-    local alertsTitle = heading(pf, 8, top, TEXT.alerts)
+    local top, x = -14, ALERTS_X
+    local LABEL, CONTROL = 96, 76 -- a slider row: 4 + 96 + 5 + 76 + its value fills ALERTS_W
+    local alertsTitle = heading(pf, x, top, TEXT.alerts)
     UI.Help(pf, TEXT.alerts, TEXT.alertsHelp):SetPoint("LEFT", alertsTitle, "RIGHT", 6, 0)
-    makeNumber(pf, 4, top - 22, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = 120, width = 150, format = seconds, enabledIf = alertsOn }, alert("seconds"))
+    makeNumber(pf, x - 4, top - 22, TEXT.alertSeconds, { low = 1, high = 60, labelWidth = LABEL, width = CONTROL, format = seconds, enabledIf = alertsOn }, alert("seconds"))
     local iconGet, iconSet = alert("iconPosition")
-    local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = 120, width = 150, get = iconGet, set = iconSet, enabledIf = alertsOn })
-    iconRow:SetPoint("TOPLEFT", 8, top - 54)
+    local iconRow = UI.Dropdown(pf, TEXT.alertIcon, { options = ICON_POSITIONS, labelWidth = LABEL, width = ALERTS_W - LABEL - 5, get = iconGet, set = iconSet, enabledIf = alertsOn })
+    iconRow:SetPoint("TOPLEFT", x, top - 54)
     controls[#controls + 1] = iconRow
-    makeNumber(pf, 4, top - 86, TEXT.ttsSeconds, { low = 0, high = 30, labelWidth = 120, width = 150, format = seconds, enabledIf = speechOn }, alert("ttsSeconds"))
+    makeNumber(pf, x - 4, top - 86, TEXT.ttsSeconds, { low = 0, high = 30, labelWidth = LABEL, width = CONTROL, format = seconds, enabledIf = speechOn }, alert("ttsSeconds"))
     local volumeGet, volumeSet = alert("ttsVolume")
-    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = 120, width = 150, format = percent, get = volumeGet, set = volumeSet, enabledIf = speechOn })
-    volume:SetPoint("TOPLEFT", 8, top - 118)
+    local volume = UI.Slider(pf, TEXT.ttsVolume, { min = 0, max = 100, labelWidth = LABEL, width = CONTROL, format = percent, get = volumeGet, set = volumeSet, enabledIf = speechOn })
+    volume:SetPoint("TOPLEFT", x, top - 118)
     controls[#controls + 1] = volume
     local speak = makeButton(pf, TEXT.testSpeech, 140)
-    speak:SetPoint("TOPLEFT", 8, top - 158)
+    speak:SetPoint("TOPLEFT", x, top - 158)
     speak:SetScript("OnClick", function()
         CRT.NoteAlert:Speak(TEXT.testPhrase)
     end)
 
-    heading(pf, 360, top, TEXT.sharing)
-    makeCheck(pf, 356, top - 20, TEXT.trustedOnly, nil, function()
+    heading(pf, x, top - 200, TEXT.sharing)
+    makeCheck(pf, x - 4, top - 220, TEXT.trustedOnly, nil, function()
         return Notes:TrustedOnly()
     end, function(value)
         Notes:Set(nil, "trustedOnly", value)

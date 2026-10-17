@@ -21,6 +21,14 @@ local TEXT = {
 
 local ROW_H = 24
 local MAX_ROWS = 9
+-- The Notes tab in three columns across the page (UI.PAGE_W): the notes list, the note text, and your
+-- personal note with Try it. The tab is UI.PAGE_H - 66 high, under the tabs.
+local LIST_W = 250
+local RIGHT_W = 250
+local TEXT_X = 8 + LIST_W + 14
+local RIGHT_X = UI.PAGE_W - 8 - RIGHT_W
+local TEXT_W = RIGHT_X - 14 - TEXT_X
+local TAB_H = UI.PAGE_H - 66
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local GOLD = { 1, 0.82, 0 }
@@ -234,7 +242,7 @@ local function buildNotes(pf)
     UI.Help(pf, "Raid notes", "Import a note, share it with the raid before the pull, and its timers count down from the start of the fight. The note's other text goes to the Assignments window.\n\nWindow, alert timing and sharing settings are on the Notes Settings tab; where your note lines show is on the Alert Settings tab, and your alerts for boss mechanics are on Mech Alerts."):SetPoint("LEFT", listLabel, "RIGHT", 6, 0)
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        row:SetSize(250, ROW_H - 2)
+        row:SetSize(LIST_W, ROW_H - 2)
         row:SetPoint("TOPLEFT", 8, -36 - (i - 1) * ROW_H)
         skin(row, 0.45)
         row.text = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -279,7 +287,7 @@ local function buildNotes(pf)
         CRT.NoteComm:Share(selected)
         refresh()
     end)
-    local roster = makeButton(pf, "Open roster in Raid Groups", 250)
+    local roster = makeButton(pf, "Open roster in Raid Groups", LIST_W)
     roster:SetPoint("TOPLEFT", active, "BOTTOMLEFT", 0, -4)
     roster:SetScript("OnClick", function()
         local record = selected and Notes:Get(selected)
@@ -291,14 +299,13 @@ local function buildNotes(pf)
         end
     end)
 
-    -- Right: the note text, editable.
+    -- Middle: the note text, editable, down to the Save button at the bottom of the tab.
     local textLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    textLabel:SetPoint("TOPLEFT", 272, -14)
+    textLabel:SetPoint("TOPLEFT", TEXT_X, -14)
     textLabel:SetText(TEXT.noteText)
     local box = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", 272, -36)
-    box:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -36)
-    box:SetHeight(MAX_ROWS * ROW_H + 60)
+    box:SetPoint("TOPLEFT", TEXT_X, -36)
+    box:SetSize(TEXT_W, TAB_H - 36 - 44)
     skin(box, 0.4)
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteTextScroll", box, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 6, -6)
@@ -307,7 +314,7 @@ local function buildNotes(pf)
     editor:SetMultiLine(true)
     editor:SetAutoFocus(false)
     editor:SetFontObject(CRTFontEdit)
-    editor:SetWidth(360)
+    editor:SetWidth(TEXT_W - 40)
     editor:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
@@ -352,14 +359,14 @@ local function buildNotes(pf)
     status:SetPoint("RIGHT", save, "LEFT", -8, 0)
     status:SetJustifyH("LEFT")
 
-    -- Bottom left: your personal note, shown in its own window.
-    local top = -384
+    -- Right: your personal note, shown in its own window.
+    local top = -14
     local personalLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    personalLabel:SetPoint("TOPLEFT", 8, top)
+    personalLabel:SetPoint("TOPLEFT", RIGHT_X, top)
     personalLabel:SetText("Personal note (only you see it)")
     local pbox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
-    pbox:SetPoint("TOPLEFT", 8, top - 22)
-    pbox:SetSize(330, 168)
+    pbox:SetPoint("TOPLEFT", RIGHT_X, top - 22)
+    pbox:SetSize(RIGHT_W, 220)
     skin(pbox, 0.4)
     local pscroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsPersonalNoteScroll", pbox, "UIPanelScrollFrameTemplate")
     pscroll:SetPoint("TOPLEFT", 6, -6)
@@ -368,7 +375,7 @@ local function buildNotes(pf)
     personal:SetMultiLine(true)
     personal:SetAutoFocus(false)
     personal:SetFontObject(CRTFontEdit)
-    personal:SetWidth(290)
+    personal:SetWidth(RIGHT_W - 40)
     personal:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
@@ -388,14 +395,16 @@ local function buildNotes(pf)
         Notes:SetPersonal(personal:GetText())
         CRT:Print("Personal note saved.")
     end)
-    -- Bottom right: try the note in use.
+    -- Right, under the personal note: try the note in use. Next phase has its own row, since its text
+    -- grows with the phase it starts ("Next phase (1.5)").
+    top = top - 22 - 220 - 6 - 26 - 20
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    runLabel:SetPoint("TOPLEFT", 360, top)
+    runLabel:SetPoint("TOPLEFT", RIGHT_X, top)
     runLabel:SetText("Try it")
     UI.Help(pf, "Try it", "Test run starts the selected note now, as if the boss was pulled. Later phases start with Next phase, which shows the phase it starts next, including intermissions such as 1.5. It also works on a pull with only reminders. Stop ends it."):SetPoint("LEFT", runLabel, "RIGHT", 6, 0)
 
     local testRun = makeButton(pf, "Test run", 100)
-    testRun:SetPoint("TOPLEFT", 360, top - 24)
+    testRun:SetPoint("TOPLEFT", RIGHT_X, top - 24)
     testRun:SetScript("OnClick", function()
         local id = selected or Notes:Active()
         if id then
@@ -404,8 +413,8 @@ local function buildNotes(pf)
         end
     end)
     -- Named after the phase it starts, e.g. "Next phase (1.5)", so an intermission is not a surprise.
-    local nextPhase = makeButton(pf, "Next phase", 130)
-    nextPhase:SetPoint("LEFT", testRun, "RIGHT", 6, 0)
+    local nextPhase = makeButton(pf, "Next phase", 176)
+    nextPhase:SetPoint("TOPLEFT", testRun, "BOTTOMLEFT", 0, -6)
     nextPhase:SetScript("OnClick", function()
         local ph = Engine:NextPhase()
         CRT:Print(ph and ("Phase " .. ph .. " started.") or "No phase left to start, or nothing is running.")
@@ -416,7 +425,7 @@ local function buildNotes(pf)
     end
     controls[#controls + 1] = nextPhase
     local stop = makeButton(pf, "Stop", 70)
-    stop:SetPoint("LEFT", nextPhase, "RIGHT", 6, 0)
+    stop:SetPoint("LEFT", testRun, "RIGHT", 6, 0)
     stop:SetScript("OnClick", function()
         Engine:Stop()
     end)

@@ -2,20 +2,23 @@ local ADDON, CRT = ...
 
 -- The General Settings page: settings for the whole addon, on two tabs (the last one is remembered in
 -- CRTDB.ui.settingsTab).
---   Appearance  left: Window (the main window's scale, style and background opacity, UI:ApplyStyle in
---               UI/Panel.lua), Text (the font, outline and size of every text the addon draws with its
---               shared fonts, CRT:ApplyFonts in Core.lua), Sound, Reports and the Minimap button;
---               right: Layers (which frame strata each group of windows is drawn in, UI:SetLayer in
---               UI/Panel.lua)
+--   Appearance  three columns. Left: Window (the main window's scale, style and background opacity,
+--               UI:ApplyStyle in UI/Panel.lua) and Text (the font, outline and size of every text the
+--               addon draws with its shared fonts, CRT:ApplyFonts in Core.lua). Middle: Sound, Reports
+--               and the Minimap button. Right: Layers (which frame strata each group of windows is drawn
+--               in, UI:SetLayer in UI/Panel.lua)
 --   Profiles    Profiles.lua
 -- Named Addon Settings before 0.16.0. Its key is still "settings".
 
 local UI = CRT.UI
 local Profiles = CRT.Profiles
 
-local LEFT_X, RIGHT_X = 10, 352
-local LABEL_W = 120
-local CONTROL_W = 160
+-- The columns of the Appearance tab across the page (UI.PAGE_W, 866): a slider row is LABEL_W + 5 +
+-- CONTROL_W plus its value, about 310, and a dropdown row about 265.
+local LEFT_X, MIDDLE_X, RIGHT_X = 10, 320, 600
+local LABEL_W = 110
+local CONTROL_W = 150
+local CHECK_TEXT_W = 250 -- a checkbox's text wraps at this width, inside its column
 
 local page
 local controls = {}
@@ -76,7 +79,7 @@ local function checkbox(pf, x, y, text, get, set)
     cb:SetPoint("TOPLEFT", x - 4, y)
     local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    label:SetWidth(300)
+    label:SetWidth(CHECK_TEXT_W)
     label:SetJustifyH("LEFT")
     label:SetText(text)
     cb:SetScript("OnClick", function(self)
@@ -342,7 +345,8 @@ local function buildLeft(pf)
         end,
     }), x, -318)
 
-    heading(pf, x, -362, "Sound", "Every sound the addon plays goes through this game sound channel, so it follows that channel's volume and mute in the game's Sound settings.\n\nTwo sounds are played by the game instead and keep its own outputs: the low-health pulse (Combat Audio Alerts, with its own volume on Quality of Life) and text to speech for your next spell (its volume is on Raid Notes).")
+    x = MIDDLE_X
+    heading(pf, x, -44, "Sound", "Every sound the addon plays goes through this game sound channel, so it follows that channel's volume and mute in the game's Sound settings.\n\nTwo sounds are played by the game instead and keep its own outputs: the low-health pulse (Combat Audio Alerts, with its own volume on Quality of Life) and text to speech for your next spell (its volume is on Raid Notes).")
     add(UI.Dropdown(pf, "Sound channel", {
         options = CRT.SOUND_CHANNELS,
         labelWidth = LABEL_W,
@@ -354,17 +358,17 @@ local function buildLeft(pf)
             ui().soundChannel = key
             refresh()
         end,
-    }), x, -380)
+    }), x, -62)
 
-    heading(pf, x, -424, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm: on their pages, in chat posts and in Discord exports. Unticked, a realm only shows for players from another realm, as the game shows it.\n\nThe Raid Groups grid always keeps realms, since it needs them to tell players apart.")
-    checkbox(pf, x, -442, "Leave realm names out of reports and Discord exports", function()
+    heading(pf, x, -106, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm: on their pages, in chat posts and in Discord exports. Unticked, a realm only shows for players from another realm, as the game shows it.\n\nThe Raid Groups grid always keeps realms, since it needs them to tell players apart.")
+    checkbox(pf, x, -124, "Leave realm names out of reports and Discord exports", function()
         return ui().hideRealms
     end, function(on)
         ui().hideRealms = on
     end)
 
-    heading(pf, x, -484, "Minimap", "Left-click the minimap button to open or close this window, and right-click it for General Settings. Drag it to move it around the minimap.\n\nThe addon is also listed in the game's addon menu beside the minimap, which works with the button hidden.")
-    checkbox(pf, x, -502, "Show the minimap button", function()
+    heading(pf, x, -184, "Minimap", "Left-click the minimap button to open or close this window, and right-click it for General Settings. Drag it to move it around the minimap.\n\nThe addon is also listed in the game's addon menu beside the minimap, which works with the button hidden.")
+    checkbox(pf, x, -202, "Show the minimap button", function()
         return not CRT.db.minimap.hide
     end, function(on)
         CRT.MinimapButton:SetHidden(not on)
@@ -388,8 +392,8 @@ local function buildRight(pf)
                 end
                 return list
             end,
-            labelWidth = LABEL_W + 30,
-            width = CONTROL_W - 10,
+            labelWidth = LABEL_W + 10,
+            width = CONTROL_W - 20,
             get = function()
                 return UI:GroupLayer(group)
             end,

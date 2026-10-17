@@ -45,6 +45,11 @@ local function usable(control, on)
     end
 end
 
+-- The Look settings sit in a right-hand column, beside the panel settings (the page is UI.PAGE_W wide;
+-- the widest row on the left, the regular debuffs checkbox, wraps at LEFT_TEXT_W).
+local LOOK_X = 440
+local LEFT_TEXT_W = 390
+
 -- A dropdown for one look setting, in the Edit Mode style (UI/Controls.lua).
 local function lookDropdown(pf, yOffset, text, field, choices)
     local row = UI.Dropdown(pf, text, {
@@ -61,7 +66,7 @@ local function lookDropdown(pf, yOffset, text, field, choices)
             return Debuffs:Enabled()
         end,
     })
-    row:SetPoint("TOPLEFT", 8, yOffset)
+    row:SetPoint("TOPLEFT", LOOK_X, yOffset)
     look[#look + 1] = row
     return row
 end
@@ -163,18 +168,20 @@ local function build(pf)
     regularCheck = makeCheck(pf, "Also show regular debuffs in a second row (this includes long ones)", -154, function(checked)
         Debuffs:SetIncludeRegular(checked)
     end)
+    regularCheck.label:SetWidth(LEFT_TEXT_W)
+    regularCheck.label:SetJustifyH("LEFT")
 
     -- The look of the boss debuff icons. Previews shows the changes as you make them.
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    lookTitle:SetPoint("TOPLEFT", 8, -192)
+    lookTitle:SetPoint("TOPLEFT", LOOK_X, -8)
     lookTitle:SetText("Look")
     UI.Help(pf, "Look", "The game draws boss mechanic debuffs itself, and only takes these options from an addon. It writes their timer in its own shared small font, so their font and text size can't be changed without changing text all over the game. The font setting on the General Settings page changes everything else.\n\nTimer: the game's timer text beside or on the icon, or its countdown numbers on the swipe, never both.\n\nBorder size: the game's colored debuff border, the icon plus 5 pixels for each step.\n\nTurn on Previews to see each change as you make it."):SetPoint("LEFT", lookTitle, "RIGHT", 6, 0)
 
-    local timer = lookDropdown(pf, -210, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
+    local timer = lookDropdown(pf, -26, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
     nudgeBox(pf, nudgeX, "Y", "timerY")
-    lookCheck(pf, "Swipe animation as the debuff runs out", -244, "swipe")
-    lookCheck(pf, "Bright edge on the swipe", -268, "swipeEdge", 28, "swipe")
+    lookCheck(pf, "Swipe animation as the debuff runs out", -60, "swipe", LOOK_X - 4)
+    lookCheck(pf, "Bright edge on the swipe", -84, "swipeEdge", LOOK_X + 20, "swipe")
     local border = UI.Slider(pf, "Border size", { min = 0, max = 6, step = 0.5, labelWidth = 80, width = 200, enabledIf = panelOn,
         format = function(v)
             return format("%g", v)
@@ -186,7 +193,7 @@ local function build(pf)
             Debuffs:Set("borderScale", v)
         end,
     })
-    border:SetPoint("TOPLEFT", 8, -296)
+    border:SetPoint("TOPLEFT", LOOK_X, -112)
     look[#look + 1] = border
 
 
