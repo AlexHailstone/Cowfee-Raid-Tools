@@ -86,7 +86,8 @@ function ReviewTab.Build(f, ctx)
     }), 424, -4)
 
     -- Order: shown only for a reference with an Order line. It sits beside Pull when the window is
-    -- wide enough (popped out), else at the end of the second row, where the docked panel has room.
+    -- wide enough (popped out), else on the third row after Time visible, clear of the second row's
+    -- (?) icons and of Share note at the right.
     local order = UI.Dropdown(f, "Order", {
         options = ctx.orderOptions,
         labelWidth = 40,
@@ -95,16 +96,17 @@ function ReviewTab.Build(f, ctx)
         set = ctx.selectOrder,
     })
     local orderHelp = UI.Help(f, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move into the window it now has; abilities shared by every part stay where they are.\n\nThe choice is kept for this boss and difficulty.")
-    local ORDER_W, WIDE_X, NARROW_X = 40 + 5 + 140, 664, 498
+    -- docked: after Time visible (its label, bar and value end near 300)
+    local ORDER_W, WIDE_X, NARROW_X, NARROW_Y = 40 + 5 + 140, 664, 320, -64
     local function placeOrder()
         local wide = (f:GetWidth() or 0) >= WIDE_X + ORDER_W + 32
         order:ClearAllPoints()
-        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and WIDE_X or NARROW_X, wide and -4 or -38)
+        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and WIDE_X or NARROW_X, wide and -4 or NARROW_Y)
         orderHelp:ClearAllPoints()
         orderHelp:SetPoint("LEFT", order, "RIGHT", 4, 0)
         local shown = ctx.hasOrder()
         order:SetShown(shown)
-        orderHelp:SetShown(shown and wide)
+        orderHelp:SetShown(shown)
     end
     local orderRefresh = order.refresh
     order.refresh = function()
