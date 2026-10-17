@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 -- deaths lane on top and then one lane per row of the reference, in file order; when a recorded
 -- pull is laid over it, that pull's deaths fill the deaths lane and its casts become a row of
 -- ticks at the bottom. The Journal rows are cached, so new lane tables are made instead of
--- marking them. Lanes.Build(base, rows, settings, encounterID, overlay) returns the lanes, the
+-- marking them. Lanes.Build(base, rows, settings, encounterID, overlay, group) returns the lanes, the
 -- deaths that have no time (listed apart), and extra: the phases, the length, and the line where
 -- the overlay pull ended.
 
@@ -58,14 +58,14 @@ end
 
 -- The lanes of a recorded pull, top to bottom: deaths, the ability rows that are not hidden, and
 -- the unnamed casts.
-local function pullLanes(pull, rows, settings, encounterID)
+local function pullLanes(pull, rows, settings, encounterID, group)
     local lanes, unknown = {}, {}
     local Timeline = CRT.Timeline
 
     -- Deaths: the shown pull at age 0, then (with the overlay) the pulls before it at age 1, 2, ...
     local sources = { { pull = pull, deaths = pull.deaths or {} } }
     if settings.overlayOn and encounterID and pull.id then
-        local recent = Timeline:RecentDeaths(encounterID, settings.overlay or 3, pull.id)
+        local recent = Timeline:RecentDeaths(encounterID, settings.overlay or 3, pull.id, group)
         if recent[1] and recent[1].pull.id == pull.id then
             sources = recent
         end
@@ -119,7 +119,7 @@ end
 -- The lanes of a reference timeline: deaths (from the overlay pull only), one lane per reference
 -- row in file order, and with an overlay a row of ticks for that pull's casts. A row gets its
 -- spell and icon from its own [spell], else from the Journal row of the same name.
-local function referenceLanes(ref, rows, settings, encounterID, overlay)
+local function referenceLanes(ref, rows, settings, encounterID, overlay, group)
     local lanes, unknown = {}, {}
     local sources = {}
     if overlay then
@@ -169,6 +169,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     end
     local maskedCasts = 0
     for _, row in ipairs(ref.rows or {}) do
+        -- on Normal/Heroic a Mythic-only row is left out entirely, its casts included
+        local skip = group == "nh" and CRT.TimelineReference.MythicOnly(row)
         local key = trimLower(row.name)
         local spellID = Lanes.RowSpell(row, eid, rows)
         local match = spellID ~= 0 and byID[spellID] or nil
@@ -179,7 +181,7 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
         end
         local hidden = (spellID ~= 0 and CRT.TimelineJournal:IsHidden(eid, spellID))
             or (hiddenNames and hiddenNames[key])
-        if not hidden then
+        if not hidden and not skip then
             local marks = {}
             for _, cast in ipairs(row.casts or {}) do
                 local at = place(cast.t)
@@ -210,12 +212,14 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay)
     return lanes, unknown, extra
 end
 
-function Lanes.Build(base, rows, settings, encounterID, overlay)
+-- group ("nh" or "mythic") is the difficulty shown: "nh" leaves out Mythic-only reference rows
+-- and takes the death overlay from that group's pulls. Nil leaves everything in.
+function Lanes.Build(base, rows, settings, encounterID, overlay, group)
     if not base then
         return {}, {}, { phases = {}, length = 0 }
     end
     if base.reference then
-        return referenceLanes(base.reference, rows, settings, encounterID, overlay)
+        return referenceLanes(base.reference, rows, settings, encounterID, overlay, group)
     end
-    return pullLanes(base, rows, settings, encounterID)
+    return pullLanes(base, rows, settings, encounterID, group)
 end

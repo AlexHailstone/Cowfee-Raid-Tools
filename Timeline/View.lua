@@ -481,8 +481,8 @@ function View.Create(parent)
 end
 
 -- base is a recorded pull or { reference = ref }; overlay is a pull laid over a reference.
-function Methods:SetData(base, encounterID, overlay, bossName)
-    self.pull, self.encounterID, self.overlay, self.bossName = base, encounterID, overlay, bossName
+function Methods:SetData(base, encounterID, overlay, bossName, group)
+    self.pull, self.encounterID, self.overlay, self.bossName, self.group = base, encounterID, overlay, bossName, group
     self:Refresh()
     self:ScrollTo(0)
 end
@@ -2165,7 +2165,7 @@ function Methods:Refresh()
     local extra
     if pull then
         local rows = CRT.TimelineJournal:Rows(self.encounterID)
-        self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay)
+        self.lanes, self.unknown, extra = View.Lanes(pull, rows, s, self.encounterID, self.overlay, self.group)
     else
         self.lanes, self.unknown = {}, {}
     end
@@ -2213,12 +2213,12 @@ function Methods:Refresh()
             l.stripe:SetColorTexture(mocha("cream", 0.04))
         end
         l.stripe:SetShown(tint and true or i % 2 == 0)
-        -- the extra types (after the first, which colors the row) as dots, rightmost last
+        -- the extra types (after the first, which colors the row) as dots: types 2 up to MAX_DOTS + 1 in reading order, the leftmost dot being type 2
         local extras = lane.kind == "reference" and lane.types or {}
         local dotCount = math.min(MAX_DOTS, math.max(0, #extras - 1))
         local Reference = CRT.TimelineReference
         for d = 1, MAX_DOTS do
-            local key = extras[#extras - d + 1]
+            local key = extras[dotCount - d + 2]
             local t = d <= dotCount and key and Reference and Reference.TYPES[key]
             if t then
                 l.dots[d]:SetVertexColor(t.color[1], t.color[2], t.color[3])
