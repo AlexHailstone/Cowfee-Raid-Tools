@@ -581,11 +581,17 @@ end
 
 -- Refresh ----------------------------------------------------------------
 
+-- A sample night shown instead of the real one, set by /crt dev late (Dev/LateTest.lua). Display only:
+-- it is never saved, and the buttons still act on the real night.
+local previewNight
+
 local function refreshTonight()
-    local night = Late:Current()
+    local night = previewNight or Late:Current()
     local now = time()
     paintGrid(night, now)
-    if night then
+    if previewNight then
+        setText(tonightText, tonightChild, "|cff5aa9ffSample night from /crt dev late (not saved; type it again to go back).|r\n" .. tonightLines(night, now))
+    elseif night then
         setText(tonightText, tonightChild, tonightLines(night, now))
         startButton:SetText("Restart from now")
         endButton:Enable()
@@ -1099,7 +1105,7 @@ local function build(pf)
         elapsed = elapsed + dt
         if elapsed >= 1 then
             elapsed = 0
-            if Late:Current() then
+            if Late:Current() or previewNight then
                 refreshTonight()
             end
         end
@@ -1116,6 +1122,13 @@ UI:RegisterPage("late", "Late Tracker", build)
 
 -- For /crt late export: the totals, ready to paste into Discord.
 CRT.LatePage = {
+    -- For /crt dev late: shows night (or the real one again, for nil) on the Tonight tab.
+    Preview = function(night)
+        previewNight = night
+        UI:Show("late")
+        selectTab("tonight")
+        refresh()
+    end,
     ExportTotals = function()
         CRT.ConsumablesTools:ShowText("Late tracker totals for Discord (Ctrl+C to copy)", totalsExport())
     end,
